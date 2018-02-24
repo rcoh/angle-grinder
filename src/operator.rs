@@ -1,7 +1,7 @@
 extern crate serde_json;
 use data::Record;
 use data;
-use self::serde_json::{Result, Value};
+use self::serde_json::Value;
 trait UnaryOp {
     fn process(&self, rec: &Record) -> Option<Record>;
 }
