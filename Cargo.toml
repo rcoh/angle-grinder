@@ -5,3 +5,4 @@ authors = ["Russell Cohen <russell.r.cohen@gmail.com>"]
 
 [dependencies]
 serde_json = "1.0"
+maplit = "1.0.1"
