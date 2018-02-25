@@ -8,5 +8,4 @@ fn main() {
         println!("No args")
     }
     inputreader::read_input();
-
 }

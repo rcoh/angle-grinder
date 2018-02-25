@@ -1,4 +1,5 @@
-#[macro_use] extern crate maplit;
+#[macro_use]
+extern crate maplit;
 mod data;
 mod operator;
 

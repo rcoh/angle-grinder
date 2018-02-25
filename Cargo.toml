@@ -6,3 +6,5 @@ authors = ["Russell Cohen <russell.r.cohen@gmail.com>"]
 [dependencies]
 serde_json = "1.0"
 maplit = "1.0.1"
+itertools = "0.7.6"
+ord_subset = "3.1.0"

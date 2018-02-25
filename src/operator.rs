@@ -1,15 +1,102 @@
+extern crate itertools;
+extern crate ord_subset;
 extern crate serde_json;
-use data::Record;
+use std::collections::HashMap;
+use std::iter::FromIterator;
+use self::ord_subset::OrdSubsetSliceExt;
+use data::{Aggregate, Record, Row};
 use data;
 use self::serde_json::Value;
-trait UnaryOp {
+trait UnaryPreAggOperator {
     fn process(&self, rec: &Record) -> Option<Record>;
+}
+
+trait AccumOperator {
+    fn new() -> Self;
+    fn process(&mut self, rec: &Row);
+    fn emit(&self) -> data::Value;
+}
+
+struct Count {
+    count: i64,
+}
+
+impl AccumOperator for Count {
+    fn new() -> Count {
+        Count { count: 0 }
+    }
+
+    fn process(&mut self, rec: &Row) {
+        self.count += 1;
+    }
+
+    fn emit(&self) -> data::Value {
+        data::Value::Int(self.count)
+    }
+}
+
+struct Grouper<T: AccumOperator> {
+    key_cols: Vec<String>,
+    agg_col: String,
+    state: HashMap<Vec<String>, T>,
+}
+
+impl<T: AccumOperator> Grouper<T> {
+    pub fn new(key_cols: Vec<&str>, agg_col: &str) -> Grouper<T> {
+        Grouper {
+            key_cols: key_cols.iter().map(|s| s.to_string()).collect(),
+            agg_col: String::from(agg_col),
+            state: HashMap::new(),
+        }
+    }
+
+    pub fn emit(&self) -> data::Aggregate {
+        let mut data: Vec<(HashMap<String, String>, data::Value)> = self.state
+            .iter()
+            .map(|(ref key_cols, ref accum)| {
+                let key_value =
+                    itertools::zip_eq(self.key_cols.iter().cloned(), key_cols.iter().cloned());
+                let res_map: HashMap<String, String> = HashMap::from_iter(key_value);
+                (res_map, accum.emit())
+            })
+            .collect();                       // todo: avoid clone here
+        data.ord_subset_sort_by_key(|ref kv| kv.1.clone());
+        Aggregate {
+            key_columns: self.key_cols.clone(),
+            agg_column: self.agg_col.clone(),
+            data: data,
+        }
+    }
+
+    pub fn process(&mut self, row: &Row) {
+        match row {
+            &Row::Record(ref rec) => {
+                let key_values: Vec<Option<&data::Value>> = self.key_cols
+                    .iter()
+                    .cloned()
+                    .map(|column| rec.data.get(&column))
+                    .collect();
+                let key_columns: Vec<String> = key_values
+                    .iter()
+                    .cloned()
+                    .map(|value_opt| {
+                        value_opt
+                            .map(|value| value.to_string())
+                            .unwrap_or("$None$".to_string())
+                    })
+                    .collect();
+                let accum = self.state.entry(key_columns).or_insert_with(T::new);
+                accum.process(row);
+            }
+            &Row::Aggregate(ref _ag) => panic!("Unsupported"),
+        }
+    }
 }
 
 struct ParseJson {
         // any options here
 }
-impl UnaryOp for ParseJson {
+impl UnaryPreAggOperator for ParseJson {
     fn process(&self, rec: &Record) -> Option<Record> {
         match serde_json::from_str(&rec.raw) {
             Ok(v) => {
@@ -44,8 +131,8 @@ mod tests {
     use std::collections::HashMap;
     use data::Record;
     use data::Value;
-    use super::UnaryOp;
-    use super::ParseJson;
+    use super::*;
+    use operator::itertools::Itertools;
 
     #[test]
     fn test_json() {
@@ -59,6 +146,62 @@ mod tests {
                 "k2".to_string() => Value::Float(5.5),
                 "k3".to_string() => Value::Str("str".to_string())
             }
+        );
+    }
+
+    #[test]
+    fn test_count_no_groups() {
+        let mut count_agg = Grouper::<Count>::new(Vec::new(), "_count");
+        (0..10)
+            .map(|n| Record::new(&n.to_string()))
+            .foreach(|rec| count_agg.process(&Row::Record(rec)));
+        let agg = count_agg.emit();
+        assert_eq!(agg.key_columns.len(), 0);
+        assert_eq!(agg.agg_column, "_count");
+        assert_eq!(agg.data, vec![(HashMap::new(), data::Value::Int(10))]);
+        (0..10)
+            .map(|n| Record::new(&n.to_string()))
+            .foreach(|rec| count_agg.process(&Row::Record(rec)));
+        assert_eq!(
+            count_agg.emit().data,
+            vec![(HashMap::new(), data::Value::Int(20))]
+        );
+    }
+
+    #[test]
+    fn test_count_groups() {
+        let mut count_agg = Grouper::<Count>::new(vec!["k1"], "_count");
+        (0..10).foreach(|n| {
+            let rec = Record::new(&n.to_string());
+            let rec = rec.put("k1", data::Value::Str("ok".to_string()));
+            count_agg.process(&Row::Record(rec));
+        });
+        (0..25).foreach(|n| {
+            let rec = Record::new(&n.to_string());
+            let rec = rec.put("k1", data::Value::Str("not ok".to_string()));
+            count_agg.process(&Row::Record(rec));
+        });
+        (0..3).foreach(|n| {
+            let rec = Record::new(&n.to_string());
+            count_agg.process(&Row::Record(rec));
+        });
+        let agg = count_agg.emit();
+        assert_eq!(
+            agg.data,
+            vec![
+                (
+                    hashmap!{"k1".to_string() => "$None$".to_string()},
+                    data::Value::Int(3),
+                ),
+                (
+                    hashmap!{"k1".to_string() => "ok".to_string()},
+                    data::Value::Int(10),
+                ),
+                (
+                    hashmap!{"k1".to_string() => "not ok".to_string()},
+                    data::Value::Int(25),
+                ),
+            ]
         );
     }
 }
