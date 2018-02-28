@@ -113,16 +113,16 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
 
 //named!(agg_operator<&str, Operator>, map!())
 
-named!(query<&str, Query>, complete!(ws!(do_parse!(
-    query_string: dbg!(quoted_string) >>
-    dbg!(tag!("|")) >>
-    operators: dbg!(separated_list!(tag!("|"), operator)) >>
-    dbg!(tag!("!")) >>
+named!(query<&str, Query>, complete!(do_parse!(
+    query_string: dbg!(ws!(quoted_string)) >>
+    dbg!(ws!(tag!("|"))) >>
+    operators: dbg!(ws!(separated_list!(tag!("|"), operator))) >>
+    tag!("!") >>
     (Query{
         search: Search { query: query_string.to_string() },
         operators: operators
     })
-))));
+)));
 
 pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
     query(query_str)
