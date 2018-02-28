@@ -7,17 +7,22 @@ use self::ord_subset::OrdSubsetSliceExt;
 use data::{Aggregate, Record, Row};
 use data;
 use self::serde_json::Value;
-trait UnaryPreAggOperator {
+pub trait UnaryPreAggOperator {
     fn process(&self, rec: &Record) -> Option<Record>;
 }
 
-trait AccumOperator {
+pub trait AggregateOperator {
+    fn emit(&self) -> data::Aggregate;
+    fn process(&mut self, row: &Row);
+}
+
+pub trait AccumOperator {
     fn new() -> Self;
     fn process(&mut self, rec: &Row);
     fn emit(&self) -> data::Value;
 }
 
-struct Count {
+pub struct Count {
     count: i64,
 }
 
@@ -26,7 +31,7 @@ impl AccumOperator for Count {
         Count { count: 0 }
     }
 
-    fn process(&mut self, rec: &Row) {
+    fn process(&mut self, _rec: &Row) {
         self.count += 1;
     }
 
@@ -35,7 +40,7 @@ impl AccumOperator for Count {
     }
 }
 
-struct Grouper<T: AccumOperator> {
+pub struct Grouper<T: AccumOperator> {
     key_cols: Vec<String>,
     agg_col: String,
     state: HashMap<Vec<String>, T>,
@@ -49,8 +54,10 @@ impl<T: AccumOperator> Grouper<T> {
             state: HashMap::new(),
         }
     }
+}
 
-    pub fn emit(&self) -> data::Aggregate {
+impl<T: AccumOperator> AggregateOperator for Grouper<T> {
+    fn emit(&self) -> data::Aggregate {
         let mut data: Vec<(HashMap<String, String>, data::Value)> = self.state
             .iter()
             .map(|(ref key_cols, ref accum)| {
@@ -59,8 +66,9 @@ impl<T: AccumOperator> Grouper<T> {
                 let res_map: HashMap<String, String> = HashMap::from_iter(key_value);
                 (res_map, accum.emit())
             })
-            .collect();                       // todo: avoid clone here
+            .collect(); // todo: avoid clone here
         data.ord_subset_sort_by_key(|ref kv| kv.1.clone());
+        data.reverse();
         Aggregate {
             key_columns: self.key_cols.clone(),
             agg_column: self.agg_col.clone(),
@@ -68,7 +76,7 @@ impl<T: AccumOperator> Grouper<T> {
         }
     }
 
-    pub fn process(&mut self, row: &Row) {
+    fn process(&mut self, row: &Row) {
         match row {
             &Row::Record(ref rec) => {
                 let key_values: Vec<Option<&data::Value>> = self.key_cols
@@ -93,7 +101,7 @@ impl<T: AccumOperator> Grouper<T> {
     }
 }
 
-struct ParseJson {
+pub struct ParseJson {
         // any options here
 }
 impl UnaryPreAggOperator for ParseJson {
@@ -190,16 +198,16 @@ mod tests {
             agg.data,
             vec![
                 (
-                    hashmap!{"k1".to_string() => "$None$".to_string()},
-                    data::Value::Int(3),
+                    hashmap!{"k1".to_string() => "not ok".to_string()},
+                    data::Value::Int(25),
                 ),
                 (
                     hashmap!{"k1".to_string() => "ok".to_string()},
                     data::Value::Int(10),
                 ),
                 (
-                    hashmap!{"k1".to_string() => "not ok".to_string()},
-                    data::Value::Int(25),
+                    hashmap!{"k1".to_string() => "$None$".to_string()},
+                    data::Value::Int(3),
                 ),
             ]
         );

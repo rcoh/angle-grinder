@@ -3,6 +3,7 @@ use self::ord_subset::OrdSubset;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt;
+use render;
 
 pub enum Row {
     Aggregate(Aggregate),
@@ -52,6 +53,20 @@ impl Display for Value {
     }
 }
 
+impl Value {
+    pub fn render(&self, render_config: &render::RenderConfig) -> String {
+        match self {
+            &Value::Str(ref s) => format!("{}", s),
+            &Value::Int(ref s) => format!("{}", s),
+            &Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
+        }
+    }
+
+    pub fn no_value() -> Value {
+        Value::Str("$None$".to_string())
+    }
+}
+
 impl Aggregate {
     pub fn new(key_columns: Vec<String>, agg_column: String) -> Aggregate {
         Aggregate {
@@ -71,6 +86,20 @@ impl Aggregate {
             }
         });
         self.data.push((new_row, value));
+    }
+
+    pub fn rows(&self) -> Vec<HashMap<String, Value>> {
+        self.data
+            .iter()
+            .map(|&(ref keycols, ref value)| {
+                let mut new_map: HashMap<String, Value> = keycols
+                    .iter()
+                    .map(|(keycol, val)| (keycol.clone(), Value::Str(val.clone())))
+                    .collect();
+                new_map.insert(self.agg_column.clone(), value.clone());
+                new_map
+            })
+            .collect()
     }
 }
 
@@ -96,13 +125,13 @@ impl Record {
 mod tests {
     use super::*;
     macro_rules! veclit {
-    // match a list of expressions separated by comma:
-    ($($str:expr),*) => ({
-        // create a Vec with this list of expressions,
-        // calling String::from on each:
-        vec![$(String::from($str),)*] as Vec<String>
-    });
-}
+        // match a list of expressions separated by comma:
+        ($($str:expr),*) => ({
+            // create a Vec with this list of expressions,
+            // calling String::from on each:
+            vec![$(String::from($str),)*] as Vec<String>
+        });
+    }
 
     #[test]
     fn test_record_put_get() {
