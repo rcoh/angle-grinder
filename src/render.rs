@@ -37,10 +37,7 @@ impl PrettyPrinter {
                 } else {
                     current_width
                 };
-                (
-                    column_name.clone(),
-                    new_column_width
-                )
+                (column_name.clone(), new_column_width)
             })
             .collect()
     }
@@ -117,7 +114,7 @@ impl PrettyPrinter {
 pub struct Renderer {
     pretty_printer: PrettyPrinter,
     stdout: std::io::Stdout,
-    reset_sequence: String
+    reset_sequence: String,
 }
 
 impl Renderer {
@@ -125,7 +122,7 @@ impl Renderer {
         Renderer {
             pretty_printer: PrettyPrinter::new(config),
             stdout: stdout(),
-            reset_sequence: "".to_string()
+            reset_sequence: "".to_string(),
         }
     }
 
@@ -133,7 +130,7 @@ impl Renderer {
         match row {
             data::Row::Aggregate(aggregate) => {
                 let output = self.pretty_printer.format_aggregate(&aggregate);
-                let num_lines = output.matches('\n').count()+1; // +1 because formatting ends with a newline
+                let num_lines = output.matches('\n').count() + 1; // +1 because formatting ends with a newline
                 write!(self.stdout, "{}{}\n", self.reset_sequence, output).unwrap();
                 self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines)
             }
@@ -159,19 +156,13 @@ mod tests {
         let mut pp = PrettyPrinter::new(RenderConfig {
             floating_points: 2,
             min_buffer: 1,
-            max_buffer: 4 
+            max_buffer: 4,
         });
-        assert_eq!(
-            pp.format_record(&rec),
-            "[k1=5]    [k2=5.50]    [k3=str]"
-        );
+        assert_eq!(pp.format_record(&rec), "[k1=5]    [k2=5.50]    [k3=str]");
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson {};
         let rec = parser.process(&rec).unwrap();
-        assert_eq!(
-            pp.format_record(&rec),
-            "[k1=955]  [k2=5.50]    [k3=str3]"
-        );
+        assert_eq!(pp.format_record(&rec), "[k1=955]  [k2=5.50]    [k3=str3]");
         let rec = Record::new(
             r#"{"k1": "here is a amuch longer stsring", "k2": 5.5000001, "k3": "str3"}"#,
         );
@@ -213,9 +204,12 @@ mod tests {
         let mut pp = PrettyPrinter::new(RenderConfig {
             floating_points: 2,
             min_buffer: 2,
-            max_buffer: 4, 
+            max_buffer: 4,
         });
         println!("{}", pp.format_aggregate(&agg));
-        assert_eq!("kc1   kc2       count  \nk1    k2        100    \nk300  k40000    500    ", pp.format_aggregate(&agg));
+        assert_eq!(
+            "kc1   kc2       count  \nk1    k2        100    \nk300  k40000    500    ",
+            pp.format_aggregate(&agg)
+        );
     }
 }

@@ -19,7 +19,7 @@ pub mod pipeline {
     use std::io::BufRead;
 
     pub struct Pipeline {
-        filter: String,
+        filter: lang::Search,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
         aggregators: Vec<Box<operator::AggregateOperator>>,
         renderer: Renderer,
@@ -40,6 +40,12 @@ pub mod pipeline {
                 AggregateFunction::Count => Box::new(operator::Grouper::<operator::Count>::new(
                     op.key_cols.iter().map(AsRef::as_ref).collect(),
                     &op.output_column.unwrap_or("_count".to_string()),
+                    operator::Count::new(),
+                )),
+                AggregateFunction::Average { column } => Box::new(operator::Grouper::<operator::Average>::new(
+                    op.key_cols.iter().map(AsRef::as_ref).collect(),
+                    &op.output_column.unwrap_or("_count".to_string()),
+                    operator::Average::empty(column),
                 )),
                 _other => panic!("only count currently supported"),
             }
@@ -69,7 +75,7 @@ pub mod pipeline {
                 }
             }
             Result::Ok(Pipeline {
-                filter: query.search.query,
+                filter: query.search,
                 pre_aggregates: pre_agg,
                 aggregators: post_agg,
                 renderer: Renderer::new(RenderConfig {
@@ -80,16 +86,17 @@ pub mod pipeline {
             })
         }
 
-
         fn matches(&self, rec: &Record) -> bool {
-            self.filter == "*" || rec.raw.contains(&self.filter)
+            match &self.filter {
+                &lang::Search::MatchAll => true,
+                &lang::Search::MatchFilter(ref filter) => rec.raw.contains(filter),
+            }
         }
 
         pub fn process(&mut self, stdin: io::Stdin) {
             for line in stdin.lock().lines() {
                 self.proc_str(&(line.unwrap()));
             }
-
         }
 
         fn proc_str(&mut self, s: &str) {
@@ -98,7 +105,7 @@ pub mod pipeline {
                 for pre_agg in &self.pre_aggregates {
                     match (*pre_agg).process(&rec) {
                         Some(next_rec) => rec = next_rec,
-                        None => return
+                        None => return,
                     }
                 }
 

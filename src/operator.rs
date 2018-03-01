@@ -16,22 +16,24 @@ pub trait AggregateOperator {
     fn process(&mut self, row: &Row);
 }
 
-pub trait AccumOperator {
-    fn new() -> Self;
-    fn process(&mut self, rec: &Row);
+pub trait AccumOperator: Clone {
+    fn process(&mut self, rec: &Record);
     fn emit(&self) -> data::Value;
 }
 
+#[derive(Clone)]
 pub struct Count {
     count: i64,
 }
 
-impl AccumOperator for Count {
-    fn new() -> Count {
+impl Count {
+    pub fn new() -> Count {
         Count { count: 0 }
     }
+}
 
-    fn process(&mut self, _rec: &Row) {
+impl AccumOperator for Count {
+    fn process(&mut self, _rec: &Record) {
         self.count += 1;
     }
 
@@ -40,18 +42,63 @@ impl AccumOperator for Count {
     }
 }
 
+#[derive(Clone)]
+pub struct Average {
+    total: f64,
+    count: i64,
+    column: String,
+    warnings: Vec<String>,
+}
+
+impl Average {
+    pub fn empty(column: String) -> Average {
+        Average {
+            total: 0.0,
+            count: 0,
+            column: column,
+            warnings: Vec::new(),
+        }
+    }
+}
+
+impl AccumOperator for Average {
+    fn process(&mut self, rec: &Record) {
+        rec.data
+            .get(&self.column)
+            .iter()
+            .for_each(|value| match value {
+                &&data::Value::Float(ref f) => {
+                    self.total += f;
+                    self.count += 1
+                }
+                &&data::Value::Int(ref i) => {
+                    self.total += *i as f64;
+                    self.count += 1
+                }
+                _other => self.warnings
+                    .push("Got string. Can only average into or float".to_string()),
+            });
+    }
+
+    fn emit(&self) -> data::Value {
+        data::Value::Float(self.total / self.count as f64)
+    }
+}
+
 pub struct Grouper<T: AccumOperator> {
     key_cols: Vec<String>,
     agg_col: String,
     state: HashMap<Vec<String>, T>,
+    empty: T,
 }
 
 impl<T: AccumOperator> Grouper<T> {
-    pub fn new(key_cols: Vec<&str>, agg_col: &str) -> Grouper<T> {
+    pub fn new(key_cols: Vec<&str>, agg_col: &str, empty: T) -> Grouper<T> {
         Grouper {
             key_cols: key_cols.iter().map(|s| s.to_string()).collect(),
             agg_col: String::from(agg_col),
             state: HashMap::new(),
+            empty: empty,
         }
     }
 }
@@ -93,8 +140,8 @@ impl<T: AccumOperator> AggregateOperator for Grouper<T> {
                             .unwrap_or("$None$".to_string())
                     })
                     .collect();
-                let accum = self.state.entry(key_columns).or_insert_with(T::new);
-                accum.process(row);
+                let accum = self.state.entry(key_columns).or_insert(self.empty.clone());
+                accum.process(rec);
             }
             &Row::Aggregate(ref _ag) => panic!("Unsupported"),
         }
@@ -159,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_count_no_groups() {
-        let mut count_agg = Grouper::<Count>::new(Vec::new(), "_count");
+        let mut count_agg = Grouper::<Count>::new(Vec::new(), "_count", Count::new());
         (0..10)
             .map(|n| Record::new(&n.to_string()))
             .foreach(|rec| count_agg.process(&Row::Record(rec)));
@@ -178,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_count_groups() {
-        let mut count_agg = Grouper::<Count>::new(vec!["k1"], "_count");
+        let mut count_agg = Grouper::<Count>::new(vec!["k1"], "_count", Count::new());
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));

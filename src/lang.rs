@@ -3,8 +3,9 @@ use nom::is_alphanumeric;
 use nom::IResult;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Search {
-    pub query: String,
+pub enum Search {
+    MatchFilter(String),
+    MatchAll,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -112,12 +113,16 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
 ));
 
 //named!(agg_operator<&str, Operator>, map!())
+named!(filter<&str, Search>, alt!(
+    map!(quoted_string, |s|Search::MatchFilter(s.to_string())) |
+    map!(tag!("*"), |_s|Search::MatchAll)
+));
 
 named!(query<&str, Query>, ws!(do_parse!(
-    query_string: dbg!(quoted_string) >>
+    filter: dbg!(filter) >>
     operators: dbg!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
     (Query{
-        search: Search { query: query_string.to_string() },
+        search: filter,
         operators: operators.unwrap_or(Vec::new())
     })
 )));
@@ -218,9 +223,7 @@ mod tests {
             Ok((
                 "",
                 Query {
-                    search: Search {
-                        query: "filter".to_string(),
-                    },
+                    search: Search::MatchFilter("filter".to_string()),
                     operators: vec![],
                 }
             ))
@@ -229,15 +232,13 @@ mod tests {
 
     #[test]
     fn test_query_operators() {
-        let query_str = r#""filter" | json | parse "!123*" as foo | count by foo !"#;
+        let query_str = r#"* | json | parse "!123*" as foo | count by foo !"#;
         assert_eq!(
             parse_query(query_str),
             Ok((
                 "",
                 Query {
-                    search: Search {
-                        query: "filter".to_string(),
-                    },
+                    search: Search::MatchAll,
                     operators: vec![
                         Operator::Inline(InlineOperator::Json),
                         Operator::Inline(InlineOperator::Parse {

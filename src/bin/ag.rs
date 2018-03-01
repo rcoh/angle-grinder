@@ -18,6 +18,6 @@ fn main() {
     let query_str = matches.value_of("query").unwrap();
     match pipeline::Pipeline::new(query_str) {
         Result::Ok(mut pipeline) => pipeline.process(io::stdin()),
-        Result::Err(e) => println!("{}", e)
+        Result::Err(e) => println!("{}", e),
     }
 }
