@@ -113,11 +113,10 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
 
 //named!(agg_operator<&str, Operator>, map!())
 
-named!(query<&str, Query>, complete!(do_parse!(
-    query_string: dbg!(ws!(quoted_string)) >>
-    dbg!(ws!(tag!("|"))) >>
+named!(query<&str, Query>, ws!(do_parse!(
+    query_string: dbg!(quoted_string) >>
+    dbg!(tag!("|")) >>
     operators: dbg!(ws!(separated_list!(tag!("|"), operator))) >>
-    tag!("!") >>
     (Query{
         search: Search { query: query_string.to_string() },
         operators: operators
@@ -125,7 +124,7 @@ named!(query<&str, Query>, complete!(do_parse!(
 )));
 
 pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
-    query(query_str)
+    terminated!(query_str, query, tag!("!"))
 }
 
 #[cfg(test)]
@@ -216,7 +215,7 @@ mod tests {
         // TODO: make | optional
         let query_str = r#" "filter" |!"#;
         assert_eq!(
-            query(query_str),
+            parse_query(query_str),
             Ok((
                 "",
                 Query {
@@ -233,7 +232,7 @@ mod tests {
     fn test_query_operators() {
         let query_str = r#""filter" | json | parse "!123*" as foo | count by foo !"#;
         assert_eq!(
-            query(query_str),
+            parse_query(query_str),
             Ok((
                 "",
                 Query {
