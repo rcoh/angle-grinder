@@ -44,7 +44,7 @@ pub mod pipeline {
                 )),
                 AggregateFunction::Average { column } => Box::new(operator::Grouper::<operator::Average>::new(
                     op.key_cols.iter().map(AsRef::as_ref).collect(),
-                    &op.output_column.unwrap_or("_count".to_string()),
+                    &op.output_column.unwrap_or("_average".to_string()),
                     operator::Average::empty(column),
                 )),
                 _other => panic!("only count currently supported"),
