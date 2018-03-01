@@ -115,11 +115,10 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
 
 named!(query<&str, Query>, ws!(do_parse!(
     query_string: dbg!(quoted_string) >>
-    dbg!(tag!("|")) >>
-    operators: dbg!(ws!(separated_list!(tag!("|"), operator))) >>
+    operators: dbg!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
     (Query{
         search: Search { query: query_string.to_string() },
-        operators: operators
+        operators: operators.unwrap_or(Vec::new())
     })
 )));
 
@@ -213,7 +212,7 @@ mod tests {
     #[test]
     fn test_query_no_operators() {
         // TODO: make | optional
-        let query_str = r#" "filter" |!"#;
+        let query_str = r#" "filter"!"#;
         assert_eq!(
             parse_query(query_str),
             Ok((
