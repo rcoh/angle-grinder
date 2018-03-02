@@ -139,7 +139,7 @@ impl Renderer {
                 let &(ref _w, Height(ref t_height)) = &self.terminal_size;
                 let t_height = t_height - 1;
                 let lines: Vec<&str> = unsafe_output.lines().take(t_height as usize).collect();
-                let num_lines = lines.len(); // +1 because formatting ends with a newline
+                let num_lines = lines.len(); 
                 let output = lines.join("\n");
                 write!(self.stdout, "{}{}\n", self.reset_sequence, output).unwrap();
                 self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines)
