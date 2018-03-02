@@ -1,9 +1,9 @@
 # angle-grinder
-Slice and dice log files on the command line
+Slice and dice log files on the command line.
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
 
-Not the prettiest, the fastest or the best way to analyze log files, but a solid go-to tools to get things done.
+Not the fanciest way to analyze log files, just like an angle-grinder, it will probably work. If you've ever been on a server, and wished you could have just a _little_ bit more power than tailing and grepping, this is for you.
 
 ## Query Synax
 
@@ -43,7 +43,7 @@ hello               3.00
 hello thanks        2.00        
 ```
 
-The renderer will do its best to keep the data nicely formatted as it changes.
+The renderer will do its best to keep the data nicely formatted as it changes and the number of output rows is limited to the length of your terminal.
 
 ### Contributing
 See the open issues for potential improvements/issues.
