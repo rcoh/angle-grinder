@@ -1,6 +1,9 @@
 extern crate itertools;
 extern crate ord_subset;
+extern crate regex;
+extern crate regex_syntax;
 extern crate serde_json;
+use operator::itertools::Itertools;
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use self::ord_subset::OrdSubsetSliceExt;
@@ -39,6 +42,48 @@ impl AccumOperator for Count {
 
     fn emit(&self) -> data::Value {
         data::Value::Int(self.count)
+    }
+}
+
+#[derive(Clone)]
+pub struct Sum {
+    total: f64,
+    column: String,
+    warnings: Vec<String>,
+    is_float: bool,
+}
+
+impl Sum {
+    pub fn empty(column: String) -> Self {
+        Sum {
+            total: 0.0,
+            column: column,
+            warnings: Vec::new(),
+            is_float: false,
+        }
+    }
+}
+
+impl AccumOperator for Sum {
+    fn process(&mut self, rec: &Record) {
+        rec.data
+            .get(&self.column)
+            .iter()
+            .for_each(|value| match value {
+                &&data::Value::Float(ref f) => {
+                    self.is_float = true;
+                    self.total += f;
+                }
+                &&data::Value::Int(ref i) => {
+                    self.total += *i as f64;
+                }
+                _other => self.warnings
+                    .push("Got string. Can only average into or float".to_string()),
+            });
+    }
+
+    fn emit(&self) -> data::Value {
+        data::Value::Int(self.total as i64)
     }
 }
 
@@ -148,6 +193,47 @@ impl<T: AccumOperator> AggregateOperator for Grouper<T> {
     }
 }
 
+pub struct Parse {
+    regex: regex::Regex,
+    fields: Vec<String>,
+}
+
+impl Parse {
+    pub fn new(pattern: &str, fields: Vec<String>) -> Result<Self, String> {
+        let regex_str = regex_syntax::quote(pattern);
+        let mut regex_str = regex_str.replace("\\*", "(.*?)");
+        // If it ends with a star, we need to ensure we read until the end.
+        if pattern.ends_with("*") {
+            regex_str = format!("{}$", regex_str);
+        }
+        if pattern.matches('*').count() != fields.len() {
+            Result::Err("Wrong number of extractions".to_string())
+        } else {
+            Result::Ok(Parse {
+                regex: regex::Regex::new(&regex_str).unwrap(),
+                fields: fields,
+            })
+        }
+    }
+}
+
+impl UnaryPreAggOperator for Parse {
+    fn process(&self, rec: &Record) -> Option<Record> {
+        let matches: Vec<regex::Captures> = self.regex.captures_iter(&rec.raw).collect();
+        if matches.len() == 0 {
+            None
+        } else {
+            let capture = &matches[0];
+            let mut rec = rec.clone();
+            for i in 0..self.fields.len() {
+                // the first capture is the entire string
+                rec = rec.put(&self.fields[i], data::Value::from_string(&capture[i + 1]));
+            }
+            Some(rec)
+        }
+    }
+}
+
 pub struct ParseJson {
         // any options here
 }
@@ -202,6 +288,30 @@ mod tests {
                 "k3".to_string() => Value::Str("str".to_string())
             }
         );
+    }
+
+    #[test]
+    fn test_parse() {
+        let rec = Record::new("17:12:14.214111 IP 10.0.2.243.53938 > taotie.canonical.com.http: Flags [.], ack 56575, win 2375, options [nop,nop,TS val 13651369 ecr 169698010], length 99");
+        let parser = Parse::new(
+            "IP * > *: * length *",
+            vec![
+                "sender".to_string(),
+                "recip".to_string(),
+                "ignore".to_string(),
+                "length".to_string(),
+            ],
+        ).unwrap();
+        let rec = parser.process(&rec).unwrap();
+        assert_eq!(
+            rec.data.get("sender").unwrap(),
+            &Value::Str("10.0.2.243.53938".to_string())
+        );
+        assert_eq!(rec.data.get("length").unwrap(), &Value::Int(99));
+        assert_eq!(
+            rec.data.get("recip").unwrap(),
+            &Value::Str("taotie.canonical.com.http".to_string())
+        )
     }
 
     #[test]

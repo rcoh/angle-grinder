@@ -65,6 +65,15 @@ impl Value {
     pub fn no_value() -> Value {
         Value::Str("$None$".to_string())
     }
+
+    pub fn from_string(s: &str) -> Value {
+        let int_value = s.parse::<i64>();
+        let float_value = s.parse::<f64>();
+        int_value
+            .map(Value::Int)
+            .or(float_value.map(Value::Float))
+            .unwrap_or(Value::Str(s.to_string()))
+    }
 }
 
 impl Aggregate {
@@ -164,6 +173,16 @@ mod tests {
                 "kc1".to_string() => "k1".to_string()
             },
             Value::Int(100),
+        );
+    }
+
+    #[test]
+    fn test_from_string() {
+        assert_eq!(Value::from_string("949919"), Value::Int(949919));
+        assert_eq!(Value::from_string("0.00001"), Value::Float(0.00001));
+        assert_eq!(
+            Value::from_string("not a number"),
+            Value::Str("not a number".to_string())
         );
     }
 }

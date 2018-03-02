@@ -26,6 +26,9 @@ pub enum InlineOperator {
 #[derive(Debug, PartialEq, Eq)]
 pub enum AggregateFunction {
     Count,
+    Sum {
+        column: String,
+    },
     Average {
         column: String,
     },
@@ -93,8 +96,14 @@ named!(average<&str, AggregateFunction>, ws!(do_parse!(
     (AggregateFunction::Average{column: column.to_string()})
 )));
 
+named!(sum<&str, AggregateFunction>, ws!(do_parse!(
+    tag!("sum") >>
+    column: delimited!(tag!("("), ident ,tag!(")")) >>
+    (AggregateFunction::Sum{column: column.to_string()})
+)));
+
 named!(inline_operator<&str, Operator>, map!(alt!(parse | json), |op|Operator::Inline(op)));
-named!(aggregate_function<&str, AggregateFunction>, alt!(count | average));
+named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum));
 
 named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator));
 

@@ -2,6 +2,8 @@ use std;
 use std::collections::HashMap;
 use data;
 use std::io::{stdout, Write};
+extern crate terminal_size;
+use self::terminal_size::{terminal_size, Height, Width};
 
 pub struct RenderConfig {
     pub floating_points: usize,
@@ -104,6 +106,8 @@ impl PrettyPrinter {
             })
             .collect();
         let header = header.join("");
+        let header_len = header.len();
+        let header = header + "\n" + &"-".repeat(header_len);
         let body: Vec<String> = rows.iter()
             .map(|row| self.format_aggregate_row(row))
             .collect();
@@ -115,6 +119,7 @@ pub struct Renderer {
     pretty_printer: PrettyPrinter,
     stdout: std::io::Stdout,
     reset_sequence: String,
+    terminal_size: (Width, Height),
 }
 
 impl Renderer {
@@ -123,14 +128,19 @@ impl Renderer {
             pretty_printer: PrettyPrinter::new(config),
             stdout: stdout(),
             reset_sequence: "".to_string(),
+            terminal_size: terminal_size().unwrap(),
         }
     }
 
     pub fn render(&mut self, row: data::Row) {
         match row {
             data::Row::Aggregate(aggregate) => {
-                let output = self.pretty_printer.format_aggregate(&aggregate);
-                let num_lines = output.matches('\n').count() + 1; // +1 because formatting ends with a newline
+                let unsafe_output = self.pretty_printer.format_aggregate(&aggregate);
+                let &(ref _w, Height(ref t_height)) = &self.terminal_size;
+                let t_height = t_height - 1;
+                let lines: Vec<&str> = unsafe_output.lines().take(t_height as usize).collect();
+                let num_lines = lines.len(); // +1 because formatting ends with a newline
+                let output = lines.join("\n");
                 write!(self.stdout, "{}{}\n", self.reset_sequence, output).unwrap();
                 self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines)
             }
@@ -208,7 +218,7 @@ mod tests {
         });
         println!("{}", pp.format_aggregate(&agg));
         assert_eq!(
-            "kc1   kc2       count  \nk1    k2        100    \nk300  k40000    500    ",
+            "kc1   kc2       count  \n-----------------------\nk1    k2        100    \nk300  k40000    500    ",
             pp.format_aggregate(&agg)
         );
     }

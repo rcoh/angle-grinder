@@ -28,10 +28,9 @@ pub mod pipeline {
         fn convert_inline(op: lang::InlineOperator) -> Box<operator::UnaryPreAggOperator> {
             match op {
                 InlineOperator::Json => Box::new(operator::ParseJson {}),
-                InlineOperator::Parse {
-                    pattern: _,
-                    fields: _,
-                } => panic!("parse not supported"),
+                InlineOperator::Parse { pattern, fields } => {
+                    Box::new(operator::Parse::new(&pattern, fields).unwrap())
+                }
             }
         }
 
@@ -42,12 +41,24 @@ pub mod pipeline {
                     &op.output_column.unwrap_or("_count".to_string()),
                     operator::Count::new(),
                 )),
-                AggregateFunction::Average { column } => Box::new(operator::Grouper::<operator::Average>::new(
-                    op.key_cols.iter().map(AsRef::as_ref).collect(),
-                    &op.output_column.unwrap_or("_average".to_string()),
-                    operator::Average::empty(column),
-                )),
-                _other => panic!("only count currently supported"),
+                AggregateFunction::Average { column } => {
+                    Box::new(operator::Grouper::<operator::Average>::new(
+                        op.key_cols.iter().map(AsRef::as_ref).collect(),
+                        &op.output_column.unwrap_or("_average".to_string()),
+                        operator::Average::empty(column),
+                    ))
+                }
+                AggregateFunction::Sum { column } => {
+                    Box::new(operator::Grouper::<operator::Sum>::new(
+                        op.key_cols.iter().map(AsRef::as_ref).collect(),
+                        &op.output_column.unwrap_or("_sum".to_string()),
+                        operator::Sum::empty(column),
+                    ))
+                }
+                AggregateFunction::Percentile {
+                    column,
+                    percentiles,
+                } => panic!("Percentile not supported"),
             }
         }
 
