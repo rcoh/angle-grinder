@@ -1,9 +1,12 @@
 # angle-grinder
 Slice and dice log files on the command line.
 
+Not the fanciest way to analyze log files, just like an angle-grinder, it will probably work. If you've ever been on a server, and wished you could have just a _little_ bit more power than tailing and grepping, this is for you.
+
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
 
-Not the fanciest way to analyze log files, just like an angle-grinder, it will probably work. If you've ever been on a server, and wished you could have just a _little_ bit more power than tailing and grepping, this is for you.
+## Installation
+Binaries are available for Linux, OS X and Free BSD: https://github.com/rcoh/angle-grinder/releases. Many more platforms (including Windows) are available if you compile from source.
 
 ## Query Synax
 
@@ -14,7 +17,7 @@ Not the fanciest way to analyze log files, just like an angle-grinder, it will p
 
 ### Filters
 
-Filters may be `*` or `filter!"`. Only lines containing `filter!` will be passed to the subsequent operators.
+Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only lines containing `filter!` will be passed to the subsequent operators. `*` matches all lines.
 ![filter.gif](/screen_shots/filter.gif)
 
 ### Operators
