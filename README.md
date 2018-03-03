@@ -54,3 +54,6 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 
 ### Contributing
 See the open issues for potential improvements/issues.
+
+### Acknoledgements
+Angle Grinder is [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
