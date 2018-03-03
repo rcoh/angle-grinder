@@ -54,9 +54,13 @@ impl PrettyPrinter {
     }
 
     fn format_record(&mut self, record: &data::Record) -> String {
-        self.column_widths = self.compute_column_widths(&(record.data));
+        let new_column_widths = self.compute_column_widths(&(record.data));
+        self.column_widths.extend(new_column_widths);
         let new_columns = self.new_columns(&(record.data));
         self.column_order.extend(new_columns);
+        if self.column_order.len() == 0 {
+            return record.raw.to_string();
+        }
         let strs: Vec<String> = self.column_order
             .iter()
             .map(|column_name| {

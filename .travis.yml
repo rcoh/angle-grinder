@@ -27,8 +27,9 @@ matrix:
     - env: TARGET=x86_64-unknown-freebsd DISABLE_TESTS=1
     - env: TARGET=x86_64-unknown-netbsd DISABLE_TESTS=1
 
+    # TODO: make windows builds work
     # Windows
-    - env: TARGET=x86_64-pc-windows-gnu
+    # - env: TARGET=x86_64-pc-windows-gnu
 
     # Testing other channels
     - env: TARGET=x86_64-unknown-linux-gnu
