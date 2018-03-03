@@ -1,7 +1,7 @@
 # angle-grinder
 Slice and dice log files on the command line.
 
-Not the fanciest way to analyze log files, just like an angle-grinder, it will probably work. If you've ever been on a server, and wished you could have just a _little_ bit more power than tailing and grepping, this is for you.
+Not the fanciest way to analyze log files, but, much like an angle-grinder, it will probably work. If you've ever been tailing log files and wished you could have just a _little_ bit more power, this is for you.
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
 
