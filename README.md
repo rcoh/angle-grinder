@@ -1,5 +1,5 @@
 # angle-grinder
-Slice and dice log files on the command line.
+Slice and dice log files on the command line. [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder)
 
 Not the fanciest way to analyze log files, but, much like an angle-grinder, it will probably work. If you've ever been tailing log files and wished you could have just a _little_ bit more power, this is for you.
 
@@ -54,3 +54,6 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 
 ### Contributing
 See the open issues for potential improvements/issues.
+
+### Acknoledgements
+Angle Grinder is [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
