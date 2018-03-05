@@ -3,7 +3,6 @@ extern crate ord_subset;
 extern crate regex;
 extern crate regex_syntax;
 extern crate serde_json;
-use operator::itertools::Itertools;
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use self::ord_subset::OrdSubsetSliceExt;
@@ -161,11 +160,7 @@ impl<T: AccumOperator> AggregateOperator for Grouper<T> {
             .collect(); // todo: avoid clone here
         data.ord_subset_sort_by_key(|ref kv| kv.1.clone());
         data.reverse();
-        Aggregate {
-            key_columns: self.key_cols.clone(),
-            agg_column: self.agg_col.clone(),
-            data: data,
-        }
+        Aggregate::new(self.key_cols.clone(), self.agg_col.clone(), data)
     }
 
     fn process(&mut self, row: &Row) {

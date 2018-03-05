@@ -143,7 +143,7 @@ impl Renderer {
                 let &(ref _w, Height(ref t_height)) = &self.terminal_size;
                 let t_height = t_height - 1;
                 let lines: Vec<&str> = unsafe_output.lines().take(t_height as usize).collect();
-                let num_lines = lines.len(); 
+                let num_lines = lines.len();
                 let output = lines.join("\n");
                 write!(self.stdout, "{}{}\n", self.reset_sequence, output).unwrap();
                 self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines)
@@ -197,23 +197,25 @@ mod tests {
 
     #[test]
     fn test_pretty_print_aggregate() {
-        let mut agg = Aggregate::new(
+        let agg = Aggregate::new(
             vec!["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
-        );
-        agg.add_row(
-            hashmap!{
-                "kc1".to_string() => "k1".to_string(),
-                "kc2".to_string() => "k2".to_string()
-            },
-            Value::Int(100),
-        );
-        agg.add_row(
-            hashmap!{
-                "kc1".to_string() => "k300".to_string(),
-                "kc2".to_string() => "k40000".to_string()
-            },
-            Value::Int(500),
+            vec![
+                (
+                    hashmap!{
+                        "kc1".to_string() => "k1".to_string(),
+                        "kc2".to_string() => "k2".to_string()
+                    },
+                    Value::Int(100),
+                ),
+                (
+                    hashmap!{
+                        "kc1".to_string() => "k300".to_string(),
+                        "kc2".to_string() => "k40000".to_string()
+                    },
+                    Value::Int(500),
+                ),
+            ],
         );
         let mut pp = PrettyPrinter::new(RenderConfig {
             floating_points: 2,

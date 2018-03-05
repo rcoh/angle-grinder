@@ -1,8 +1,9 @@
 #[macro_use]
-extern crate maplit;
+extern crate nom;
 
 #[macro_use]
-extern crate nom;
+#[cfg(test)]
+extern crate maplit;
 
 mod data;
 mod operator;
@@ -56,8 +57,8 @@ pub mod pipeline {
                     ))
                 }
                 AggregateFunction::Percentile {
-                    column,
-                    percentiles,
+                    column: _column,
+                    percentiles: _percentiles,
                 } => panic!("Percentile not supported"),
             }
         }

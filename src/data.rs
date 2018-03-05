@@ -77,24 +77,26 @@ impl Value {
 }
 
 impl Aggregate {
-    pub fn new(key_columns: Vec<String>, agg_column: String) -> Aggregate {
+    pub fn new(
+        key_columns: Vec<String>,
+        agg_column: String,
+        data: Vec<(HashMap<String, String>, Value)>,
+    ) -> Aggregate {
+        data.iter().for_each(|&(ref row, ref _value)| {
+            if row.len() != key_columns.len() {
+                panic!("Invalid number of key columns")
+            }
+            key_columns.iter().for_each(|key_column| {
+                if !row.contains_key(key_column) {
+                    panic!("New row missing key column: {}", key_column);
+                }
+            });
+        });
         Aggregate {
             key_columns: key_columns,
             agg_column: agg_column,
-            data: Vec::new(),
+            data: data,
         }
-    }
-
-    pub fn add_row(&mut self, new_row: HashMap<String, String>, value: Value) {
-        if new_row.len() != self.key_columns.len() {
-            panic!("Invalid number of key columns")
-        }
-        self.key_columns.iter().for_each(|key_column| {
-            if !new_row.contains_key(key_column) {
-                panic!("New row missing key column: {}", key_column);
-            }
-        });
-        self.data.push((new_row, value));
     }
 
     pub fn rows(&self) -> Vec<HashMap<String, Value>> {
@@ -153,13 +155,18 @@ mod tests {
 
     #[test]
     fn test_agg() {
-        let mut agg = Aggregate::new(veclit!("kc1", "kc2"), "count".to_string());
-        agg.add_row(
-            hashmap!{
-                "kc1".to_string() => "k1".to_string(),
-                "kc2".to_string() => "k2".to_string()
-            },
-            Value::Int(100),
+        let agg = Aggregate::new(
+            veclit!("kc1", "kc2"),
+            "count".to_string(),
+            vec![
+                (
+                    hashmap!{
+                        "kc1".to_string() => "k1".to_string(),
+                        "kc2".to_string() => "k2".to_string()
+                    },
+                    Value::Int(100),
+                ),
+            ],
         );
         assert_eq!(agg.data.len(), 1);
     }
@@ -167,12 +174,17 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_panic_on_invalid_row() {
-        let mut agg = Aggregate::new(veclit!("kc1", "kc2"), "count".to_string());
-        agg.add_row(
-            hashmap!{
-                "kc1".to_string() => "k1".to_string()
-            },
-            Value::Int(100),
+        Aggregate::new(
+            veclit!("kc1", "kc2"),
+            "count".to_string(),
+            vec![
+                (
+                    hashmap!{
+                        "kc2".to_string() => "k2".to_string()
+                    },
+                    Value::Int(100),
+                ),
+            ],
         );
     }
 

@@ -1,5 +1,5 @@
 use std::str;
-use nom::is_alphanumeric;
+use nom::{is_alphanumeric, is_digit};
 use nom::IResult;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -33,7 +33,7 @@ pub enum AggregateFunction {
         column: String,
     },
     Percentile {
-        percentiles: Vec<String>,
+        percentiles: Vec<u64>,
         column: String,
     },
 }
@@ -102,8 +102,22 @@ named!(sum<&str, AggregateFunction>, ws!(do_parse!(
     (AggregateFunction::Sum{column: column.to_string()})
 )));
 
+fn is_digit_char(digit: char) -> bool {
+    is_digit(digit as u8)
+}
+
+named!(p_nn<&str, AggregateFunction>, ws!(
+    do_parse!(
+        alt!(tag!("pct") | tag!("percentile") | tag!("p")) >>
+        d1: map_res!(take_while_m_n!(2, 2, is_digit_char), |d: &str|d.parse::<u64>()) >>
+        column: delimited!(tag!("("), ident ,tag!(")")) >>
+        (AggregateFunction::Percentile{column: column.to_string(), percentiles: vec![d1]})
+
+    )
+));
+
 named!(inline_operator<&str, Operator>, map!(alt!(parse | json), |op|Operator::Inline(op)));
-named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum));
+named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum | p_nn));
 
 named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator));
 
@@ -224,6 +238,24 @@ mod tests {
     }
 
     #[test]
+    fn test_percentile() {
+        assert_eq!(
+            aggregate_operator("p50(x)!"),
+            Ok((
+                "!",
+                Operator::Aggregate(AggregateOperator {
+                    key_cols: vec![],
+                    aggregate_function: AggregateFunction::Percentile {
+                        column: "x".to_string(),
+                        percentiles: vec![50],
+                    },
+                    output_column: None,
+                })
+            ))
+        );
+    }
+
+    #[test]
     fn test_query_no_operators() {
         // TODO: make | optional
         let query_str = r#" "filter"!"#;
@@ -266,8 +298,3 @@ mod tests {
     }
 
 }
-/*
-// parse "blah * ... *" as x, y
-named!(parse<&str, InlineOperator>, do_parse!(
-    tag!("parse") >> multispace >> pattern: quoted_string >> multispace >> tag!("as") >> 
-))*/
