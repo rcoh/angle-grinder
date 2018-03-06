@@ -1,5 +1,6 @@
 extern crate itertools;
 extern crate ord_subset;
+extern crate quantiles;
 extern crate regex;
 extern crate regex_syntax;
 extern crate serde_json;
@@ -9,6 +10,7 @@ use self::ord_subset::OrdSubsetSliceExt;
 use data::{Aggregate, Record, Row};
 use data;
 use self::serde_json::Value;
+use self::quantiles::ckms::CKMS;
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: &Record) -> Option<Record>;
 }
@@ -18,7 +20,7 @@ pub trait AggregateOperator {
     fn process(&mut self, row: &Row);
 }
 
-pub trait AccumOperator: Clone {
+pub trait AggregateFunction: Clone {
     fn process(&mut self, rec: &Record);
     fn emit(&self) -> data::Value;
 }
@@ -34,7 +36,7 @@ impl Count {
     }
 }
 
-impl AccumOperator for Count {
+impl AggregateFunction for Count {
     fn process(&mut self, _rec: &Record) {
         self.count += 1;
     }
@@ -63,7 +65,7 @@ impl Sum {
     }
 }
 
-impl AccumOperator for Sum {
+impl AggregateFunction for Sum {
     fn process(&mut self, rec: &Record) {
         rec.data
             .get(&self.column)
@@ -105,7 +107,7 @@ impl Average {
     }
 }
 
-impl AccumOperator for Average {
+impl AggregateFunction for Average {
     fn process(&mut self, rec: &Record) {
         rec.data
             .get(&self.column)
@@ -129,14 +131,60 @@ impl AccumOperator for Average {
     }
 }
 
-pub struct Grouper<T: AccumOperator> {
+#[derive(Clone)]
+pub struct Percentile {
+    ckms: CKMS<f64>,
+    column: String,
+    percentile: f64,
+    warnings: Vec<String>,
+}
+
+impl Percentile {
+    pub fn empty(column: String, percentile: f64) -> Self {
+        if percentile >= 1.0 {
+            panic!("Percentiles must be < 1");
+        }
+
+        Percentile {
+            ckms: CKMS::<f64>::new(0.001),
+            column: column,
+            warnings: Vec::new(),
+            percentile: percentile,
+        }
+    }
+}
+
+impl AggregateFunction for Percentile {
+    fn process(&mut self, rec: &Record) {
+        rec.data
+            .get(&self.column)
+            .iter()
+            .for_each(|value| match value {
+                &&data::Value::Float(ref f) => {
+                    self.ckms.insert(*f);
+                }
+                &&data::Value::Int(ref i) => self.ckms.insert(*i as f64),
+                _other => self.warnings
+                    .push("Got string. Can only average int or float".to_string()),
+            });
+    }
+
+    fn emit(&self) -> data::Value {
+        let pct_opt = self.ckms.query(self.percentile);
+        pct_opt
+            .map(|(_usize, pct_float)| data::Value::Float(pct_float))
+            .unwrap_or(data::Value::no_value())
+    }
+}
+
+pub struct Grouper<T: AggregateFunction> {
     key_cols: Vec<String>,
     agg_col: String,
     state: HashMap<Vec<String>, T>,
     empty: T,
 }
 
-impl<T: AccumOperator> Grouper<T> {
+impl<T: AggregateFunction> Grouper<T> {
     pub fn new(key_cols: Vec<&str>, agg_col: &str, empty: T) -> Grouper<T> {
         Grouper {
             key_cols: key_cols.iter().map(|s| s.to_string()).collect(),
@@ -147,7 +195,7 @@ impl<T: AccumOperator> Grouper<T> {
     }
 }
 
-impl<T: AccumOperator> AggregateOperator for Grouper<T> {
+impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
     fn emit(&self) -> data::Aggregate {
         let mut data: Vec<(HashMap<String, String>, data::Value)> = self.state
             .iter()

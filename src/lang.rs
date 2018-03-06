@@ -8,7 +8,7 @@ pub enum Search {
     MatchAll,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum Operator {
     Inline(InlineOperator),
     Aggregate(AggregateOperator),
@@ -23,7 +23,7 @@ pub enum InlineOperator {
     },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum AggregateFunction {
     Count,
     Sum {
@@ -33,19 +33,20 @@ pub enum AggregateFunction {
         column: String,
     },
     Percentile {
-        percentiles: Vec<u64>,
+        percentile: f64,
+        percentile_str: String,
         column: String,
     },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct AggregateOperator {
     pub key_cols: Vec<String>,
     pub aggregate_function: AggregateFunction,
     pub output_column: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct Query {
     pub search: Search,
     pub operators: Vec<Operator>,
@@ -109,10 +110,13 @@ fn is_digit_char(digit: char) -> bool {
 named!(p_nn<&str, AggregateFunction>, ws!(
     do_parse!(
         alt!(tag!("pct") | tag!("percentile") | tag!("p")) >>
-        d1: map_res!(take_while_m_n!(2, 2, is_digit_char), |d: &str|d.parse::<u64>()) >>
+        pct: take_while_m_n!(2, 2, is_digit_char) >>
         column: delimited!(tag!("("), ident ,tag!(")")) >>
-        (AggregateFunction::Percentile{column: column.to_string(), percentiles: vec![d1]})
-
+        (AggregateFunction::Percentile{
+            column: column.to_string(),
+            percentile: (".".to_owned() + pct).parse::<f64>().unwrap(),
+            percentile_str: pct.to_string()
+        })
     )
 ));
 
@@ -247,7 +251,8 @@ mod tests {
                     key_cols: vec![],
                     aggregate_function: AggregateFunction::Percentile {
                         column: "x".to_string(),
-                        percentiles: vec![50],
+                        percentile: 0.5,
+                        percentile_str: "50".to_string()
                     },
                     output_column: None,
                 })

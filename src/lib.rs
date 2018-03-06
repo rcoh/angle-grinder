@@ -57,9 +57,17 @@ pub mod pipeline {
                     ))
                 }
                 AggregateFunction::Percentile {
-                    column: _column,
-                    percentiles: _percentiles,
-                } => panic!("Percentile not supported"),
+                    column,
+                    percentile,
+                    percentile_str,
+                } => {
+                    let column_name = format!("_p{}", percentile_str);
+                    Box::new(operator::Grouper::<operator::Percentile>::new(
+                        op.key_cols.iter().map(AsRef::as_ref).collect(),
+                        &op.output_column.unwrap_or(column_name),
+                        operator::Percentile::empty(column, percentile),
+                    ))
+                }
             }
         }
 
