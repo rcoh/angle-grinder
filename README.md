@@ -10,12 +10,12 @@ Binaries are available for Linux, OS X and Free BSD: https://github.com/rcoh/ang
 
 Linux:
 ```
-curl https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-unknown-linux-gnu.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-unknown-linux-gnu.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
 ```
 
 OS X:
 ```
-curl https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
 ```
 
 ## Query Synax
