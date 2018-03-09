@@ -8,9 +8,9 @@ Not the fanciest way to analyze log files, but, much like an angle-grinder, it w
 ## Installation
 Binaries are available for Linux, OS X and Free BSD: https://github.com/rcoh/angle-grinder/releases. Many more platforms (including Windows) are available if you compile from source.
 
-Linux:
+Linux (statically linked with musl):
 ```
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-unknown-linux-gnu.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
 ```
 
 OS X:
