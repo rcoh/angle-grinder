@@ -11,18 +11,25 @@ pub struct RenderConfig {
     pub max_buffer: usize,
 }
 
+struct TerminalSize {
+    height: u16,
+    width: u16,
+}
+
 struct PrettyPrinter {
     render_config: RenderConfig,
     column_widths: HashMap<String, usize>,
     column_order: Vec<String>,
+    term_size: Option<TerminalSize>,
 }
 
 impl PrettyPrinter {
-    fn new(render_config: RenderConfig) -> Self {
+    fn new(render_config: RenderConfig, term_size: Option<TerminalSize>) -> Self {
         PrettyPrinter {
             render_config: render_config,
             column_widths: HashMap::new(),
             column_order: Vec::new(),
+            term_size: term_size,
         }
     }
 
@@ -53,6 +60,24 @@ impl PrettyPrinter {
         new_keys
     }
 
+    fn projected_width(column_widths: &HashMap<String, usize>) -> usize {
+        column_widths
+            .iter()
+            .map(&|(key, size): (&String, &usize)| {
+                let key_len: usize = key.len();
+                size + key_len + 3
+            })
+            .sum()
+    }
+
+    fn overflows_term(&self) -> bool {
+        let expected = Self::projected_width(&self.column_widths);
+        match self.term_size {
+            None => false,
+            Some(TerminalSize { height: _, width }) => expected > (width as usize),
+        }
+    }
+
     fn format_record(&mut self, record: &data::Record) -> String {
         let new_column_widths = self.compute_column_widths(&(record.data));
         self.column_widths.extend(new_column_widths);
@@ -61,6 +86,16 @@ impl PrettyPrinter {
         if self.column_order.len() == 0 {
             return record.raw.to_string();
         }
+
+        let no_padding = if self.overflows_term() {
+            self.column_widths = HashMap::new();
+            self.column_widths = self.compute_column_widths(&(record.data));
+            self.column_order = Vec::new();
+            self.column_order = self.new_columns(&(record.data));
+            self.overflows_term()
+        } else {
+            false
+        };
         let strs: Vec<String> = self.column_order
             .iter()
             .map(|column_name| {
@@ -68,11 +103,16 @@ impl PrettyPrinter {
                 let or_none = data::Value::no_value();
                 let value = value.unwrap_or(&or_none);
                 let unpadded = format!("[{}={}]", column_name, value.render(&self.render_config));
-                format!(
-                    "{:width$}",
-                    unpadded,
-                    width = column_name.len() + 3 + self.column_widths.get(column_name).unwrap()
-                )
+                if no_padding {
+                    unpadded
+                } else {
+                    format!(
+                        "{:width$}",
+                        unpadded,
+                        width =
+                            column_name.len() + 3 + self.column_widths.get(column_name).unwrap()
+                    )
+                }
             })
             .collect();
         strs.join("").trim().to_string()
@@ -115,7 +155,14 @@ impl PrettyPrinter {
         let body: Vec<String> = rows.iter()
             .map(|row| self.format_aggregate_row(row))
             .collect();
-        format!("{}\n{}", header, body.join("\n"))
+        let overlength_str = format!("{}\n{}\n", header, body.join("\n"));
+        match self.term_size {
+            Some(TerminalSize { width: _, height }) => {
+                let lines: Vec<&str> = overlength_str.lines().take((height as usize) - 1).collect();
+                lines.join("\n") + "\n"
+            }
+            None => overlength_str,
+        }
     }
 }
 
@@ -123,29 +170,30 @@ pub struct Renderer {
     pretty_printer: PrettyPrinter,
     stdout: std::io::Stdout,
     reset_sequence: String,
-    terminal_size: (Width, Height),
+    is_tty: bool,
 }
 
 impl Renderer {
     pub fn new(config: RenderConfig) -> Self {
+        let tsize_opt =
+            terminal_size().map(|(Width(width), Height(height))| TerminalSize { width, height });
         Renderer {
-            pretty_printer: PrettyPrinter::new(config),
+            is_tty: tsize_opt.is_some(),
+            pretty_printer: PrettyPrinter::new(config, tsize_opt),
             stdout: stdout(),
             reset_sequence: "".to_string(),
-            terminal_size: terminal_size().unwrap(),
         }
     }
 
     pub fn render(&mut self, row: data::Row) {
         match row {
             data::Row::Aggregate(aggregate) => {
-                let unsafe_output = self.pretty_printer.format_aggregate(&aggregate);
-                let &(ref _w, Height(ref t_height)) = &self.terminal_size;
-                let t_height = t_height - 1;
-                let lines: Vec<&str> = unsafe_output.lines().take(t_height as usize).collect();
-                let num_lines = lines.len();
-                let output = lines.join("\n");
-                write!(self.stdout, "{}{}\n", self.reset_sequence, output).unwrap();
+                if !self.is_tty {
+                    panic!("Printing aggregates only works on a TTY. TODO");
+                }
+                let output = self.pretty_printer.format_aggregate(&aggregate);
+                let num_lines = output.matches("\n").count();
+                write!(self.stdout, "{}{}", self.reset_sequence, output).unwrap();
                 self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines)
             }
             data::Row::Record(record) => {
@@ -167,11 +215,14 @@ mod tests {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
         let parser = ParseJson {};
         let rec = parser.process(&rec).unwrap();
-        let mut pp = PrettyPrinter::new(RenderConfig {
-            floating_points: 2,
-            min_buffer: 1,
-            max_buffer: 4,
-        });
+        let mut pp = PrettyPrinter::new(
+            RenderConfig {
+                floating_points: 2,
+                min_buffer: 1,
+                max_buffer: 4,
+            },
+            None,
+        );
         assert_eq!(pp.format_record(&rec), "[k1=5]    [k2=5.50]    [k3=str]");
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson {};
@@ -196,6 +247,23 @@ mod tests {
     }
 
     #[test]
+    fn test_pretty_print_record_too_long() {
+        let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
+        let parser = ParseJson {};
+        let rec = parser.process(&rec).unwrap();
+        let mut pp = PrettyPrinter::new(
+            RenderConfig {
+                floating_points: 2,
+                min_buffer: 1,
+                max_buffer: 4,
+            },
+            Some(TerminalSize{width:10, height: 2}),
+        );
+        assert_eq!(pp.format_record(&rec), "[k1=5][k2=5.50][k3=str]");
+
+    }
+
+    #[test]
     fn test_pretty_print_aggregate() {
         let agg = Aggregate::new(
             vec!["kc1".to_string(), "kc2".to_string()],
@@ -217,15 +285,22 @@ mod tests {
                 ),
             ],
         );
-        let mut pp = PrettyPrinter::new(RenderConfig {
-            floating_points: 2,
-            min_buffer: 2,
-            max_buffer: 4,
-        });
+        let mut pp = PrettyPrinter::new(
+            RenderConfig {
+                floating_points: 2,
+                min_buffer: 2,
+                max_buffer: 4,
+            },
+            Some(TerminalSize {
+                width: 100,
+                height: 10,
+            }),
+        );
         println!("{}", pp.format_aggregate(&agg));
         assert_eq!(
-            "kc1   kc2       count  \n-----------------------\nk1    k2        100    \nk300  k40000    500    ",
+            "kc1   kc2       count  \n-----------------------\nk1    k2        100    \nk300  k40000    500    \n",
             pp.format_aggregate(&agg)
         );
     }
+
 }
