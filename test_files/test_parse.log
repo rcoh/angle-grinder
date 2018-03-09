@@ -2,3 +2,14 @@ INFO Server db-1 loaded response in 500ms
 INFO Server db-2 loaded response in 394ms
 WARN Server failed to load response
 INFO Server db-1 loaded response in 100ms
+INFO Server db-1 loaded response in 102ms
+INFO Server db-1 loaded response in 102ms
+INFO Server db-3 loaded response in 103ms
+INFO Server db-1 loaded response in 100ms
+INFO Server db-3 loaded response in 109ms
+INFO Server db-1 loaded response in 100ms
+INFO Server db-3 loaded response in 104ms
+INFO Server db-1 loaded response in 100ms
+INFO Server db-3 loaded response in 100ms
+INFO Server db-1 loaded response in 122ms
+INFO Server db-2 loaded response in 119ms

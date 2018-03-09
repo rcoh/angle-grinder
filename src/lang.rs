@@ -252,7 +252,7 @@ mod tests {
                     aggregate_function: AggregateFunction::Percentile {
                         column: "x".to_string(),
                         percentile: 0.5,
-                        percentile_str: "50".to_string()
+                        percentile_str: "50".to_string(/*  */)
                     },
                     output_column: None,
                 })

@@ -17,7 +17,7 @@ matrix:
   # don't need
   include:
     # Linux
-    - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=x86_64-unknown-linux-musl
 
     # OSX
     - env: TARGET=x86_64-apple-darwin
@@ -32,7 +32,7 @@ matrix:
     # - env: TARGET=x86_64-pc-windows-gnu
 
     # Testing other channels
-    - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=x86_64-unknown-linux-musl
       rust: nightly
 
 before_install:
