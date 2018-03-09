@@ -1,5 +1,5 @@
-# angle-grinder
-Slice and dice log files on the command line. [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder)
+# angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder)
+Slice and dice log files on the command line. 
 
 Not the fanciest way to analyze log files, but, much like an angle-grinder, it will probably work. If you've ever been tailing log files and wished you could have just a _little_ bit more power, this is for you.
 
@@ -7,6 +7,16 @@ Not the fanciest way to analyze log files, but, much like an angle-grinder, it w
 
 ## Installation
 Binaries are available for Linux, OS X and Free BSD: https://github.com/rcoh/angle-grinder/releases. Many more platforms (including Windows) are available if you compile from source.
+
+Linux:
+```
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-unknown-linux-gnu.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
+```
+
+OS X:
+```
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
+```
 
 ## Query Synax
 
@@ -27,10 +37,9 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 - `parse "* pattern * otherpattern *" as a,b,c`: Parse text that matches the pattern into variables. Lines that don't match this pattern will be dropped. `*` is equivalent to `.*` and is greedy.
 ![parse.gif](/screen_shots/parse.gif)
 - `count [by a, b] [as count_column]`: Count (potentially by key columns). Defaults to `_count` unless overridden with an `as` clause.
-![count.gif](/screen_shots/count.gif)
 - `sum(column) [by a, b] [as sum_column]`: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 - `average(column) [by a, b] as [average_column]`: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
-
+- `pXX(column) [by a, b] [as pct_column]` eg. `p50(col)`, `p05(col)`, `p99(col)` calculate the XXth percentile of `column`.
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
 ```
