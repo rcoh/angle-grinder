@@ -100,9 +100,13 @@ impl PrettyPrinter {
             .iter()
             .map(|column_name| {
                 let value = record.data.get(column_name);
-                let or_none = data::Value::no_value();
-                let value = value.unwrap_or(&or_none);
-                let unpadded = format!("[{}={}]", column_name, value.render(&self.render_config));
+
+                let unpadded = match value {
+                    Some(value) => {
+                        format!("[{}={}]", column_name, value.render(&self.render_config))
+                    }
+                    None => "".to_string(),
+                };
                 if no_padding {
                     unpadded
                 } else {

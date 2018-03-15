@@ -32,6 +32,7 @@ pub enum Value {
     // Consider big int
     Int(i64),
     Float(f64),
+    None,
 }
 
 impl OrdSubset for Value {
@@ -49,6 +50,7 @@ impl Display for Value {
             &Value::Str(ref s) => write!(f, "{}", s),
             &Value::Int(ref s) => write!(f, "{}", s),
             &Value::Float(ref s) => write!(f, "{}", s),
+            &Value::None => write!(f, "$None$"),
         }
     }
 }
@@ -58,12 +60,9 @@ impl Value {
         match self {
             &Value::Str(ref s) => format!("{}", s),
             &Value::Int(ref s) => format!("{}", s),
+            &Value::None => format!("$None$"),
             &Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
         }
-    }
-
-    pub fn no_value() -> Value {
-        Value::Str("$None$".to_string())
     }
 
     pub fn from_string(s: &str) -> Value {

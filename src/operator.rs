@@ -173,7 +173,7 @@ impl AggregateFunction for Percentile {
         let pct_opt = self.ckms.query(self.percentile);
         pct_opt
             .map(|(_usize, pct_float)| data::Value::Float(pct_float))
-            .unwrap_or(data::Value::no_value())
+            .unwrap_or(data::Value::None)
     }
 }
 
@@ -298,6 +298,7 @@ impl UnaryPreAggOperator for ParseJson {
                                 &&Value::String(ref s) => {
                                     Some(record.put(k, data::Value::Str(s.to_string())))
                                 }
+                                &&Value::Null => Some(record.put(k, data::Value::None)),
                                 _other => None,
                             })
                         })
@@ -320,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_json() {
-        let rec = Record::new(r#"{"k1": 5, "k2": 5.5, "k3": "str"}"#);
+        let rec = Record::new(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null}"#);
         let parser = ParseJson {};
         let rec = parser.process(&rec).unwrap();
         assert_eq!(
@@ -328,7 +329,8 @@ mod tests {
             hashmap!{
                 "k1".to_string() => Value::Int(5),
                 "k2".to_string() => Value::Float(5.5),
-                "k3".to_string() => Value::Str("str".to_string())
+                "k3".to_string() => Value::Str("str".to_string()),
+                "k4".to_string() => Value::None
             }
         );
     }
