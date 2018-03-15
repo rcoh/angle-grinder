@@ -16,7 +16,6 @@ pub mod pipeline {
     use lang::*;
     use render::{RenderConfig, Renderer};
     use data::{Record, Row};
-    use std::io;
     use std::io::BufRead;
 
     pub struct Pipeline {
@@ -25,6 +24,7 @@ pub mod pipeline {
         aggregators: Vec<Box<operator::AggregateOperator>>,
         renderer: Renderer,
     }
+
     impl Pipeline {
         fn convert_inline(op: lang::InlineOperator) -> Box<operator::UnaryPreAggOperator> {
             match op {
@@ -113,8 +113,8 @@ pub mod pipeline {
             }
         }
 
-        pub fn process(&mut self, stdin: io::Stdin) {
-            for line in stdin.lock().lines() {
+        pub fn process<T: BufRead>(&mut self, buf: T) {
+            for line in buf.lines() {
                 self.proc_str(&(line.unwrap()));
             }
         }

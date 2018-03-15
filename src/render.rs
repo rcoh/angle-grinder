@@ -257,10 +257,12 @@ mod tests {
                 min_buffer: 1,
                 max_buffer: 4,
             },
-            Some(TerminalSize{width:10, height: 2}),
+            Some(TerminalSize {
+                width: 10,
+                height: 2,
+            }),
         );
         assert_eq!(pp.format_record(&rec), "[k1=5][k2=5.50][k3=str]");
-
     }
 
     #[test]
