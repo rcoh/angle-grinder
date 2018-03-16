@@ -10,12 +10,12 @@ Binaries are available for Linux, OS X and Free BSD: https://github.com/rcoh/ang
 
 Linux (statically linked with musl):
 ```
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.2/angle_grinder-v0.3.2-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
 ```
 
 OS X:
 ```
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.3.2/angle_grinder-v0.3.2-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/ag > /dev/null && sudo chmod +x /usr/local/bin/ag
 ```
 
 ## Query Synax
@@ -64,5 +64,5 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 ### Contributing
 See the open issues for potential improvements/issues.
 
-### Acknoledgements
+### Acknowledgements
 Angle Grinder is [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
