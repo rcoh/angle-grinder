@@ -299,7 +299,7 @@ impl UnaryPreAggOperator for ParseJson {
                                     Some(record.put(k, data::Value::Str(s.to_string())))
                                 }
                                 &&Value::Null => Some(record.put(k, data::Value::None)),
-                                _other => None,
+                                _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
                             })
                         })
                     }
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_json() {
-        let rec = Record::new(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null}"#);
+        let rec = Record::new(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#);
         let parser = ParseJson {};
         let rec = parser.process(&rec).unwrap();
         assert_eq!(
@@ -330,7 +330,8 @@ mod tests {
                 "k1".to_string() => Value::Int(5),
                 "k2".to_string() => Value::Float(5.5),
                 "k3".to_string() => Value::Str("str".to_string()),
-                "k4".to_string() => Value::None
+                "k4".to_string() => Value::None,
+                "k5".to_string() => Value::Str("[1,2,3]".to_string())
             }
         );
     }
