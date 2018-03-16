@@ -1,6 +1,6 @@
 [package]
 name = "ag"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Russell Cohen <russell.r.cohen@gmail.com>"]
 
 [dependencies]
