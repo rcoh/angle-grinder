@@ -85,7 +85,7 @@ named!(parse<&str, InlineOperator>, ws!(do_parse!(
     tag!("as") >>
     vars: var_list >>
     ( InlineOperator::Parse{
-        pattern: pattern.to_string(),
+        pattern: pattern.replace("\\\"", "\""),
         fields: vec_str_vec_string(vars)} )
 )));
 

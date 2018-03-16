@@ -338,9 +338,9 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        let rec = Record::new("17:12:14.214111 IP 10.0.2.243.53938 > taotie.canonical.com.http: Flags [.], ack 56575, win 2375, options [nop,nop,TS val 13651369 ecr 169698010], length 99");
+        let rec = Record::new("17:12:14.214111 IP 10.0.2.243.53938 > \"taotie.canonical.com.http\": Flags [.], ack 56575, win 2375, options [nop,nop,TS val 13651369 ecr 169698010], length 99");
         let parser = Parse::new(
-            "IP * > *: * length *",
+            "IP * > \"*\": * length *",
             vec![
                 "sender".to_string(),
                 "recip".to_string(),
