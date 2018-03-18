@@ -17,11 +17,13 @@ pub mod pipeline {
     use render::{RenderConfig, Renderer};
     use data::{Record, Row};
     use std::io::BufRead;
+    use std::time::Duration;
 
     pub struct Pipeline {
         filter: lang::Search,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
         aggregators: Vec<Box<operator::AggregateOperator>>,
+        last_output: Option<Row>,
         renderer: Renderer,
     }
 
@@ -98,30 +100,41 @@ pub mod pipeline {
                 filter: query.search,
                 pre_aggregates: pre_agg,
                 aggregators: post_agg,
-                renderer: Renderer::new(RenderConfig {
-                    floating_points: 2,
-                    min_buffer: 4,
-                    max_buffer: 8,
-                }),
+                last_output: None,
+                renderer: Renderer::new(
+                    RenderConfig {
+                        floating_points: 2,
+                        min_buffer: 4,
+                        max_buffer: 8,
+                    },
+                    Duration::from_millis(50),
+                ),
             })
         }
 
-        fn matches(&self, rec: &Record) -> bool {
+        fn matches(&self, raw: &str) -> bool {
             match &self.filter {
                 &lang::Search::MatchAll => true,
-                &lang::Search::MatchFilter(ref filter) => rec.raw.contains(filter),
+                &lang::Search::MatchFilter(ref filter) => raw.contains(filter),
             }
         }
 
-        pub fn process<T: BufRead>(&mut self, buf: T) {
-            for line in buf.lines() {
-                self.proc_str(&(line.unwrap()));
+        pub fn process<T: BufRead>(&mut self, mut buf: T) {
+            // TODO: this is pretty slow in practice. ripgrep is obviously much faster.
+            let mut line = String::with_capacity(1024);
+            while buf.read_line(&mut line).unwrap() > 0 {
+                self.proc_str(&(line));
+                line.clear();
             }
+            match &self.last_output {
+                &Some(ref row) => self.renderer.render(row, true),
+                &None => (),
+            };
         }
 
         fn proc_str(&mut self, s: &str) {
-            let mut rec = Record::new(s);
-            if self.matches(&rec) {
+            if self.matches(&s) {
+                let mut rec = Record::new(s);
                 for pre_agg in &self.pre_aggregates {
                     match (*pre_agg).process(&rec) {
                         Some(next_rec) => rec = next_rec,
@@ -134,7 +147,8 @@ pub mod pipeline {
                     (*agg).process(&row);
                     row = Row::Aggregate((*agg).emit());
                 }
-                self.renderer.render(row);
+                self.renderer.render(&row, false);
+                self.last_output = Some(row);
             }
         }
     }
