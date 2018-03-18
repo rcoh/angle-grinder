@@ -4,6 +4,7 @@ use data;
 use std::io::{stdout, Write};
 extern crate terminal_size;
 use self::terminal_size::{terminal_size, Height, Width};
+use std::time::{Duration, Instant};
 
 pub struct RenderConfig {
     pub floating_points: usize,
@@ -133,7 +134,7 @@ impl PrettyPrinter {
                 )
             })
             .collect();
-        row.join("")
+        row.join("").trim().to_string()
     }
 
     fn format_aggregate(&mut self, aggregate: &data::Aggregate) -> String {
@@ -155,7 +156,7 @@ impl PrettyPrinter {
             .collect();
         let header = header.join("");
         let header_len = header.len();
-        let header = header + "\n" + &"-".repeat(header_len);
+        let header = format!("{}\n{}", header.trim(), "-".repeat(header_len));
         let body: Vec<String> = rows.iter()
             .map(|row| self.format_aggregate_row(row))
             .collect();
@@ -172,13 +173,16 @@ impl PrettyPrinter {
 
 pub struct Renderer {
     pretty_printer: PrettyPrinter,
+    update_interval: Duration,
     stdout: std::io::Stdout,
+
     reset_sequence: String,
     is_tty: bool,
+    last_print: Option<Instant>,
 }
 
 impl Renderer {
-    pub fn new(config: RenderConfig) -> Self {
+    pub fn new(config: RenderConfig, update_interval: Duration) -> Self {
         let tsize_opt =
             terminal_size().map(|(Width(width), Height(height))| TerminalSize { width, height });
         Renderer {
@@ -186,25 +190,37 @@ impl Renderer {
             pretty_printer: PrettyPrinter::new(config, tsize_opt),
             stdout: stdout(),
             reset_sequence: "".to_string(),
+            last_print: None,
+            update_interval,
         }
     }
 
-    pub fn render(&mut self, row: data::Row) {
+    pub fn render(&mut self, row: &data::Row, last_row: bool) {
         match row {
-            data::Row::Aggregate(aggregate) => {
+            &data::Row::Aggregate(ref aggregate) => {
                 if !self.is_tty {
-                    panic!("Printing aggregates only works on a TTY. TODO");
+                    if last_row {
+                        let output = self.pretty_printer.format_aggregate(&aggregate);
+                        write!(self.stdout, "{}", output).unwrap();
+                    }
+                } else if self.should_print() || last_row {
+                    let output = self.pretty_printer.format_aggregate(&aggregate);
+                    let num_lines = output.matches("\n").count();
+                    write!(self.stdout, "{}{}", self.reset_sequence, output).unwrap();
+                    self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines);
+                    self.last_print = Some(Instant::now());
                 }
-                let output = self.pretty_printer.format_aggregate(&aggregate);
-                let num_lines = output.matches("\n").count();
-                write!(self.stdout, "{}{}", self.reset_sequence, output).unwrap();
-                self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines)
             }
-            data::Row::Record(record) => {
+            &data::Row::Record(ref record) => {
                 let output = self.pretty_printer.format_record(&record);
                 write!(self.stdout, "{}\n", output).unwrap();
             }
         }
+    }
+    fn should_print(&self) -> bool {
+        self.last_print
+            .map(|instant| instant.elapsed() > self.update_interval)
+            .unwrap_or(true)
     }
 }
 
@@ -304,7 +320,7 @@ mod tests {
         );
         println!("{}", pp.format_aggregate(&agg));
         assert_eq!(
-            "kc1   kc2       count  \n-----------------------\nk1    k2        100    \nk300  k40000    500    \n",
+            "kc1   kc2       count\n-----------------------\nk1    k2        100\nk300  k40000    500\n",
             pp.format_aggregate(&agg)
         );
     }
