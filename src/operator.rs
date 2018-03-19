@@ -11,6 +11,8 @@ use data::{Aggregate, Record, Row};
 use data;
 use self::serde_json::Value;
 use self::quantiles::ckms::CKMS;
+
+type Data = HashMap<String, data::Value>;
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: &Record) -> Option<Record>;
 }
@@ -21,7 +23,7 @@ pub trait AggregateOperator {
 }
 
 pub trait AggregateFunction: Clone {
-    fn process(&mut self, rec: &Record);
+    fn process(&mut self, rec: &Data);
     fn emit(&self) -> data::Value;
 }
 
@@ -37,7 +39,7 @@ impl Count {
 }
 
 impl AggregateFunction for Count {
-    fn process(&mut self, _rec: &Record) {
+    fn process(&mut self, _rec: &Data) {
         self.count += 1;
     }
 
@@ -66,21 +68,18 @@ impl Sum {
 }
 
 impl AggregateFunction for Sum {
-    fn process(&mut self, rec: &Record) {
-        rec.data
-            .get(&self.column)
-            .iter()
-            .for_each(|value| match value {
-                &&data::Value::Float(ref f) => {
-                    self.is_float = true;
-                    self.total += f;
-                }
-                &&data::Value::Int(ref i) => {
-                    self.total += *i as f64;
-                }
-                _other => self.warnings
-                    .push("Got string. Can only average into or float".to_string()),
-            });
+    fn process(&mut self, rec: &Data) {
+        rec.get(&self.column).iter().for_each(|value| match value {
+            &&data::Value::Float(ref f) => {
+                self.is_float = true;
+                self.total += f;
+            }
+            &&data::Value::Int(ref i) => {
+                self.total += *i as f64;
+            }
+            _other => self.warnings
+                .push("Got string. Can only average into or float".to_string()),
+        });
     }
 
     fn emit(&self) -> data::Value {
@@ -108,22 +107,19 @@ impl Average {
 }
 
 impl AggregateFunction for Average {
-    fn process(&mut self, rec: &Record) {
-        rec.data
-            .get(&self.column)
-            .iter()
-            .for_each(|value| match value {
-                &&data::Value::Float(ref f) => {
-                    self.total += f;
-                    self.count += 1
-                }
-                &&data::Value::Int(ref i) => {
-                    self.total += *i as f64;
-                    self.count += 1
-                }
-                _other => self.warnings
-                    .push("Got string. Can only average into or float".to_string()),
-            });
+    fn process(&mut self, data: &Data) {
+        data.get(&self.column).iter().for_each(|value| match value {
+            &&data::Value::Float(ref f) => {
+                self.total += f;
+                self.count += 1
+            }
+            &&data::Value::Int(ref i) => {
+                self.total += *i as f64;
+                self.count += 1
+            }
+            _other => self.warnings
+                .push("Got string. Can only average into or float".to_string()),
+        });
     }
 
     fn emit(&self) -> data::Value {
@@ -155,18 +151,15 @@ impl Percentile {
 }
 
 impl AggregateFunction for Percentile {
-    fn process(&mut self, rec: &Record) {
-        rec.data
-            .get(&self.column)
-            .iter()
-            .for_each(|value| match value {
-                &&data::Value::Float(ref f) => {
-                    self.ckms.insert(*f);
-                }
-                &&data::Value::Int(ref i) => self.ckms.insert(*i as f64),
-                _other => self.warnings
-                    .push("Got string. Can only average int or float".to_string()),
-            });
+    fn process(&mut self, data: &Data) {
+        data.get(&self.column).iter().for_each(|value| match value {
+            &&data::Value::Float(ref f) => {
+                self.ckms.insert(*f);
+            }
+            &&data::Value::Int(ref i) => self.ckms.insert(*i as f64),
+            _other => self.warnings
+                .push("Got string. Can only average int or float".to_string()),
+        });
     }
 
     fn emit(&self) -> data::Value {
@@ -193,6 +186,25 @@ impl<T: AggregateFunction> Grouper<T> {
             empty: empty,
         }
     }
+
+    fn process_map(&mut self, data: &Data) {
+        let key_values: Vec<Option<&data::Value>> = self.key_cols
+            .iter()
+            .cloned()
+            .map(|column| data.get(&column))
+            .collect();
+        let key_columns: Vec<String> = key_values
+            .iter()
+            .cloned()
+            .map(|value_opt| {
+                value_opt
+                    .map(|value| value.to_string())
+                    .unwrap_or("$None$".to_string())
+            })
+            .collect();
+        let accum = self.state.entry(key_columns).or_insert(self.empty.clone());
+        accum.process(data);
+    }
 }
 
 impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
@@ -214,24 +226,12 @@ impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
     fn process(&mut self, row: &Row) {
         match row {
             &Row::Record(ref rec) => {
-                let key_values: Vec<Option<&data::Value>> = self.key_cols
-                    .iter()
-                    .cloned()
-                    .map(|column| rec.data.get(&column))
-                    .collect();
-                let key_columns: Vec<String> = key_values
-                    .iter()
-                    .cloned()
-                    .map(|value_opt| {
-                        value_opt
-                            .map(|value| value.to_string())
-                            .unwrap_or("$None$".to_string())
-                    })
-                    .collect();
-                let accum = self.state.entry(key_columns).or_insert(self.empty.clone());
-                accum.process(rec);
+                self.process_map(&rec.data);
             }
-            &Row::Aggregate(ref _ag) => panic!("Unsupported"),
+            &Row::Aggregate(ref ag) => {
+                self.state.clear();
+                ag.rows().iter().for_each(|row| self.process_map(row));
+            }
         }
     }
 }
