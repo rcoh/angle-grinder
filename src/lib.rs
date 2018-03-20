@@ -70,6 +70,7 @@ pub mod pipeline {
                         operator::Percentile::empty(column, percentile),
                     ))
                 }
+                AggregateFunction::Sort { mode } => panic!("unsupported"),
             }
         }
 

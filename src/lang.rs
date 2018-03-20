@@ -24,6 +24,12 @@ pub enum InlineOperator {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum SortMode {
+    Ascending,
+    Descending,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum AggregateFunction {
     Count,
     Sum {
@@ -36,6 +42,9 @@ pub enum AggregateFunction {
         percentile: f64,
         percentile_str: String,
         column: String,
+    },
+    Sort {
+        mode: SortMode,
     },
 }
 

@@ -11,6 +11,7 @@ use data::{Aggregate, Record, Row};
 use data;
 use self::serde_json::Value;
 use self::quantiles::ckms::CKMS;
+use std::cmp::Ordering;
 
 type Data = HashMap<String, data::Value>;
 pub trait UnaryPreAggOperator {
@@ -170,6 +171,43 @@ impl AggregateFunction for Percentile {
     }
 }
 
+pub struct Sorter {
+    columns: Vec<String>,
+    state: Vec<Record>,
+    ordering: Box<Fn(&Record, &Record) -> Ordering>,
+}
+
+impl Sorter {}
+
+impl AggregateOperator for Sorter {
+    fn emit(&self) -> data::Aggregate {
+        if self.state.len() > 0 {
+            // TODO: need to build up columns from all rows
+            let columns: Vec<String> = self.state[0].data.keys().cloned().collect();
+            Aggregate {
+                data: self.state.iter().map(|rec| rec.data.clone()).collect(),
+                columns: columns,
+            }
+        } else {
+            Aggregate {
+                data: vec![],
+                columns: vec![],
+            }
+        }
+    }
+
+    fn process(&mut self, row: &Row) {
+        let order = &self.ordering;
+        match row {
+            &Row::Aggregate(ref agg) => panic!(""),
+            &Row::Record(ref rec) => {
+                self.state.push(rec.clone());
+                self.state.sort_by(|l, r| (order)(l, r));
+            }
+        }
+    }
+}
+
 pub struct Grouper<T: AggregateFunction> {
     key_cols: Vec<String>,
     agg_col: String,
@@ -230,7 +268,7 @@ impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
             }
             &Row::Aggregate(ref ag) => {
                 self.state.clear();
-                ag.rows().iter().for_each(|row| self.process_map(row));
+                ag.data.iter().for_each(|row| self.process_map(row));
             }
         }
     }
@@ -367,15 +405,14 @@ mod tests {
             .map(|n| Record::new(&n.to_string()))
             .foreach(|rec| count_agg.process(&Row::Record(rec)));
         let agg = count_agg.emit();
-        assert_eq!(agg.key_columns.len(), 0);
-        assert_eq!(agg.agg_column, "_count");
-        assert_eq!(agg.data, vec![(HashMap::new(), data::Value::Int(10))]);
+        assert_eq!(agg.columns, vec!["_count"]);
+        assert_eq!(agg.data, vec![hashmap!{"_count".to_string() => data::Value::Int(10)}]);
         (0..10)
             .map(|n| Record::new(&n.to_string()))
             .foreach(|rec| count_agg.process(&Row::Record(rec)));
         assert_eq!(
             count_agg.emit().data,
-            vec![(HashMap::new(), data::Value::Int(20))]
+            vec![hashmap!{"_count".to_string() => data::Value::Int(20)}]
         );
     }
 
@@ -400,18 +437,12 @@ mod tests {
         assert_eq!(
             agg.data,
             vec![
-                (
-                    hashmap!{"k1".to_string() => "not ok".to_string()},
-                    data::Value::Int(25),
-                ),
-                (
-                    hashmap!{"k1".to_string() => "ok".to_string()},
-                    data::Value::Int(10),
-                ),
-                (
-                    hashmap!{"k1".to_string() => "$None$".to_string()},
-                    data::Value::Int(3),
-                ),
+                    hashmap!{
+                        "k1".to_string() => data::Value::Str("not ok".to_string()), 
+                        "_count".to_string() => data::Value::Int(25),
+                    },
+                    hashmap!{"k1".to_string() => data::Value::Str("ok".to_string()), "_count".to_string() => data::Value::Int(10)}, 
+                    hashmap!{"k1".to_string() => data::Value::Str("$None$".to_string()), "_count".to_string() => data::Value::Int(3)}, 
             ]
         );
     }

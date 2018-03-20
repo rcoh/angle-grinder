@@ -123,8 +123,8 @@ impl PrettyPrinter {
         strs.join("").trim().to_string()
     }
 
-    fn format_aggregate_row(&self, row: &HashMap<String, data::Value>) -> String {
-        let row: Vec<String> = self.column_order
+    fn format_aggregate_row(&self, columns: &Vec<String>, row: &HashMap<String, data::Value>) -> String {
+        let row: Vec<String> = columns
             .iter()
             .map(|column_name| {
                 format!(
@@ -138,13 +138,12 @@ impl PrettyPrinter {
     }
 
     fn format_aggregate(&mut self, aggregate: &data::Aggregate) -> String {
-        let rows = aggregate.rows();
-        rows.iter()
+        aggregate
+            .data
+            .iter()
             .for_each(|row| self.column_widths = self.compute_column_widths(row));
-        let mut cols = aggregate.key_columns.clone();
-        cols.push(aggregate.agg_column.clone());
-        self.column_order = cols;
-        let header: Vec<String> = self.column_order
+        let header: Vec<String> = aggregate
+            .columns
             .iter()
             .map(|column_name| {
                 format!(
@@ -157,8 +156,10 @@ impl PrettyPrinter {
         let header = header.join("");
         let header_len = header.len();
         let header = format!("{}\n{}", header.trim(), "-".repeat(header_len));
-        let body: Vec<String> = rows.iter()
-            .map(|row| self.format_aggregate_row(row))
+        let body: Vec<String> = aggregate
+            .data
+            .iter()
+            .map(|row| self.format_aggregate_row(&aggregate.columns, row))
             .collect();
         let overlength_str = format!("{}\n{}\n", header, body.join("\n"));
         match self.term_size {
@@ -307,6 +308,7 @@ mod tests {
                 ),
             ],
         );
+        assert_eq!(agg.data.len(), 2);
         let mut pp = PrettyPrinter::new(
             RenderConfig {
                 floating_points: 2,
