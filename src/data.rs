@@ -3,26 +3,25 @@ use self::ord_subset::OrdSubset;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt;
+use std::cmp::Ordering;
 use render;
+
+type VMap = HashMap<String, Value>;
 
 pub enum Row {
     Aggregate(Aggregate),
     Record(Record),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Aggregate {
-    // key columns ["v1", "v2", "v3"]
-    // agg column "_count"
-    pub key_columns: Vec<String>,
-    pub agg_column: String,
-    // [{v2: "a", "v2": "b", "v3": c}, 99]
-    // [5]
-    pub data: Vec<(HashMap<String, String>, Value)>,
+    pub columns: Vec<String>,
+    pub data: Vec<VMap>,
 }
 
 #[derive(Clone)]
 pub struct Record {
-    pub data: HashMap<String, Value>,
+    pub data: VMap,
     pub raw: String,
 }
 
@@ -91,25 +90,23 @@ impl Aggregate {
                 }
             });
         });
-        Aggregate {
-            key_columns: key_columns,
-            agg_column: agg_column,
-            data: data,
-        }
-    }
-
-    pub fn rows(&self) -> Vec<HashMap<String, Value>> {
-        self.data
-            .iter()
+        let raw_data: Vec<HashMap<String, Value>> = data.iter()
             .map(|&(ref keycols, ref value)| {
                 let mut new_map: HashMap<String, Value> = keycols
                     .iter()
                     .map(|(keycol, val)| (keycol.clone(), Value::Str(val.clone())))
                     .collect();
-                new_map.insert(self.agg_column.clone(), value.clone());
+                new_map.insert(agg_column.clone(), value.clone());
                 new_map
             })
-            .collect()
+            .collect();
+        let mut columns = key_columns.clone();
+        columns.push(agg_column);
+
+        Aggregate {
+            data: raw_data,
+            columns: columns,
+        }
     }
 }
 
@@ -128,6 +125,27 @@ impl Record {
             data: HashMap::new(),
             raw: raw.to_string(),
         }
+    }
+
+    pub fn ordering<'a>(columns: Vec<String>) -> Box<Fn(&VMap, &VMap) -> Ordering + 'a> {
+        Box::new(move |rec_l: &VMap, rec_r: &VMap| {
+            for col in &columns {
+                let l_val = rec_l.get(col);
+                let r_val = rec_r.get(col);
+                if l_val != r_val {
+                    if l_val == None {
+                        return Ordering::Less;
+                    }
+                    if r_val == None {
+                        return Ordering::Greater;
+                    }
+                    let l_val = l_val.unwrap();
+                    let r_val = r_val.unwrap();
+                    return l_val.partial_cmp(r_val).unwrap_or(Ordering::Less);
+                }
+            }
+            Ordering::Equal
+        })
     }
 }
 
@@ -195,5 +213,34 @@ mod tests {
             Value::from_string("not a number"),
             Value::Str("not a number".to_string())
         );
+    }
+
+    #[test]
+    fn test_ordering() {
+        let mut r1 = HashMap::<String, Value>::new();
+        r1.insert("k1".to_string(), Value::Int(5));
+        r1.insert("k3".to_string(), Value::Float(0.1));
+        r1.insert("k2".to_string(), Value::Str("abc".to_string()));
+        let mut r2 = HashMap::<String, Value>::new();
+        r2.insert("k1".to_string(), Value::Int(4));
+        r2.insert("k2".to_string(), Value::Str("xyz".to_string()));
+        r2.insert("k3".to_string(), Value::Float(0.1));
+        let ord1 = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
+        assert_eq!(ord1(&r1, &r2), Ordering::Greater);
+        assert_eq!(ord1(&r1, &r1), Ordering::Equal);
+        assert_eq!(ord1(&r2, &r1), Ordering::Less);
+
+        let ord2 = Record::ordering(vec!["k2".to_string(), "k1".to_string()]);
+        assert_eq!(ord2(&r1, &r2), Ordering::Less);
+        assert_eq!(ord2(&r1, &r1), Ordering::Equal);
+        assert_eq!(ord2(&r2, &r1), Ordering::Greater);
+
+        let ord3 = Record::ordering(vec!["k3".to_string()]);
+        assert_eq!(ord3(&r1, &r2), Ordering::Equal);
+
+        let ord4 = Record::ordering(vec!["k3".to_string(), "k1".to_string()]);
+        assert_eq!(ord4(&r1, &r2), Ordering::Greater);
+        assert_eq!(ord4(&r1, &r1), Ordering::Equal);
+        assert_eq!(ord4(&r2, &r1), Ordering::Less);
     }
 }
