@@ -70,7 +70,13 @@ pub mod pipeline {
                         operator::Percentile::empty(column, percentile),
                     ))
                 }
-                AggregateFunction::Sort { mode } => panic!("unsupported"),
+                AggregateFunction::Sort { mode } => {
+                    let mode = match mode {
+                        SortMode::Ascending => operator::SortDirection::Ascending,
+                        SortMode::Descending => operator::SortDirection::Descending
+                    };
+                    Box::new(operator::Sorter::new(op.key_cols, mode))
+                }
             }
         }
 

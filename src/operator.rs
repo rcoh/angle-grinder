@@ -171,38 +171,64 @@ impl AggregateFunction for Percentile {
     }
 }
 
-pub struct Sorter {
-    columns: Vec<String>,
-    state: Vec<Record>,
-    ordering: Box<Fn(&Record, &Record) -> Ordering>,
+#[derive(PartialEq, Eq)]
+pub enum SortDirection {
+    Ascending,
+    Descending
 }
 
-impl Sorter {}
+pub struct Sorter {
+    columns: Vec<String>,
+    state: Vec<Data>,
+    ordering: Box<Fn(&Data, &Data) -> Ordering>,
+    direction: SortDirection
+}
+
+impl Sorter {
+    pub fn new(columns: Vec<String>, direction: SortDirection) -> Self {
+        Sorter {
+            state: Vec::new(),
+            columns: Vec::new(),
+            direction,
+            ordering: Record::ordering(columns)
+        }
+    }
+    
+    fn new_columns(&self, data: &HashMap<String, data::Value>) -> Vec<String> {
+        let mut new_keys: Vec<String> = data.keys()
+            .filter(|key| !self.columns.contains(key))
+            .cloned()
+            .collect();
+        new_keys.sort();
+        new_keys
+    }
+}
 
 impl AggregateOperator for Sorter {
     fn emit(&self) -> data::Aggregate {
-        if self.state.len() > 0 {
-            // TODO: need to build up columns from all rows
-            let columns: Vec<String> = self.state[0].data.keys().cloned().collect();
-            Aggregate {
-                data: self.state.iter().map(|rec| rec.data.clone()).collect(),
-                columns: columns,
-            }
-        } else {
-            Aggregate {
-                data: vec![],
-                columns: vec![],
-            }
+        Aggregate {
+            data: self.state.iter().map(|data| data.clone()).collect(),
+            columns: self.columns.clone(),
         }
     }
 
     fn process(&mut self, row: &Row) {
         let order = &self.ordering;
         match row {
-            &Row::Aggregate(ref agg) => panic!(""),
+            &Row::Aggregate(ref agg) => {
+                self.columns = agg.columns.clone();
+                self.state = agg.data.clone();
+                if self.direction == SortDirection::Ascending {
+                    self.state.sort_by(|l, r| (order)(l, r));
+                } else {
+                    self.state.sort_by(|l, r| (order)(r, l));
+                }
+            },
             &Row::Record(ref rec) => {
-                self.state.push(rec.clone());
+                self.state.push(rec.data.clone());
                 self.state.sort_by(|l, r| (order)(l, r));
+                let new_cols = self.new_columns(&rec.data);
+                self.columns.extend(new_cols);
             }
         }
     }
@@ -351,7 +377,6 @@ impl UnaryPreAggOperator for ParseJson {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use data::Record;
     use data::Value;
     use super::*;
@@ -406,7 +431,10 @@ mod tests {
             .foreach(|rec| count_agg.process(&Row::Record(rec)));
         let agg = count_agg.emit();
         assert_eq!(agg.columns, vec!["_count"]);
-        assert_eq!(agg.data, vec![hashmap!{"_count".to_string() => data::Value::Int(10)}]);
+        assert_eq!(
+            agg.data,
+            vec![hashmap!{"_count".to_string() => data::Value::Int(10)}]
+        );
         (0..10)
             .map(|n| Record::new(&n.to_string()))
             .foreach(|rec| count_agg.process(&Row::Record(rec)));

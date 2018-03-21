@@ -6,6 +6,8 @@ use std::fmt;
 use std::cmp::Ordering;
 use render;
 
+type VMap = HashMap<String, Value>;
+
 pub enum Row {
     Aggregate(Aggregate),
     Record(Record),
@@ -19,12 +21,12 @@ pub struct Aggregate {
     // [{v2: "a", "v2": "b", "v3": c}, 99]
     // [5]
     pub columns: Vec<String>,
-    pub data: Vec<HashMap<String, Value>>,
+    pub data: Vec<VMap>,
 }
 
 #[derive(Clone)]
 pub struct Record {
-    pub data: HashMap<String, Value>,
+    pub data: VMap,
     pub raw: String,
 }
 
@@ -130,11 +132,11 @@ impl Record {
         }
     }
 
-    pub fn ordering<'a>(columns: Vec<String>) -> Box<Fn(&Record, &Record) -> Ordering + 'a> {
-        Box::new(move |rec_l: &Record, rec_r: &Record| {
+    pub fn ordering<'a>(columns: Vec<String>) -> Box<Fn(&VMap, &VMap) -> Ordering + 'a> {
+        Box::new(move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
-                let l_val = rec_l.data.get(col);
-                let r_val = rec_r.data.get(col);
+                let l_val = rec_l.get(col);
+                let r_val = rec_r.get(col);
                 if l_val != r_val {
                     if l_val == None {
                         return Ordering::Less;
@@ -220,14 +222,14 @@ mod tests {
 
     #[test]
     fn test_ordering() {
-        let r1 = Record::new("")
-            .put("k1", Value::Int(5))
-            .put("k3", Value::Float(0.1))
-            .put("k2", Value::Str("abc".to_string()));
-        let r2 = Record::new("")
-            .put("k1", Value::Int(4))
-            .put("k2", Value::Str("xyz".to_string()))
-            .put("k3", Value::Float(0.1));
+        let mut r1 = HashMap::<String,Value>::new();
+        r1.insert("k1".to_string(), Value::Int(5));
+        r1.insert("k3".to_string(), Value::Float(0.1));
+        r1.insert("k2".to_string(), Value::Str("abc".to_string()));
+        let mut r2 = HashMap::<String,Value>::new();
+        r2.insert("k1".to_string(), Value::Int(4));
+        r2.insert("k2".to_string(), Value::Str("xyz".to_string()));
+        r2.insert("k3".to_string(), Value::Float(0.1));
         let ord1 = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
         assert_eq!(ord1(&r1, &r2), Ordering::Greater);
         assert_eq!(ord1(&r1, &r1), Ordering::Equal);

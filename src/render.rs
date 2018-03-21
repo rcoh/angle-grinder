@@ -123,13 +123,17 @@ impl PrettyPrinter {
         strs.join("").trim().to_string()
     }
 
-    fn format_aggregate_row(&self, columns: &Vec<String>, row: &HashMap<String, data::Value>) -> String {
+    fn format_aggregate_row(
+        &self,
+        columns: &Vec<String>,
+        row: &HashMap<String, data::Value>,
+    ) -> String {
         let row: Vec<String> = columns
             .iter()
             .map(|column_name| {
                 format!(
                     "{:width$}",
-                    row.get(column_name).unwrap().render(&self.render_config),
+                    row.get(column_name).unwrap_or(&data::Value::None).render(&self.render_config),
                     width = self.column_widths.get(column_name).unwrap()
                 )
             })

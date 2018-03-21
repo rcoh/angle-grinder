@@ -132,7 +132,7 @@ named!(p_nn<&str, AggregateFunction>, ws!(
 named!(inline_operator<&str, Operator>, map!(alt!(parse | json), |op|Operator::Inline(op)));
 named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum | p_nn));
 
-named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator));
+named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator | sort));
 
 // count by x,y
 // avg(foo) by x
@@ -148,7 +148,28 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
      })))
 ));
 
-//named!(agg_operator<&str, Operator>, map!())
+named!(sort_mode<&str, SortMode>, alt!(
+    map!(
+        alt!(tag!("asc") | tag!("ascending")),
+        |_|SortMode::Ascending
+    ) |
+    map!(
+        alt!(tag!("desc") | tag!("dsc") | tag!("descending")),
+        |_|SortMode::Descending
+    ) 
+));
+
+named!(sort<&str, Operator>, ws!(do_parse!(
+    tag!("sort") >>
+    key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
+    dir: opt!(sort_mode) >>
+    (Operator::Aggregate(AggregateOperator{
+        key_cols: vec_str_vec_string(key_cols_opt.unwrap_or(vec![])),
+        aggregate_function: AggregateFunction::Sort { mode: dir.unwrap_or(SortMode::Ascending) },
+        output_column: None
+     })))
+));
+
 named!(filter<&str, Search>, alt!(
     map!(quoted_string, |s|Search::MatchFilter(s.to_string())) |
     map!(tag!("*"), |_s|Search::MatchAll)
@@ -271,7 +292,6 @@ mod tests {
 
     #[test]
     fn test_query_no_operators() {
-        // TODO: make | optional
         let query_str = r#" "filter"!"#;
         assert_eq!(
             parse_query(query_str),
@@ -287,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_query_operators() {
-        let query_str = r#"* | json | parse "!123*" as foo | count by foo !"#;
+        let query_str = r#"* | json | parse "!123*" as foo | count by foo | sort by foo dsc !"#;
         assert_eq!(
             parse_query(query_str),
             Ok((
@@ -303,6 +323,11 @@ mod tests {
                         Operator::Aggregate(AggregateOperator {
                             key_cols: vec!["foo".to_string()],
                             aggregate_function: AggregateFunction::Count {},
+                            output_column: None,
+                        }),
+                        Operator::Aggregate(AggregateOperator {
+                            key_cols: vec!["foo".to_string()],
+                            aggregate_function: AggregateFunction::Sort { mode: SortMode::Descending },
                             output_column: None,
                         }),
                     ],
