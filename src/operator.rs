@@ -9,9 +9,9 @@ use std::iter::FromIterator;
 use self::ord_subset::OrdSubsetSliceExt;
 use data::{Aggregate, Record, Row};
 use data;
-use self::serde_json::Value;
 use self::quantiles::ckms::CKMS;
 use std::cmp::Ordering;
+use self::serde_json::Value as JsonValue;
 
 type Data = HashMap<String, data::Value>;
 pub trait UnaryPreAggOperator {
@@ -174,14 +174,14 @@ impl AggregateFunction for Percentile {
 #[derive(PartialEq, Eq)]
 pub enum SortDirection {
     Ascending,
-    Descending
+    Descending,
 }
 
 pub struct Sorter {
     columns: Vec<String>,
     state: Vec<Data>,
     ordering: Box<Fn(&Data, &Data) -> Ordering>,
-    direction: SortDirection
+    direction: SortDirection,
 }
 
 impl Sorter {
@@ -190,10 +190,10 @@ impl Sorter {
             state: Vec::new(),
             columns: Vec::new(),
             direction,
-            ordering: Record::ordering(columns)
+            ordering: Record::ordering(columns),
         }
     }
-    
+
     fn new_columns(&self, data: &HashMap<String, data::Value>) -> Vec<String> {
         let mut new_keys: Vec<String> = data.keys()
             .filter(|key| !self.columns.contains(key))
@@ -223,7 +223,7 @@ impl AggregateOperator for Sorter {
                 } else {
                     self.state.sort_by(|l, r| (order)(r, l));
                 }
-            },
+            }
             &Row::Record(ref rec) => {
                 self.state.push(rec.data.clone());
                 self.state.sort_by(|l, r| (order)(l, r));
@@ -281,7 +281,9 @@ impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
                 let res_map: HashMap<String, String> = HashMap::from_iter(key_value);
                 (res_map, accum.emit())
             })
-            .collect(); // todo: avoid clone here
+            .collect();
+        // TODO: remove this sort, replace with implicit sort operator at end
+        // when not specified explicitly
         data.ord_subset_sort_by_key(|ref kv| kv.1.clone());
         data.reverse();
         Aggregate::new(self.key_cols.clone(), self.agg_col.clone(), data)
@@ -348,21 +350,21 @@ impl UnaryPreAggOperator for ParseJson {
     fn process(&self, rec: &Record) -> Option<Record> {
         match serde_json::from_str(&rec.raw) {
             Ok(v) => {
-                let v: Value = v;
+                let v: JsonValue = v;
                 let rec: Record = rec.clone();
                 match v {
-                    Value::Object(map) => {
+                    JsonValue::Object(map) => {
                         map.iter().fold(Some(rec), |record_opt, (ref k, ref v)| {
                             record_opt.and_then(|record| match v {
-                                &&Value::Number(ref num) => if num.is_i64() {
+                                &&JsonValue::Number(ref num) => if num.is_i64() {
                                     Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
                                 } else {
                                     Some(record.put(k, data::Value::Float(num.as_f64().unwrap())))
                                 },
-                                &&Value::String(ref s) => {
+                                &&JsonValue::String(ref s) => {
                                     Some(record.put(k, data::Value::Str(s.to_string())))
                                 }
-                                &&Value::Null => Some(record.put(k, data::Value::None)),
+                                &&JsonValue::Null => Some(record.put(k, data::Value::None)),
                                 _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
                             })
                         })
@@ -473,5 +475,42 @@ mod tests {
                     hashmap!{"k1".to_string() => data::Value::Str("$None$".to_string()), "_count".to_string() => data::Value::Int(3)}, 
             ]
         );
+    }
+
+    #[test]
+    fn test_sort_raw() {}
+
+    #[test]
+    fn test_sort_aggregate() {
+        let agg = Aggregate::new(
+            vec!["kc1".to_string(), "kc2".to_string()],
+            "count".to_string(),
+            vec![
+                (
+                    hashmap!{
+                        "kc1".to_string() => "k1".to_string(),
+                        "kc2".to_string() => "k2".to_string()
+                    },
+                    Value::Int(100),
+                ),
+                (
+                    hashmap!{
+                        "kc1".to_string() => "k300".to_string(),
+                        "kc2".to_string() => "k40000".to_string()
+                    },
+                    Value::Int(500),
+                ),
+            ],
+        );
+        let mut sorter = Sorter::new(vec!["count".to_string()], SortDirection::Ascending);
+        sorter.process(&data::Row::Aggregate(agg.clone()));
+        assert_eq!(sorter.emit(), agg.clone());
+
+        let mut sorter = Sorter::new(vec!["count".to_string()], SortDirection::Descending);
+        sorter.process(&data::Row::Aggregate(agg.clone()));
+
+        let mut revagg = agg.clone();
+        revagg.data.reverse();
+        assert_eq!(sorter.emit(), revagg);
     }
 }

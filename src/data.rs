@@ -13,13 +13,8 @@ pub enum Row {
     Record(Record),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Aggregate {
-    // key columns ["v1", "v2", "v3"]
-    // agg column "_count"
-    // pub key_columns: Vec<String>,
-    // pub agg_column: String,
-    // [{v2: "a", "v2": "b", "v3": c}, 99]
-    // [5]
     pub columns: Vec<String>,
     pub data: Vec<VMap>,
 }
@@ -222,11 +217,11 @@ mod tests {
 
     #[test]
     fn test_ordering() {
-        let mut r1 = HashMap::<String,Value>::new();
+        let mut r1 = HashMap::<String, Value>::new();
         r1.insert("k1".to_string(), Value::Int(5));
         r1.insert("k3".to_string(), Value::Float(0.1));
         r1.insert("k2".to_string(), Value::Str("abc".to_string()));
-        let mut r2 = HashMap::<String,Value>::new();
+        let mut r2 = HashMap::<String, Value>::new();
         r2.insert("k1".to_string(), Value::Int(4));
         r2.insert("k2".to_string(), Value::Str("xyz".to_string()));
         r2.insert("k3".to_string(), Value::Float(0.1));

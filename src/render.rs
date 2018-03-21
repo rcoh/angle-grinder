@@ -133,7 +133,9 @@ impl PrettyPrinter {
             .map(|column_name| {
                 format!(
                     "{:width$}",
-                    row.get(column_name).unwrap_or(&data::Value::None).render(&self.render_config),
+                    row.get(column_name)
+                        .unwrap_or(&data::Value::None)
+                        .render(&self.render_config),
                     width = self.column_widths.get(column_name).unwrap()
                 )
             })

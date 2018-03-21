@@ -327,7 +327,9 @@ mod tests {
                         }),
                         Operator::Aggregate(AggregateOperator {
                             key_cols: vec!["foo".to_string()],
-                            aggregate_function: AggregateFunction::Sort { mode: SortMode::Descending },
+                            aggregate_function: AggregateFunction::Sort {
+                                mode: SortMode::Descending,
+                            },
                             output_column: None,
                         }),
                     ],

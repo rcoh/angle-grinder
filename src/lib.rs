@@ -73,7 +73,7 @@ pub mod pipeline {
                 AggregateFunction::Sort { mode } => {
                     let mode = match mode {
                         SortMode::Ascending => operator::SortDirection::Ascending,
-                        SortMode::Descending => operator::SortDirection::Descending
+                        SortMode::Descending => operator::SortDirection::Descending,
                     };
                     Box::new(operator::Sorter::new(op.key_cols, mode))
                 }
