@@ -1,7 +1,8 @@
 # angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder)
 Slice and dice log files on the command line. 
 
-Not the fanciest way to analyze log files, but, much like an angle-grinder, it will probably work. If you've ever been tailing log files and wished you could have just a _little_ bit more power, this is for you.
+Specifically, angle-grinder allows you to parse (json included), aggregate, sum, average, percentile, sort your data, then view it, live-updating, in your terminal. Angle-grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want want the same ability to do quick analyses.
+
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
 
@@ -40,6 +41,20 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 - `sum(column) [by a, b] [as sum_column]`: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 - `average(column) [by a, b] as [average_column]`: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 - `pXX(column) [by a, b] [as pct_column]` eg. `p50(col)`, `p05(col)`, `p99(col)` calculate the XXth percentile of `column`.
+- `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
+
+### Example Queries
+- Take the 50th percentile of response time by host:
+```
+tail -F my_json_logs | 'ag * | json | pct50(response_time) by url 
+```
+- Count the number of status codes by url:
+```
+tail -F  my_json_logs | 'ag * | json | count status_code by url
+```
+
+
+
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
 ```
@@ -64,5 +79,5 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 ### Contributing
 See the open issues for potential improvements/issues.
 
-### Acknowledgements
+### Related Work 
 Angle Grinder is [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
