@@ -111,13 +111,9 @@ impl Aggregate {
 }
 
 impl Record {
-    pub fn put(&self, key: &str, value: Value) -> Record {
-        let mut new_map = self.data.clone();
-        new_map.insert(key.to_string(), value);
-        Record {
-            data: new_map,
-            raw: self.raw.clone(),
-        }
+    pub fn put(mut self, key: &str, value: Value) -> Record {
+        self.data.insert(key.to_string(), value);
+        self
     }
 
     pub fn new(raw: &str) -> Record {

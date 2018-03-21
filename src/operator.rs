@@ -15,7 +15,7 @@ use self::serde_json::Value as JsonValue;
 
 type Data = HashMap<String, data::Value>;
 pub trait UnaryPreAggOperator {
-    fn process(&self, rec: &Record) -> Option<Record>;
+    fn process(&self, rec: Record) -> Option<Record>;
 }
 
 pub trait AggregateOperator {
@@ -324,22 +324,52 @@ impl Parse {
             })
         }
     }
-}
 
-impl UnaryPreAggOperator for Parse {
-    fn process(&self, rec: &Record) -> Option<Record> {
+    fn matches(&self, rec: &Record) -> Option<Vec<data::Value>> {
         let matches: Vec<regex::Captures> = self.regex.captures_iter(&rec.raw).collect();
         if matches.len() == 0 {
             None
         } else {
             let capture = &matches[0];
-            let mut rec = rec.clone();
+            let mut values: Vec<data::Value> = Vec::new();
             for i in 0..self.fields.len() {
                 // the first capture is the entire string
-                rec = rec.put(&self.fields[i], data::Value::from_string(&capture[i + 1]));
+                values.push(data::Value::from_string(&capture[i+1]));
+            }
+            Some(values)
+        }
+    }
+}
+
+impl UnaryPreAggOperator for Parse {
+    fn process(&self, rec: Record) -> Option<Record> {
+        let matches = self.matches(&rec);
+        match matches {
+            None => None,
+            Some(matches) => {
+                let mut rec = rec;
+                for i in 0..self.fields.len() {
+                    rec = rec.put(&self.fields[i], matches[i].clone());
+                }
+                Some(rec)
+            }
+        }
+
+        /*
+        if matches.len() == 0 {
+            None
+        } else {
+            {
+                let capture = &matches[0];
+                let mut values: Vec<data::Value> = Vec::new();
+                for i in 0..self.fields.len() {
+                    values.push(data::Value::from_string(&capture[i+1]));
+                    // the first capture is the entire string
+                    // rec = rec.put(&self.fields[i], data::Value::from_string(&capture[i + 1]));
+                }
             }
             Some(rec)
-        }
+        }*/
     }
 }
 
@@ -347,11 +377,10 @@ pub struct ParseJson {
         // any options here
 }
 impl UnaryPreAggOperator for ParseJson {
-    fn process(&self, rec: &Record) -> Option<Record> {
+    fn process(&self, rec: Record) -> Option<Record> {
         match serde_json::from_str(&rec.raw) {
             Ok(v) => {
                 let v: JsonValue = v;
-                let rec: Record = rec.clone();
                 match v {
                     JsonValue::Object(map) => {
                         map.iter().fold(Some(rec), |record_opt, (ref k, ref v)| {
@@ -388,7 +417,7 @@ mod tests {
     fn test_json() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#);
         let parser = ParseJson {};
-        let rec = parser.process(&rec).unwrap();
+        let rec = parser.process(rec).unwrap();
         assert_eq!(
             rec.data,
             hashmap!{
@@ -413,7 +442,7 @@ mod tests {
                 "length".to_string(),
             ],
         ).unwrap();
-        let rec = parser.process(&rec).unwrap();
+        let rec = parser.process(rec).unwrap();
         assert_eq!(
             rec.data.get("sender").unwrap(),
             &Value::Str("10.0.2.243.53938".to_string())

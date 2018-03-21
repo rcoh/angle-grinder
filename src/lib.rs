@@ -143,7 +143,7 @@ pub mod pipeline {
             if self.matches(&s) {
                 let mut rec = Record::new(s);
                 for pre_agg in &self.pre_aggregates {
-                    match (*pre_agg).process(&rec) {
+                    match (*pre_agg).process(rec) {
                         Some(next_rec) => rec = next_rec,
                         None => return,
                     }
