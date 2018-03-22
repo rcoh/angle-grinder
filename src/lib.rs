@@ -49,32 +49,31 @@ pub mod pipeline {
             match op.aggregate_function {
                 AggregateFunction::Count => Box::new(operator::Grouper::<operator::Count>::new(
                     op.key_cols.iter().map(AsRef::as_ref).collect(),
-                    &op.output_column.unwrap_or("_count".to_string()),
+                    &op.output_column,
                     operator::Count::new(),
                 )),
                 AggregateFunction::Average { column } => {
                     Box::new(operator::Grouper::<operator::Average>::new(
                         op.key_cols.iter().map(AsRef::as_ref).collect(),
-                        &op.output_column.unwrap_or("_average".to_string()),
+                        &op.output_column,
                         operator::Average::empty(column),
                     ))
                 }
                 AggregateFunction::Sum { column } => {
                     Box::new(operator::Grouper::<operator::Sum>::new(
                         op.key_cols.iter().map(AsRef::as_ref).collect(),
-                        &op.output_column.unwrap_or("_sum".to_string()),
+                        &op.output_column,
                         operator::Sum::empty(column),
                     ))
                 }
                 AggregateFunction::Percentile {
                     column,
                     percentile,
-                    percentile_str,
+                    ..
                 } => {
-                    let column_name = format!("_p{}", percentile_str);
                     Box::new(operator::Grouper::<operator::Percentile>::new(
                         op.key_cols.iter().map(AsRef::as_ref).collect(),
-                        &op.output_column.unwrap_or(column_name),
+                        &op.output_column,
                         operator::Percentile::empty(column, percentile),
                     ))
                 }

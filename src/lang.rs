@@ -50,7 +50,7 @@ pub enum AggregateFunction {
 pub struct AggregateOperator {
     pub key_cols: Vec<String>,
     pub aggregate_function: AggregateFunction,
-    pub output_column: Option<String>,
+    pub output_column: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -141,14 +141,23 @@ named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator | sor
 // count by x,y
 // avg(foo) by x
 
+fn default_output(func: &AggregateFunction) -> String {
+    match func {
+        &AggregateFunction::Count { .. } => "_count".to_string(),
+        &AggregateFunction::Sum { .. } => "_sum".to_string(),
+        &AggregateFunction::Average { .. } => "_average".to_string(),
+        &AggregateFunction::Percentile { ref percentile_str, .. } => "p".to_string() + percentile_str
+    }
+}
+
 named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
     agg_function: aggregate_function >>
     key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
     rename_opt: opt!(preceded!(tag!("as"), ident)) >>
     (Operator::Aggregate(AggregateOperator{
         key_cols: vec_str_vec_string(key_cols_opt.unwrap_or(vec![])),
+        output_column: rename_opt.map(|s|s.to_string()).unwrap_or(default_output(&agg_function)),
         aggregate_function: agg_function,
-        output_column: rename_opt.map(|s|s.to_string())
      })))
 ));
 
@@ -268,7 +277,7 @@ mod tests {
                 Operator::Aggregate(AggregateOperator {
                     key_cols: vec_str_vec_string(vec!["x", "y"]),
                     aggregate_function: AggregateFunction::Count,
-                    output_column: Some("renamed".to_string()),
+                    output_column: "renamed".to_string(),
                 })
             ))
         );
@@ -287,7 +296,7 @@ mod tests {
                         percentile: 0.5,
                         percentile_str: "50".to_string(),
                     },
-                    output_column: None,
+                    output_column: "p50".to_string(),
                 })
             ))
         );
@@ -326,7 +335,7 @@ mod tests {
                         Operator::Aggregate(AggregateOperator {
                             key_cols: vec!["foo".to_string()],
                             aggregate_function: AggregateFunction::Count {},
-                            output_column: None,
+                            output_column: "_count".to_string(),
                         }),
                         Operator::Sort(SortOperator {
                             sort_cols: vec!["foo".to_string()],
