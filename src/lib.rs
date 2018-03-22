@@ -37,6 +37,14 @@ pub mod pipeline {
             }
         }
 
+        fn convert_sort(op: lang::SortOperator) -> Box<operator::AggregateOperator> {
+            let mode = match op.direction {
+                SortMode::Ascending => operator::SortDirection::Ascending,
+                SortMode::Descending => operator::SortDirection::Descending,
+            };
+            Box::new(operator::Sorter::new(op.sort_cols, mode))
+        }
+
         fn convert_agg(op: lang::AggregateOperator) -> Box<operator::AggregateOperator> {
             match op.aggregate_function {
                 AggregateFunction::Count => Box::new(operator::Grouper::<operator::Count>::new(
@@ -70,13 +78,6 @@ pub mod pipeline {
                         operator::Percentile::empty(column, percentile),
                     ))
                 }
-                AggregateFunction::Sort { mode } => {
-                    let mode = match mode {
-                        SortMode::Ascending => operator::SortDirection::Ascending,
-                        SortMode::Descending => operator::SortDirection::Descending,
-                    };
-                    Box::new(operator::Sorter::new(op.key_cols, mode))
-                }
             }
         }
 
@@ -100,6 +101,9 @@ pub mod pipeline {
                     Operator::Aggregate(agg_op) => {
                         in_agg = true;
                         post_agg.push(Pipeline::convert_agg(agg_op))
+                    }
+                    Operator::Sort(sort_op) => {
+                        post_agg.push(Pipeline::convert_sort(sort_op))
                     }
                 }
             }

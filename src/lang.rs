@@ -12,6 +12,7 @@ pub enum Search {
 pub enum Operator {
     Inline(InlineOperator),
     Aggregate(AggregateOperator),
+    Sort(SortOperator)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,9 +44,6 @@ pub enum AggregateFunction {
         percentile_str: String,
         column: String,
     },
-    Sort {
-        mode: SortMode,
-    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -53,6 +51,12 @@ pub struct AggregateOperator {
     pub key_cols: Vec<String>,
     pub aggregate_function: AggregateFunction,
     pub output_column: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SortOperator {
+    pub sort_cols: Vec<String>,
+    pub direction: SortMode
 }
 
 #[derive(Debug, PartialEq)]
@@ -163,10 +167,9 @@ named!(sort<&str, Operator>, ws!(do_parse!(
     tag!("sort") >>
     key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
     dir: opt!(sort_mode) >>
-    (Operator::Aggregate(AggregateOperator{
-        key_cols: vec_str_vec_string(key_cols_opt.unwrap_or(vec![])),
-        aggregate_function: AggregateFunction::Sort { mode: dir.unwrap_or(SortMode::Ascending) },
-        output_column: None
+    (Operator::Sort(SortOperator{
+        sort_cols: vec_str_vec_string(key_cols_opt.unwrap_or(vec![])),
+        direction: dir.unwrap_or(SortMode::Ascending) ,
      })))
 ));
 
@@ -325,12 +328,9 @@ mod tests {
                             aggregate_function: AggregateFunction::Count {},
                             output_column: None,
                         }),
-                        Operator::Aggregate(AggregateOperator {
-                            key_cols: vec!["foo".to_string()],
-                            aggregate_function: AggregateFunction::Sort {
-                                mode: SortMode::Descending,
-                            },
-                            output_column: None,
+                        Operator::Sort(SortOperator {
+                            sort_cols: vec!["foo".to_string()],
+                            direction: SortMode::Descending,
                         }),
                     ],
                 }
