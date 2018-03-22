@@ -67,16 +67,12 @@ pub mod pipeline {
                     ))
                 }
                 AggregateFunction::Percentile {
-                    column,
-                    percentile,
-                    ..
-                } => {
-                    Box::new(operator::Grouper::<operator::Percentile>::new(
-                        op.key_cols.iter().map(AsRef::as_ref).collect(),
-                        &op.output_column,
-                        operator::Percentile::empty(column, percentile),
-                    ))
-                }
+                    column, percentile, ..
+                } => Box::new(operator::Grouper::<operator::Percentile>::new(
+                    op.key_cols.iter().map(AsRef::as_ref).collect(),
+                    &op.output_column,
+                    operator::Percentile::empty(column, percentile),
+                )),
             }
         }
 
@@ -90,6 +86,18 @@ pub mod pipeline {
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
+            let final_op = {
+                let last_op = &(query.operators).last();
+                match last_op {
+                    &Some(&Operator::Aggregate(ref agg_op)) => {
+                        Some(Pipeline::convert_sort(SortOperator {
+                            sort_cols: vec![agg_op.output_column.clone()],
+                            direction: SortMode::Descending,
+                        }))
+                    }
+                    _other => None,
+                }
+            };
             for op in query.operators {
                 match op {
                     Operator::Inline(inline_op) => if !in_agg {
@@ -101,11 +109,13 @@ pub mod pipeline {
                         in_agg = true;
                         post_agg.push(Pipeline::convert_agg(agg_op))
                     }
-                    Operator::Sort(sort_op) => {
-                        post_agg.push(Pipeline::convert_sort(sort_op))
-                    }
+                    Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
                 }
             }
+            match final_op {
+                Some(op) => post_agg.push(op),
+                None => (),
+            };
             Result::Ok(Pipeline {
                 filter: query.search,
                 pre_aggregates: pre_agg,

@@ -6,7 +6,6 @@ extern crate regex_syntax;
 extern crate serde_json;
 use std::collections::HashMap;
 use std::iter::FromIterator;
-use self::ord_subset::OrdSubsetSliceExt;
 use data::{Aggregate, Record, Row};
 use data;
 use self::quantiles::ckms::CKMS;
@@ -273,7 +272,7 @@ impl<T: AggregateFunction> Grouper<T> {
 
 impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
     fn emit(&self) -> data::Aggregate {
-        let mut data: Vec<(HashMap<String, String>, data::Value)> = self.state
+        let data: Vec<(HashMap<String, String>, data::Value)> = self.state
             .iter()
             .map(|(ref key_cols, ref accum)| {
                 let key_value =
@@ -282,10 +281,6 @@ impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
                 (res_map, accum.emit())
             })
             .collect();
-        // TODO: remove this sort, replace with implicit sort operator at end
-        // when not specified explicitly
-        data.ord_subset_sort_by_key(|ref kv| kv.1.clone());
-        data.reverse();
         Aggregate::new(self.key_cols.clone(), self.agg_col.clone(), data)
     }
 
@@ -334,7 +329,7 @@ impl Parse {
             let mut values: Vec<data::Value> = Vec::new();
             for i in 0..self.fields.len() {
                 // the first capture is the entire string
-                values.push(data::Value::from_string(&capture[i+1]));
+                values.push(data::Value::from_string(&capture[i + 1]));
             }
             Some(values)
         }
@@ -354,22 +349,6 @@ impl UnaryPreAggOperator for Parse {
                 Some(rec)
             }
         }
-
-        /*
-        if matches.len() == 0 {
-            None
-        } else {
-            {
-                let capture = &matches[0];
-                let mut values: Vec<data::Value> = Vec::new();
-                for i in 0..self.fields.len() {
-                    values.push(data::Value::from_string(&capture[i+1]));
-                    // the first capture is the entire string
-                    // rec = rec.put(&self.fields[i], data::Value::from_string(&capture[i + 1]));
-                }
-            }
-            Some(rec)
-        }*/
     }
 }
 
@@ -412,6 +391,7 @@ mod tests {
     use data::Value;
     use super::*;
     use operator::itertools::Itertools;
+    use self::ord_subset::OrdSubsetSliceExt;
 
     #[test]
     fn test_json() {
@@ -493,8 +473,10 @@ mod tests {
             count_agg.process(&Row::Record(rec));
         });
         let agg = count_agg.emit();
-        assert_eq!(
-            agg.data,
+        let mut sorted_data = agg.data.clone();
+        sorted_data.ord_subset_sort_by_key(|ref kv| kv.get("_count").unwrap().clone());
+        sorted_data.reverse();
+        assert_eq!(sorted_data,
             vec![
                     hashmap!{
                         "k1".to_string() => data::Value::Str("not ok".to_string()), 

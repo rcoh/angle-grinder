@@ -12,7 +12,7 @@ pub enum Search {
 pub enum Operator {
     Inline(InlineOperator),
     Aggregate(AggregateOperator),
-    Sort(SortOperator)
+    Sort(SortOperator),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -56,7 +56,7 @@ pub struct AggregateOperator {
 #[derive(Debug, PartialEq)]
 pub struct SortOperator {
     pub sort_cols: Vec<String>,
-    pub direction: SortMode
+    pub direction: SortMode,
 }
 
 #[derive(Debug, PartialEq)]
@@ -146,7 +146,9 @@ fn default_output(func: &AggregateFunction) -> String {
         &AggregateFunction::Count { .. } => "_count".to_string(),
         &AggregateFunction::Sum { .. } => "_sum".to_string(),
         &AggregateFunction::Average { .. } => "_average".to_string(),
-        &AggregateFunction::Percentile { ref percentile_str, .. } => "p".to_string() + percentile_str
+        &AggregateFunction::Percentile {
+            ref percentile_str, ..
+        } => "p".to_string() + percentile_str,
     }
 }
 
@@ -169,7 +171,7 @@ named!(sort_mode<&str, SortMode>, alt!(
     map!(
         alt!(tag!("desc") | tag!("dsc") | tag!("descending")),
         |_|SortMode::Descending
-    ) 
+    )
 ));
 
 named!(sort<&str, Operator>, ws!(do_parse!(
