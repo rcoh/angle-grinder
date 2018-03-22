@@ -37,7 +37,7 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 ![json.gif](/screen_shots/json.gif)
 - `parse "* pattern * otherpattern *" as a,b,c`: Parse text that matches the pattern into variables. Lines that don't match this pattern will be dropped. `*` is equivalent to `.*` and is greedy.
 ![parse.gif](/screen_shots/parse.gif)
-- `count [by a, b] [as count_column]`: Count (potentially by key columns). Defaults to `_count` unless overridden with an `as` clause.
+- `count [by a, b] [as count_column]`: Count (potentially by key columns). Defaults to `_count` unless overridden with an `as` clause. eg: `* | count by source_host`
 - `sum(column) [by a, b] [as sum_column]`: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 - `average(column) [by a, b] as [average_column]`: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 - `pXX(column) [by a, b] [as pct_column]` eg. `p50(col)`, `p05(col)`, `p99(col)` calculate the XXth percentile of `column`.
