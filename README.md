@@ -45,6 +45,25 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 - `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
 
 ### Example Queries
+- Count the number of downloads by release (in combination with jq)
+``` 
+curl https://api.github.com/repos/rcoh/angle-grinder/releases \
+   | jq '.[] | .assets | .[]' -c \
+   | ag '* | json | sum(download_count) by browser_download_url'
+```
+Output:
+```
+browser_download_url                                                                                                        _sum
+-------------------------------------------------------------------------------------------------------------------------------------
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-unknown-linux-musl.tar.gz        8
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-unknown-linux-gnu.tar.gz         6
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.2/angle_grinder-v0.3.2-x86_64-unknown-linux-musl.tar.gz        2
+https://github.com/rcoh/angle-grinder/releases/download/v0.5.0/angle_grinder-v0.5.0-x86_64-unknown-linux-musl.tar.gz        2
+https://github.com/rcoh/angle-grinder/releases/download/v0.5.0/angle_grinder-v0.5.0-x86_64-apple-darwin.tar.gz              2
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-apple-darwin.tar.gz              1
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-apple-darwin.tar.gz              1
+https://github.com/rcoh/angle-grinder/releases/download/v0.2.0/angle_grinder-v0.2.0-x86_64-unknown-linux-gnu.tar.gz         1
+```
 - Take the 50th percentile of response time by host:
 ```
 tail -F my_json_logs | 'ag * | json | pct50(response_time) by url 
@@ -53,8 +72,6 @@ tail -F my_json_logs | 'ag * | json | pct50(response_time) by url
 ```
 tail -F  my_json_logs | 'ag * | json | count status_code by url
 ```
-
-
 
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
