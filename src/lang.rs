@@ -176,7 +176,7 @@ named!(sort_mode<&str, SortMode>, alt!(
 
 named!(sort<&str, Operator>, ws!(do_parse!(
     tag!("sort") >>
-    key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
+    key_cols_opt: opt!(preceded!(opt!(tag!("by")), var_list)) >>
     dir: opt!(sort_mode) >>
     (Operator::Sort(SortOperator{
         sort_cols: vec_str_vec_string(key_cols_opt.unwrap_or(vec![])),
