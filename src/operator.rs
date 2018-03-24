@@ -271,6 +271,7 @@ impl<T: AggregateFunction> Grouper<T> {
 
 impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
     fn emit(&self) -> data::Aggregate {
+        // TODO: restructure to avoid reallocating everything on emit
         let data: Vec<(HashMap<String, String>, data::Value)> = self.state
             .iter()
             .map(|(ref key_cols, ref accum)| {
