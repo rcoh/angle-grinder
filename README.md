@@ -3,7 +3,7 @@ Slice and dice log files on the command line.
 
 Specifically, angle-grinder allows you to parse (json included), aggregate, sum, average, percentile, sort your data, then view it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want want the same ability to do quick analyses.
 
-Angle grinder is decently quick (~250k rows per second), so it's usable for 100-500MB files, but probably not GBs unless you are very patient. The results are streaming, however, so you'll start getting results immediately. There are definitely avenues for optimization.
+Angle grinder is decently quick (~250k-1M rows per second), so it's usable for 100-500MB files, but probably not GBs unless you are very patient. The results are streaming, however, so you'll start getting results immediately. There are definitely avenues for optimization.
 
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
