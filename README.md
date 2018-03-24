@@ -1,7 +1,9 @@
 # angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder)
 Slice and dice log files on the command line. 
 
-Specifically, angle-grinder allows you to parse (json included), aggregate, sum, average, percentile, sort your data, then view it, live-updating, in your terminal. Angle-grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want want the same ability to do quick analyses.
+Specifically, angle-grinder allows you to parse (json included), aggregate, sum, average, percentile, sort your data, then view it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want want the same ability to do quick analyses.
+
+Angle grinder is decently quick (~100k rows per second), so it's usable for 100-500MB files, but probably not GBs unless you are very patient. The results are streaming, however, so you'll start getting results immediately. There are definitely avenues for optimization.
 
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
@@ -20,7 +22,6 @@ curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.5.0/angle_gri
 ```
 
 ## Query Synax
-
 
 ```
 <filter> | operator1 | operator2 | operator3 | ...
@@ -77,6 +78,13 @@ hello thanks        2.00
 The renderer will do its best to keep the data nicely formatted as it changes and the number of output rows is limited to the length of your terminal.
 
 ### Contributing
+`angle-grinder` builds with stable rust:
+```
+cargo build
+cargo test
+cargo install
+```
+
 See the open issues for potential improvements/issues.
 
 ### Related Work 
