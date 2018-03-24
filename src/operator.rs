@@ -19,7 +19,7 @@ pub trait UnaryPreAggOperator {
 
 pub trait AggregateOperator {
     fn emit(&self) -> data::Aggregate;
-    fn process(&mut self, row: &Row);
+    fn process(&mut self, row: Row);
 }
 
 pub trait AggregateFunction: Clone {
@@ -211,22 +211,22 @@ impl AggregateOperator for Sorter {
         }
     }
 
-    fn process(&mut self, row: &Row) {
+    fn process(&mut self, row: Row) {
         let order = &self.ordering;
         match row {
-            &Row::Aggregate(ref agg) => {
-                self.columns = agg.columns.clone();
-                self.state = agg.data.clone();
+            Row::Aggregate(agg) => {
+                self.columns = agg.columns;
+                self.state = agg.data;
                 if self.direction == SortDirection::Ascending {
                     self.state.sort_by(|l, r| (order)(l, r));
                 } else {
                     self.state.sort_by(|l, r| (order)(r, l));
                 }
             }
-            &Row::Record(ref rec) => {
-                self.state.push(rec.data.clone());
-                self.state.sort_by(|l, r| (order)(l, r));
+            Row::Record(rec) => {
                 let new_cols = self.new_columns(&rec.data);
+                self.state.push(rec.data);
+                self.state.sort_by(|l, r| (order)(l, r));
                 self.columns.extend(new_cols);
             }
         }
@@ -250,23 +250,22 @@ impl<T: AggregateFunction> Grouper<T> {
         }
     }
 
-    fn process_map(&mut self, data: &Data) {
+    fn process_map(&mut self, data: Data) {
         let key_values: Vec<Option<&data::Value>> = self.key_cols
             .iter()
-            .cloned()
-            .map(|column| data.get(&column))
+            .map(|column| data.get(column))
             .collect();
         let key_columns: Vec<String> = key_values
             .iter()
-            .cloned()
             .map(|value_opt| {
                 value_opt
                     .map(|value| value.to_string())
                     .unwrap_or("$None$".to_string())
             })
             .collect();
+        // TODO: potential performance issue, can make code less clean to make clone lazy.
         let accum = self.state.entry(key_columns).or_insert(self.empty.clone());
-        accum.process(data);
+        accum.process(&data);
     }
 }
 
@@ -284,14 +283,16 @@ impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
         Aggregate::new(self.key_cols.clone(), self.agg_col.clone(), data)
     }
 
-    fn process(&mut self, row: &Row) {
+    fn process(&mut self, row: Row) {
         match row {
-            &Row::Record(ref rec) => {
-                self.process_map(&rec.data);
+            Row::Record(rec) => {
+                self.process_map(rec.data);
             }
-            &Row::Aggregate(ref ag) => {
+            Row::Aggregate(ag) => {
                 self.state.clear();
-                ag.data.iter().for_each(|row| self.process_map(row));
+                for row in ag.data {
+                    self.process_map(row);
+                }
             }
         }
     }
@@ -439,7 +440,7 @@ mod tests {
         let mut count_agg = Grouper::<Count>::new(Vec::new(), "_count", Count::new());
         (0..10)
             .map(|n| Record::new(&n.to_string()))
-            .foreach(|rec| count_agg.process(&Row::Record(rec)));
+            .foreach(|rec| count_agg.process(Row::Record(rec)));
         let agg = count_agg.emit();
         assert_eq!(agg.columns, vec!["_count"]);
         assert_eq!(
@@ -448,7 +449,7 @@ mod tests {
         );
         (0..10)
             .map(|n| Record::new(&n.to_string()))
-            .foreach(|rec| count_agg.process(&Row::Record(rec)));
+            .foreach(|rec| count_agg.process(Row::Record(rec)));
         assert_eq!(
             count_agg.emit().data,
             vec![hashmap!{"_count".to_string() => data::Value::Int(20)}]
@@ -461,16 +462,16 @@ mod tests {
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
-            count_agg.process(&Row::Record(rec));
+            count_agg.process(Row::Record(rec));
         });
         (0..25).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("not ok".to_string()));
-            count_agg.process(&Row::Record(rec));
+            count_agg.process(Row::Record(rec));
         });
         (0..3).foreach(|n| {
             let rec = Record::new(&n.to_string());
-            count_agg.process(&Row::Record(rec));
+            count_agg.process(Row::Record(rec));
         });
         let agg = count_agg.emit();
         let mut sorted_data = agg.data.clone();
@@ -514,11 +515,11 @@ mod tests {
             ],
         );
         let mut sorter = Sorter::new(vec!["count".to_string()], SortDirection::Ascending);
-        sorter.process(&data::Row::Aggregate(agg.clone()));
+        sorter.process(data::Row::Aggregate(agg.clone()));
         assert_eq!(sorter.emit(), agg.clone());
 
         let mut sorter = Sorter::new(vec!["count".to_string()], SortDirection::Descending);
-        sorter.process(&data::Row::Aggregate(agg.clone()));
+        sorter.process(data::Row::Aggregate(agg.clone()));
 
         let mut revagg = agg.clone();
         revagg.data.reverse();

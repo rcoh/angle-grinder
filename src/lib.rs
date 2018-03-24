@@ -164,7 +164,7 @@ pub mod pipeline {
 
                 let mut row = Row::Record(rec);
                 for agg in self.aggregators.iter_mut() {
-                    (*agg).process(&row);
+                    (*agg).process(row);
                     row = Row::Aggregate((*agg).emit());
                 }
                 self.renderer.render(&row, false);
