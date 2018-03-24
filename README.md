@@ -3,7 +3,7 @@ Slice and dice log files on the command line.
 
 Specifically, angle-grinder allows you to parse (json included), aggregate, sum, average, percentile, sort your data, then view it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want want the same ability to do quick analyses.
 
-Angle grinder is decently quick (~100k rows per second), so it's usable for 100-500MB files, but probably not GBs unless you are very patient. The results are streaming, however, so you'll start getting results immediately. There are definitely avenues for optimization.
+Angle grinder is decently quick (~250k-1M rows per second), so it's usable for 100-500MB files, but probably not GBs unless you are very patient. The results are streaming, however, so you'll start getting results immediately. There are definitely avenues for optimization.
 
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
@@ -45,6 +45,25 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 - `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
 
 ### Example Queries
+- Count the number of downloads by release (in combination with jq)
+``` 
+curl https://api.github.com/repos/rcoh/angle-grinder/releases \
+   | jq '.[] | .assets | .[]' -c \
+   | ag '* | json | sum(download_count) by browser_download_url'
+```
+Output:
+```
+browser_download_url                                                                                                        _sum
+-------------------------------------------------------------------------------------------------------------------------------------
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-unknown-linux-musl.tar.gz        8
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-unknown-linux-gnu.tar.gz         6
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.2/angle_grinder-v0.3.2-x86_64-unknown-linux-musl.tar.gz        2
+https://github.com/rcoh/angle-grinder/releases/download/v0.5.0/angle_grinder-v0.5.0-x86_64-unknown-linux-musl.tar.gz        2
+https://github.com/rcoh/angle-grinder/releases/download/v0.5.0/angle_grinder-v0.5.0-x86_64-apple-darwin.tar.gz              2
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-apple-darwin.tar.gz              1
+https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-apple-darwin.tar.gz              1
+https://github.com/rcoh/angle-grinder/releases/download/v0.2.0/angle_grinder-v0.2.0-x86_64-unknown-linux-gnu.tar.gz         1
+```
 - Take the 50th percentile of response time by host:
 ```
 tail -F my_json_logs | 'ag * | json | pct50(response_time) by url 
@@ -53,8 +72,6 @@ tail -F my_json_logs | 'ag * | json | pct50(response_time) by url
 ```
 tail -F  my_json_logs | 'ag * | json | count status_code by url
 ```
-
-
 
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
