@@ -50,4 +50,18 @@ info        3\nerror       2\n$None$      1")
             .is("_count\n---------\n3")
             .unwrap();
     }
+
+    #[test]
+    fn test_json_from() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"* | parse "* *" as lev, js | json from js | count by level"#,
+                "--file",
+                "test_files/test_partial_json.log",
+            ])
+            .stdout()
+            .is("level       _count\n---------------------
+info        3\nerror       2\n$None$      1")
+            .unwrap();
+    }
 }

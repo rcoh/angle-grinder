@@ -17,10 +17,13 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum InlineOperator {
-    Json,
+    Json {
+        input_column: Option<String>,
+    },
     Parse {
         pattern: String,
         fields: Vec<String>,
+        input_column: Option<String>,
     },
 }
 
@@ -79,7 +82,11 @@ fn vec_str_vec_string(vec: Vec<&str>) -> Vec<String> {
 
 named!(ident<&str, &str>, ws!(take_while1!(is_ident)));
 
-named!(json<&str, InlineOperator>, map!(ws!(tag!("json")), |_s|InlineOperator::Json));
+named!(json<&str, InlineOperator>, ws!(do_parse!(
+    tag!("json") >>
+    from_column_opt: opt!(preceded!(tag!("from"), ident)) >>
+    (InlineOperator::Json { input_column: from_column_opt.map(|s|s.to_string()) })
+)));
 
 named!(quoted_string <&str, &str>, delimited!(
     tag!("\""), 
@@ -91,15 +98,18 @@ named!(var_list<&str, Vec<&str> >, ws!(separated_nonempty_list!(
     tag!(","), ident
 )));
 
-// parse "blah * ... *" as x, y
+// parse "blah * ... *" [from other_field] as x, y
 named!(parse<&str, InlineOperator>, ws!(do_parse!(
     tag!("parse") >>
     pattern: quoted_string >>
+    from_column_opt: opt!(preceded!(tag!("from"), ident)) >>
     tag!("as") >>
     vars: var_list >>
     ( InlineOperator::Parse{
         pattern: pattern.replace("\\\"", "\""),
-        fields: vec_str_vec_string(vars)} )
+        fields: vec_str_vec_string(vars),
+        input_column: from_column_opt.map(|s|s.to_string())
+        } )
 )));
 
 named!(count<&str, AggregateFunction>, map!(tag!("count"), |_s|AggregateFunction::Count{}));
@@ -237,6 +247,7 @@ mod tests {
                 InlineOperator::Parse {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
+                    input_column: None,
                 }
             ))
         );
@@ -247,6 +258,7 @@ mod tests {
                 InlineOperator::Parse {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
+                    input_column: None,
                 }
             ))
         );
@@ -256,15 +268,19 @@ mod tests {
     fn test_operator() {
         assert_eq!(
             operator("  json!"),
-            Ok(("!", Operator::Inline(InlineOperator::Json)))
+            Ok((
+                "!",
+                Operator::Inline(InlineOperator::Json { input_column: None })
+            ))
         );
         assert_eq!(
-            operator(r#" parse "[key=*]" as v !"#),
+            operator(r#" parse "[key=*]" from field as v !"#),
             Ok((
                 "!",
                 Operator::Inline(InlineOperator::Parse {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
+                    input_column: Some("field".to_string()),
                 })
             ))
         );
@@ -321,7 +337,8 @@ mod tests {
 
     #[test]
     fn test_query_operators() {
-        let query_str = r#"* | json | parse "!123*" as foo | count by foo | sort by foo dsc !"#;
+        let query_str =
+            r#"* | json from col | parse "!123*" as foo | count by foo | sort by foo dsc !"#;
         assert_eq!(
             parse_query(query_str),
             Ok((
@@ -329,10 +346,13 @@ mod tests {
                 Query {
                     search: Search::MatchAll,
                     operators: vec![
-                        Operator::Inline(InlineOperator::Json),
+                        Operator::Inline(InlineOperator::Json {
+                            input_column: Some("col".to_string()),
+                        }),
                         Operator::Inline(InlineOperator::Parse {
                             pattern: "!123*".to_string(),
                             fields: vec!["foo".to_string()],
+                            input_column: None,
                         }),
                         Operator::Aggregate(AggregateOperator {
                             key_cols: vec!["foo".to_string()],

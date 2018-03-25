@@ -30,10 +30,14 @@ pub mod pipeline {
     impl Pipeline {
         fn convert_inline(op: lang::InlineOperator) -> Box<operator::UnaryPreAggOperator> {
             match op {
-                InlineOperator::Json => Box::new(operator::ParseJson {}),
-                InlineOperator::Parse { pattern, fields } => {
-                    Box::new(operator::Parse::new(&pattern, fields).unwrap())
+                InlineOperator::Json { input_column } => {
+                    Box::new(operator::ParseJson::new(input_column))
                 }
+                InlineOperator::Parse {
+                    pattern,
+                    fields,
+                    input_column,
+                } => Box::new(operator::Parse::new(&pattern, fields, input_column).unwrap()),
             }
         }
 

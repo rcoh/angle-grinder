@@ -15,6 +15,13 @@ use self::serde_json::Value as JsonValue;
 type Data = HashMap<String, data::Value>;
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: Record) -> Option<Record>;
+    fn get_input<'a>(&self, input_column: &Option<String>, rec: &'a Record) -> Option<&'a str> {
+        let inp_col: Option<&str> = match input_column {
+            &None => None,
+            &Some(ref s) => Some(s),
+        };
+        rec.get_str(inp_col)
+    }
 }
 
 pub trait AggregateOperator {
@@ -302,10 +309,15 @@ impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
 pub struct Parse {
     regex: regex::Regex,
     fields: Vec<String>,
+    input_column: Option<String>,
 }
 
 impl Parse {
-    pub fn new(pattern: &str, fields: Vec<String>) -> Result<Self, String> {
+    pub fn new(
+        pattern: &str,
+        fields: Vec<String>,
+        input_column: Option<String>,
+    ) -> Result<Self, String> {
         let regex_str = regex_syntax::quote(pattern);
         let mut regex_str = regex_str.replace("\\*", "(.*?)");
         // If it ends with a star, we need to ensure we read until the end.
@@ -317,24 +329,28 @@ impl Parse {
         } else {
             Result::Ok(Parse {
                 regex: regex::Regex::new(&regex_str).unwrap(),
-                fields: fields,
+                fields,
+                input_column,
             })
         }
     }
 
     fn matches(&self, rec: &Record) -> Option<Vec<data::Value>> {
-        let matches: Vec<regex::Captures> = self.regex.captures_iter(&rec.raw).collect();
-        if matches.len() == 0 {
-            None
-        } else {
-            let capture = &matches[0];
-            let mut values: Vec<data::Value> = Vec::new();
-            for i in 0..self.fields.len() {
-                // the first capture is the entire string
-                values.push(data::Value::from_string(&capture[i + 1]));
+        let inp_opt: Option<&str> = self.get_input(&self.input_column, rec);
+        inp_opt.and_then(|inp| {
+            let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
+            if matches.len() == 0 {
+                None
+            } else {
+                let capture = &matches[0];
+                let mut values: Vec<data::Value> = Vec::new();
+                for i in 0..self.fields.len() {
+                    // the first capture is the entire string
+                    values.push(data::Value::from_string(&capture[i + 1]));
+                }
+                Some(values)
             }
-            Some(values)
-        }
+        })
     }
 }
 
@@ -355,12 +371,23 @@ impl UnaryPreAggOperator for Parse {
 }
 
 pub struct ParseJson {
-        // any options here
+    input_column: Option<String>,
 }
+
+impl ParseJson {
+    pub fn new(input_column: Option<String>) -> ParseJson {
+        ParseJson { input_column }
+    }
+}
+
 impl UnaryPreAggOperator for ParseJson {
     fn process(&self, rec: Record) -> Option<Record> {
-        match serde_json::from_str(&rec.raw) {
-            Ok(v) => {
+        let json_opt = {
+            let inp_str_opt = self.get_input(&self.input_column, &rec);
+            inp_str_opt.map(|inp_str| serde_json::from_str(inp_str))
+        };
+        match json_opt {
+            Some(Ok(v)) => {
                 let v: JsonValue = v;
                 match v {
                     JsonValue::Object(map) => {
@@ -397,8 +424,8 @@ mod tests {
 
     #[test]
     fn test_json() {
-        let rec = Record::new(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#);
-        let parser = ParseJson {};
+        let rec = Record::new(&(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n"));
+        let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap();
         assert_eq!(
             rec.data,
@@ -414,7 +441,11 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        let rec = Record::new("17:12:14.214111 IP 10.0.2.243.53938 > \"taotie.canonical.com.http\": Flags [.], ack 56575, win 2375, options [nop,nop,TS val 13651369 ecr 169698010], length 99");
+        let rec = Record::new(
+            "17:12:14.214111 IP 10.0.2.243.53938 > \"taotie.canonical.com.http\": \
+             Flags [.], ack 56575, win 2375, options [nop,nop,TS val 13651369 ecr 169698010], \
+             length 99",
+        );
         let parser = Parse::new(
             "IP * > \"*\": * length *",
             vec![
@@ -423,6 +454,7 @@ mod tests {
                 "ignore".to_string(),
                 "length".to_string(),
             ],
+            None,
         ).unwrap();
         let rec = parser.process(rec).unwrap();
         assert_eq!(
@@ -434,6 +466,26 @@ mod tests {
             rec.data.get("recip").unwrap(),
             &Value::Str("taotie.canonical.com.http".to_string())
         )
+    }
+
+    #[test]
+    fn test_parse_from_field() {
+        let rec = Record::new("");
+        let rec = rec.put("from_col", data::Value::Str("[k1=v1]".to_string()));
+        let parser = Parse::new(
+            "[*=*]",
+            vec!["key".to_string(), "value".to_string()],
+            Some("from_col".to_string()),
+        ).unwrap();
+        let rec = parser.process(rec).unwrap();
+        assert_eq!(
+            rec.data.get("key").unwrap(),
+            &data::Value::Str("k1".to_string())
+        );
+        assert_eq!(
+            rec.data.get("value").unwrap(),
+            &data::Value::Str("v1".to_string())
+        );
     }
 
     #[test]
@@ -478,14 +530,19 @@ mod tests {
         let mut sorted_data = agg.data.clone();
         sorted_data.ord_subset_sort_by_key(|ref kv| kv.get("_count").unwrap().clone());
         sorted_data.reverse();
-        assert_eq!(sorted_data,
+        assert_eq!(
+            sorted_data,
             vec![
-                    hashmap!{
-                        "k1".to_string() => data::Value::Str("not ok".to_string()), 
-                        "_count".to_string() => data::Value::Int(25),
-                    },
-                    hashmap!{"k1".to_string() => data::Value::Str("ok".to_string()), "_count".to_string() => data::Value::Int(10)}, 
-                    hashmap!{"k1".to_string() => data::Value::Str("$None$".to_string()), "_count".to_string() => data::Value::Int(3)}, 
+                hashmap!{
+                    "k1".to_string() => data::Value::Str("not ok".to_string()),
+                    "_count".to_string() => data::Value::Int(25),
+                },
+                hashmap!{"k1".to_string() =>
+                data::Value::Str("ok".to_string()), "_count".to_string() => data::Value::Int(10)},
+                hashmap!{
+                    "k1".to_string() => data::Value::Str("$None$".to_string()),
+                    "_count".to_string() => data::Value::Int(3)
+                },
             ]
         );
     }
