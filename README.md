@@ -21,10 +21,15 @@ OS X:
 curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.0/angle_grinder-v0.6.0-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
+Or with Cargo:
+```
+cargo install ag
+```
+
 ## Query Synax
 
 ```
-<filter> | operator1 | operator2 | operator3 | ...
+agrind '<filter> | operator1 | operator2 | operator3 | ...'
 ```
 
 ### Filters
@@ -49,7 +54,7 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 ``` 
 curl https://api.github.com/repos/rcoh/angle-grinder/releases \
    | jq '.[] | .assets | .[]' -c \
-   | ag '* | json | sum(download_count) by browser_download_url'
+   | agrind '* | json | sum(download_count) by browser_download_url'
 ```
 Output:
 ```
@@ -66,17 +71,17 @@ https://github.com/rcoh/angle-grinder/releases/download/v0.2.0/angle_grinder-v0.
 ```
 - Take the 50th percentile of response time by host:
 ```
-tail -F my_json_logs | 'ag * | json | pct50(response_time) by url 
+tail -F my_json_logs | agrind '* | json | pct50(response_time) by url'
 ```
 - Count the number of status codes by url:
 ```
-tail -F  my_json_logs | 'ag * | json | count status_code by url
+tail -F  my_json_logs | agrind '* | json | count status_code by url'
 ```
 
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
 ```
-tail -f live_pcap | ag '* | parse "* > *:" as src, dest | parse "length *" as length'                           
+tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" as length' 
 [dest=111.221.29.254.https]        [length=0]        [src=21:50:18.458331 IP 10.0.2.243.47152]
 [dest=111.221.29.254.https]        [length=310]      [src=21:50:18.458527 IP 10.0.2.243.47152]
 ```
@@ -100,6 +105,7 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 cargo build
 cargo test
 cargo install
+agrind --help
 ```
 
 See the open issues for potential improvements/issues.
