@@ -424,7 +424,9 @@ mod tests {
 
     #[test]
     fn test_json() {
-        let rec = Record::new(&(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n"));
+        let rec = Record::new(
+            &(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n"),
+        );
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap();
         assert_eq!(
