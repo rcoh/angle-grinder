@@ -2,7 +2,7 @@
 name = "ag"
 version = "0.6.0"
 authors = ["Russell Cohen <russell.r.cohen@gmail.com>"]
-description = ["CLI App to slice and dice logfiles"]
+description = "CLI App to slice and dice logfiles"
 license = "MIT"
 
 [dependencies]
