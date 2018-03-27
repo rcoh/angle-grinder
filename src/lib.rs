@@ -144,7 +144,9 @@ pub mod pipeline {
         }
 
         pub fn process<T: BufRead>(&mut self, mut buf: T) {
-            // TODO: this is pretty slow in practice. ripgrep is obviously much faster.
+            // This is pretty slow in practice. We could move line splitting until after
+            // we find a match. Another option is moving the transformation to String until
+            // after we match (staying as Vec<u8> until then)
             let mut line = String::with_capacity(1024);
             while buf.read_line(&mut line).unwrap() > 0 {
                 self.proc_str(&(line));
