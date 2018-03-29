@@ -1,5 +1,4 @@
 extern crate itertools;
-extern crate ord_subset;
 extern crate quantiles;
 extern crate regex;
 extern crate regex_syntax;
