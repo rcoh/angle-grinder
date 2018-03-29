@@ -5,6 +5,7 @@ extern crate regex;
 extern crate regex_syntax;
 extern crate serde_json;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::iter::FromIterator;
 use data::{Aggregate, Record, Row};
 use data;
@@ -370,6 +371,38 @@ impl UnaryPreAggOperator for Parse {
     }
 }
 
+pub enum FieldMode {
+    Only,
+    Except,
+}
+
+pub struct Fields {
+    columns: HashSet<String>,
+    mode: FieldMode,
+}
+
+impl Fields {
+    pub fn new(columns: Vec<String>, mode: FieldMode) -> Self {
+        let columns = HashSet::from_iter(columns.iter().cloned());
+        Fields { columns, mode }
+    }
+}
+
+impl UnaryPreAggOperator for Fields {
+    fn process(&self, rec: Record) -> Option<Record> {
+        let mut rec = rec;
+        match &self.mode {
+            &FieldMode::Only => {
+                rec.data.retain(|k, _| self.columns.contains(k));
+            }
+            &FieldMode::Except => {
+                rec.data.retain(|k, _| !self.columns.contains(k));
+            }
+        }
+        Some(rec)
+    }
+}
+
 pub struct ParseJson {
     input_column: Option<String>,
 }
@@ -437,6 +470,42 @@ mod tests {
                 "k3".to_string() => Value::Str("str".to_string()),
                 "k4".to_string() => Value::None,
                 "k5".to_string() => Value::Str("[1,2,3]".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn test_fields_only() {
+        let rec = Record::new("");
+        let rec = rec.put("k1", Value::Str("v1".to_string()));
+        let rec = rec.put("k2", Value::Str("v2".to_string()));
+        let rec = rec.put("k3", Value::Str("v3".to_string()));
+        let rec = rec.put("k4", Value::Str("v4".to_string()));
+        let fields = Fields::new(vec!["k1".to_string()], FieldMode::Only);
+        let rec = fields.process(rec).unwrap();
+        assert_eq!(
+            rec.data,
+            hashmap!{
+                "k1".to_string() => Value::Str("v1".to_string()),
+            }
+        );
+    }
+    
+    #[test]
+    fn test_fields_except() {
+        let rec = Record::new("");
+        let rec = rec.put("k1", Value::Str("v1".to_string()));
+        let rec = rec.put("k2", Value::Str("v2".to_string()));
+        let rec = rec.put("k3", Value::Str("v3".to_string()));
+        let rec = rec.put("k4", Value::Str("v4".to_string()));
+        let fields = Fields::new(vec!["k1".to_string()], FieldMode::Except);
+        let rec = fields.process(rec).unwrap();
+        assert_eq!(
+            rec.data,
+            hashmap!{
+                "k2".to_string() => Value::Str("v2".to_string()),
+                "k3".to_string() => Value::Str("v3".to_string()),
+                "k4".to_string() => Value::Str("v4".to_string()),
             }
         );
     }

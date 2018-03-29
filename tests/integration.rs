@@ -64,4 +64,22 @@ info        3\nerror       2\n$None$      1")
 info        3\nerror       2\n$None$      1")
             .unwrap();
     }
+
+    #[test]
+    fn test_fields() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#""error" | parse "* *" as lev, js 
+                     | json from js 
+                     | fields -js, lev"#,
+                "--file",
+                "test_files/test_partial_json.log",
+            ])
+            .stdout()
+            .contains(
+"[level=error]        [message=Oh now an error!]
+[level=error]        [message=So many more errors!]
+[level=error]        [message=So many more errors!]")
+            .unwrap();
+    }
 }

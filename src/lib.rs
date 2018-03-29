@@ -38,6 +38,13 @@ pub mod pipeline {
                     fields,
                     input_column,
                 } => Box::new(operator::Parse::new(&pattern, fields, input_column).unwrap()),
+                InlineOperator::Fields { fields, mode } => {
+                    let omode = match mode {
+                        FieldMode::Except => operator::FieldMode::Except,
+                        FieldMode::Only => operator::FieldMode::Only,
+                    };
+                    Box::new(operator::Fields::new(fields, omode))
+                }
             }
         }
 

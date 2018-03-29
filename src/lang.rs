@@ -25,6 +25,16 @@ pub enum InlineOperator {
         fields: Vec<String>,
         input_column: Option<String>,
     },
+    Fields {
+        mode: FieldMode,
+        fields: Vec<String>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum FieldMode {
+    Only,
+    Except,
 }
 
 #[derive(Debug, PartialEq)]
@@ -112,6 +122,29 @@ named!(parse<&str, InlineOperator>, ws!(do_parse!(
         } )
 )));
 
+named!(fields_mode<&str, FieldMode>, alt!(
+    map!(
+        alt!(tag!("+") | tag!("only") | tag!("include")),
+        |_|FieldMode::Only
+    ) |
+    map!(
+        alt!(tag!("-") | tag!("except") | tag!("drop")),
+        |_|FieldMode::Except
+    )
+));
+
+named!(fields<&str, InlineOperator>, ws!(do_parse!(
+    tag!("fields") >>
+    mode: opt!(fields_mode) >>
+    fields: var_list >>
+    (
+        InlineOperator::Fields {
+            mode: mode.unwrap_or(FieldMode::Only),
+            fields: vec_str_vec_string(fields)
+        }
+    )
+)));
+
 named!(count<&str, AggregateFunction>, map!(tag!("count"), |_s|AggregateFunction::Count{}));
 
 named!(average<&str, AggregateFunction>, ws!(do_parse!(
@@ -143,7 +176,7 @@ named!(p_nn<&str, AggregateFunction>, ws!(
     )
 ));
 
-named!(inline_operator<&str, Operator>, map!(alt!(parse | json), |op|Operator::Inline(op)));
+named!(inline_operator<&str, Operator>, map!(alt!(parse | json | fields), |op|Operator::Inline(op)));
 named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum | p_nn));
 
 named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator | sort));

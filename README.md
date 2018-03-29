@@ -43,6 +43,7 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 ![json.gif](/screen_shots/json.gif)
 - `parse "* pattern * otherpattern *" [from field] as a,b,c`: Parse text that matches the pattern into variables. Lines that don't match this pattern will be dropped. `*` is equivalent to `.*` and is greedy. By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.
 ![parse.gif](/screen_shots/parse.gif)
+- `fields [only|except|-] a, b`: Drop fields `a, b` or include only `a, b` depending on specified mode.
 - `count [by a, b] [as count_column]`: Count (potentially by key columns). Defaults to `_count` unless overridden with an `as` clause. eg: `* | count by source_host`
 - `sum(column) [by a, b] [as sum_column]`: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 - `average(column) [by a, b] as [average_column]`: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
