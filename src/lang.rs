@@ -176,7 +176,9 @@ named!(p_nn<&str, AggregateFunction>, ws!(
     )
 ));
 
-named!(inline_operator<&str, Operator>, map!(alt!(parse | json | fields), |op|Operator::Inline(op)));
+named!(inline_operator<&str, Operator>,
+   map!(alt!(parse | json | fields), |op|Operator::Inline(op))
+);
 named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum | p_nn));
 
 named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator | sort));

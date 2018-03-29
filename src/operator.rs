@@ -452,8 +452,6 @@ mod tests {
     use data::Value;
     use super::*;
     use operator::itertools::Itertools;
-    use self::ord_subset::OrdSubsetSliceExt;
-
     #[test]
     fn test_json() {
         let rec = Record::new(
@@ -489,7 +487,7 @@ mod tests {
             }
         );
     }
-    
+
     #[test]
     fn test_fields_except() {
         let rec = Record::new("");
@@ -598,7 +596,8 @@ mod tests {
         });
         let agg = count_agg.emit();
         let mut sorted_data = agg.data.clone();
-        sorted_data.ord_subset_sort_by_key(|ref kv| kv.get("_count").unwrap().clone());
+        let ordering = Record::ordering(vec!["_count".to_string()]);
+        sorted_data.sort_by(|l, r|ordering(l, r));
         sorted_data.reverse();
         assert_eq!(
             sorted_data,

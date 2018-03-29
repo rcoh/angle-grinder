@@ -32,15 +32,6 @@ pub enum Value {
     None,
 }
 
-/*impl OrdSubset for Value {
-    fn is_outside_order(&self) -> bool {
-        match self {
-            &Value::Float(f) => f.is_outside_order(),
-            _other => false,
-        }
-    }
-}*/
-
 impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
