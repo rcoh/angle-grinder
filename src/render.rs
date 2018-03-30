@@ -39,7 +39,7 @@ impl PrettyPrinter {
             .map(|(column_name, value)| {
                 let current_width = *self.column_widths.get(column_name).unwrap_or(&0);
                 // 1. If the width would increase, set it to max_buffer
-                let value_length = value.render(&self.render_config).len();
+                let value_length = value.render(&self.render_config).len().max(column_name.len());
                 let min_column_width = value_length + self.render_config.min_buffer;
                 let new_column_width = if min_column_width > current_width {
                     // if we're resizing, go to the max
@@ -251,11 +251,11 @@ mod tests {
             },
             None,
         );
-        assert_eq!(pp.format_record(&rec), "[k1=5]    [k2=5.50]    [k3=str]");
+        assert_eq!(pp.format_record(&rec), "[k1=5]     [k2=5.50]    [k3=str]");
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap();
-        assert_eq!(pp.format_record(&rec), "[k1=955]  [k2=5.50]    [k3=str3]");
+        assert_eq!(pp.format_record(&rec), "[k1=955]   [k2=5.50]    [k3=str3]");
         let rec = Record::new(
             r#"{"k1": "here is a amuch longer stsring", "k2": 5.5000001, "k3": "str3"}"#,
         );
@@ -329,7 +329,7 @@ mod tests {
         );
         println!("{}", pp.format_aggregate(&agg));
         assert_eq!(
-            "kc1   kc2       count\n-----------------------\nk1    k2        100\nk300  k40000    500\n",
+            "kc1    kc2       count\n--------------------------\nk1     k2        100\nk300   k40000    500\n",
             pp.format_aggregate(&agg)
         );
     }

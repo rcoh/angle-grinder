@@ -32,7 +32,7 @@ mod integration {
             .stdin("1\n2\n3\n")
             .with_args(&["* | count"])
             .stdout()
-            .is("_count\n---------\n3")
+            .is("_count\n--------------\n3")
             .unwrap();
     }
 
@@ -45,10 +45,14 @@ mod integration {
                 "test_files/test_json.log",
             ])
             .stdout()
-            .is("level       _count\n---------------------
-info        3\nerror       2\n$None$      1")
+            .is("level        _count
+---------------------------
+info         3
+error        2
+$None$       1")
             .unwrap();
     }
+
 
     #[test]
     fn test_aggregate_of_aggregate() {
@@ -59,7 +63,7 @@ info        3\nerror       2\n$None$      1")
                 "test_files/test_json.log",
             ])
             .stdout()
-            .is("_count\n---------\n3")
+            .is("_count\n--------------\n3")
             .unwrap();
     }
 
@@ -72,8 +76,11 @@ info        3\nerror       2\n$None$      1")
                 "test_files/test_partial_json.log",
             ])
             .stdout()
-            .is("level       _count\n---------------------
-info        3\nerror       2\n$None$      1")
+            .is("level        _count
+---------------------------
+info         3
+error        2
+$None$       1")
             .unwrap();
     }
 

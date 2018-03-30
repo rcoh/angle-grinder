@@ -5,7 +5,7 @@ Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort
 
 Angle grinder can process about a million rows per second, so it's usable for fairly meaty aggregation. The results will live update in your terminal as data is processed. Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI.
 
-[![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
+![overview gif](/screen_shots/overview.gif)
 
 ## Installation
 Binaries are available for Linux and OS X: https://github.com/rcoh/angle-grinder/releases. Many more platforms (including Windows) are available if you compile from source.
