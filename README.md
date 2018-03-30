@@ -9,7 +9,7 @@ Angle grinder is decently quick (~250k-1M rows per second), so it's usable for 1
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
 
 ## Installation
-Binaries are available for Linux, OS X and Free BSD: https://github.com/rcoh/angle-grinder/releases. Many more platforms (including Windows) are available if you compile from source.
+Binaries are available for Linux and OS X: https://github.com/rcoh/angle-grinder/releases. Many more platforms (including Windows) are available if you compile from source.
 
 Linux (statically linked with musl):
 ```

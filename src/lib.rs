@@ -23,7 +23,6 @@ pub mod pipeline {
         filter: lang::Search,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
         aggregators: Vec<Box<operator::AggregateOperator>>,
-        last_output: Option<Row>,
         renderer: Renderer,
     }
 
@@ -131,7 +130,6 @@ pub mod pipeline {
                 filter: query.search,
                 pre_aggregates: pre_agg,
                 aggregators: post_agg,
-                last_output: None,
                 renderer: Renderer::new(
                     RenderConfig {
                         floating_points: 2,
@@ -159,6 +157,7 @@ pub mod pipeline {
                 self.proc_str(&(line));
                 line.clear();
             }
+            // Run the aggregate to ensure it's updated with the latest results
             self.run_agg_pipeline(true);
         }
 
