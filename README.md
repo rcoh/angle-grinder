@@ -1,10 +1,9 @@
 # angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder)
 Slice and dice log files on the command line. 
 
-Specifically, angle-grinder allows you to parse (json included), aggregate, sum, average, percentile, sort your data, then view it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want want the same ability to do quick analyses.
+Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
 
-Angle grinder is decently quick (~250k-1M rows per second), so it's usable for 100-500MB files, but probably not GBs unless you are very patient. The results are streaming, however, so you'll start getting results immediately. There are definitely avenues for optimization.
-
+Angle grinder can process about a million rows per second, so it's usable for fairly meaty aggregation. The results will live update in your terminal as data is processed.
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
 
@@ -13,12 +12,12 @@ Binaries are available for Linux and OS X: https://github.com/rcoh/angle-grinder
 
 Linux (statically linked with musl):
 ```
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.1/angle_grinder-v0.6.1-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.2/angle_grinder-v0.6.2-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
 ```
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.1/angle_grinder-v0.6.1-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.2/angle_grinder-v0.6.2-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 Or with Cargo:
