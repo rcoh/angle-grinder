@@ -4,6 +4,7 @@ version = "0.6.2"
 authors = ["Russell Cohen <russell.r.cohen@gmail.com>"]
 description = "CLI App to slice and dice logfiles"
 license = "MIT"
+repository = "https://github.com/rcoh/angle-grinder"
 
 [dependencies]
 serde_json = "1.0"

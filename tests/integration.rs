@@ -15,6 +15,18 @@ mod integration {
     }
 
     #[test]
+    fn test_parse_failure() {
+        assert_cli::Assert::main_binary()
+            .with_args(&["* | pasres"])
+            .fails()
+            .and()
+            .stderr()
+            .contains("Could not parse")
+            .unwrap();
+
+    }
+
+    #[test]
     fn test_basic_count() {
         assert_cli::Assert::main_binary()
             .stdin("1\n2\n3\n")

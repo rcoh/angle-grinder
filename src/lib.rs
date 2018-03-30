@@ -88,11 +88,9 @@ pub mod pipeline {
 
         pub fn new(pipeline: &str) -> Result<Self, String> {
             let fixed_pipeline = format!("{}!", pipeline); // todo: fix hack
-            let parsed = lang::parse_query(&fixed_pipeline);
-            let query = match parsed {
-                Ok((_input, query)) => query,
-                Err(s) => return Result::Err(format!("Could not parse query: {:?}", s)),
-            };
+            let parsed = lang::parse_query(&fixed_pipeline)
+                .map_err(|e| format!("Could not parse query: {:?}", e));
+            let (_, query) = parsed?;
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();

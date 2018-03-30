@@ -6,6 +6,12 @@ use std::io;
 use std::io::BufReader;
 use std::fs::File;
 fn main() {
+    ::std::process::exit(match run_agrind() {
+        Ok(_) => 0,
+        Err(_) => 1
+    });
+}
+fn run_agrind() -> Result<(), ()> {
     let matches = App::new("angle-grinder")
         .version(env!("CARGO_PKG_VERSION"))
         .author("Russell Cohen <rcoh@rcoh.me>")
@@ -28,13 +34,18 @@ fn main() {
                 let stdin = io::stdin();
                 let locked = stdin.lock();
                 pipeline.process(locked);
+                Ok(())
             }
             Some(file) => {
                 let f = File::open(file).unwrap();
                 let f = BufReader::new(f);
                 pipeline.process(f);
+                Ok(())
             }
         },
-        Result::Err(e) => println!("{}", e),
-    };
+        Result::Err(e) => {
+            eprintln!("{}", e);
+            Err(())
+        },
+    }
 }
