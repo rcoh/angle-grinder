@@ -3,7 +3,7 @@ Slice and dice log files on the command line.
 
 Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
 
-Angle grinder can process about a million rows per second, so it's usable for fairly meaty aggregation. The results will live update in your terminal as data is processed.
+Angle grinder can process about a million rows per second, so it's usable for fairly meaty aggregation. The results will live update in your terminal as data is processed. Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI.
 
 [![asciicast](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh.png)](https://asciinema.org/a/bEjKsArIFgOOnxzb1FMZMWPhh)
 
@@ -50,24 +50,30 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 - `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
 
 ### Example Queries
-- Count the number of downloads by release (in combination with jq)
+- Count the number of downloads of angle-grinder by release (with special guest jq)
 ``` 
-curl https://api.github.com/repos/rcoh/angle-grinder/releases \
-   | jq '.[] | .assets | .[]' -c \
-   | agrind '* | json | sum(download_count) by browser_download_url'
+curl  https://api.github.com/repos/rcoh/angle-grinder/releases  | \
+   jq '.[] | .assets | .[]' -c | \
+   ag '* | json 
+         | parse "download/*/" from browser_download_url as version 
+         | sum(download_count) by version | sort by version desc'
 ```
 Output:
 ```
-browser_download_url                                                                                                        _sum
--------------------------------------------------------------------------------------------------------------------------------------
-https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-unknown-linux-musl.tar.gz        8
-https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-unknown-linux-gnu.tar.gz         6
-https://github.com/rcoh/angle-grinder/releases/download/v0.3.2/angle_grinder-v0.3.2-x86_64-unknown-linux-musl.tar.gz        2
-https://github.com/rcoh/angle-grinder/releases/download/v0.5.0/angle_grinder-v0.5.0-x86_64-unknown-linux-musl.tar.gz        2
-https://github.com/rcoh/angle-grinder/releases/download/v0.5.0/angle_grinder-v0.5.0-x86_64-apple-darwin.tar.gz              2
-https://github.com/rcoh/angle-grinder/releases/download/v0.3.1/angle_grinder-v0.3.1-x86_64-apple-darwin.tar.gz              1
-https://github.com/rcoh/angle-grinder/releases/download/v0.3.0/angle_grinder-v0.3.0-x86_64-apple-darwin.tar.gz              1
-https://github.com/rcoh/angle-grinder/releases/download/v0.2.0/angle_grinder-v0.2.0-x86_64-unknown-linux-gnu.tar.gz         1
+version       _sum
+-----------------------
+v0.6.2        0
+v0.6.1        4
+v0.6.0        5
+v0.5.1        0
+v0.5.0        4
+v0.4.0        0
+v0.3.3        0
+v0.3.2        2
+v0.3.1        9
+v0.3.0        7
+v0.2.1        0
+v0.2.0        1
 ```
 - Take the 50th percentile of response time by host:
 ```
@@ -86,7 +92,7 @@ tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" a
 [dest=111.221.29.254.https]        [length=310]      [src=21:50:18.458527 IP 10.0.2.243.47152]
 ```
 
-Aggregate data is written to the terminal and will live-update until EOF:
+Aggregate data is written to the terminal and will live-update until the stream ends:
 ```
 k2                  avg         
 --------------------------------
@@ -97,7 +103,8 @@ hello               3.00
 hello thanks        2.00        
 ```
 
-The renderer will do its best to keep the data nicely formatted as it changes and the number of output rows is limited to the length of your terminal.
+The renderer will do its best to keep the data nicely formatted as it changes and the number of output rows is limited to the length of your terminal. Currently,
+it has a refresh rate of about 20hz.
 
 ### Contributing
 `angle-grinder` builds with stable rust:
@@ -111,4 +118,4 @@ agrind --help
 See the open issues for potential improvements/issues.
 
 ### Related Work 
-Angle Grinder is [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
+Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
