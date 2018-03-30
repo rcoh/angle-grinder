@@ -10,6 +10,7 @@ fn main() {
         .version(env!("CARGO_PKG_VERSION"))
         .author("Russell Cohen <rcoh@rcoh.me>")
         .about("Slice and dice log files on the command line")
+        .help("For more details + docs, see https://github.com/rcoh/angle-grinder")
         .arg(
             Arg::with_name("query")
                 .help("ag query string eg: `...`")
