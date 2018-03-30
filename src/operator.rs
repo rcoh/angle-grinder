@@ -597,7 +597,7 @@ mod tests {
         let agg = count_agg.emit();
         let mut sorted_data = agg.data.clone();
         let ordering = Record::ordering(vec!["_count".to_string()]);
-        sorted_data.sort_by(|l, r|ordering(l, r));
+        sorted_data.sort_by(|l, r| ordering(l, r));
         sorted_data.reverse();
         assert_eq!(
             sorted_data,

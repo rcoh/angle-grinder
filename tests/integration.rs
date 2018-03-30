@@ -76,11 +76,8 @@ info        3\nerror       2\n$None$      1")
                 "test_files/test_partial_json.log",
             ])
             .stdout()
-            .contains(
-                "[level=error]        [message=Oh now an error!]
-[level=error]        [message=So many more errors!]
-[level=error]        [message=So many more errors!]",
-            )
+            .is("[level=error]        [message=Oh now an error!]
+[level=error]        [message=So many more errors!]")
             .unwrap();
     }
 }

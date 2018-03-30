@@ -159,10 +159,7 @@ pub mod pipeline {
                 self.proc_str(&(line));
                 line.clear();
             }
-            match &self.last_output {
-                &Some(ref row) => self.renderer.render(row, true),
-                &None => (),
-            };
+            self.run_agg_pipeline(true);
         }
 
         fn proc_str(&mut self, s: &str) {
@@ -175,14 +172,30 @@ pub mod pipeline {
                     }
                 }
 
-                let mut row = Row::Record(rec);
-                for agg in self.aggregators.iter_mut() {
-                    (*agg).process(row);
-                    row = Row::Aggregate((*agg).emit());
+                let row = Row::Record(rec);
+                if self.aggregators.len() == 0 {
+                    self.renderer.render(&row, false);
+                    return;
                 }
-                self.renderer.render(&row, false);
-                self.last_output = Some(row);
+                // For every row, send it to the head aggregate
+                (*self.aggregators[0]).process(row);
+                // Only when we need to render, run the entire pipeline
+                if self.renderer.should_print() {
+                    self.run_agg_pipeline(false);
+                }
             }
+        }
+
+        pub fn run_agg_pipeline(&mut self, last_row: bool) {
+            if self.aggregators.len() == 0 {
+                return;
+            }
+            let mut row = Row::Aggregate((*self.aggregators[0]).emit());
+            for agg in self.aggregators[1..].iter_mut() {
+                (*agg).process(row);
+                row = Row::Aggregate((*agg).emit());
+            }
+            self.renderer.render(&row, last_row);
         }
     }
 }

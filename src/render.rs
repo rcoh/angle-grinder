@@ -224,7 +224,8 @@ impl Renderer {
             }
         }
     }
-    fn should_print(&self) -> bool {
+
+    pub fn should_print(&self) -> bool {
         self.last_print
             .map(|instant| instant.elapsed() > self.update_interval)
             .unwrap_or(true)

@@ -7,7 +7,7 @@ use std::io::BufReader;
 use std::fs::File;
 fn main() {
     let matches = App::new("angle-grinder")
-        .version("0.1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("Russell Cohen <rcoh@rcoh.me>")
         .about("Slice and dice log files on the command line")
         .arg(
