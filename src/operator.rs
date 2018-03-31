@@ -74,12 +74,12 @@ impl Sum {
 
 impl AggregateFunction for Sum {
     fn process(&mut self, rec: &Data) {
-        rec.get(&self.column).iter().for_each(|value| match value {
-            &&data::Value::Float(ref f) => {
+        rec.get(&self.column).iter().for_each(|value| match *value {
+            &data::Value::Float(ref f) => {
                 self.is_float = true;
                 self.total += f;
             }
-            &&data::Value::Int(ref i) => {
+            &data::Value::Int(ref i) => {
                 self.total += *i as f64;
             }
             _other => self.warnings
