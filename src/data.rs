@@ -34,22 +34,22 @@ pub enum Value {
 
 impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Value::Str(ref s) => write!(f, "{}", s),
-            &Value::Int(ref s) => write!(f, "{}", s),
-            &Value::Float(ref s) => write!(f, "{}", s),
-            &Value::None => write!(f, "$None$"),
+        match *self {
+            Value::Str(ref s) => write!(f, "{}", s),
+            Value::Int(ref s) => write!(f, "{}", s),
+            Value::Float(ref s) => write!(f, "{}", s),
+            Value::None => write!(f, "$None$"),
         }
     }
 }
 
 impl Value {
     pub fn render(&self, render_config: &render::RenderConfig) -> String {
-        match self {
-            &Value::Str(ref s) => format!("{}", s),
-            &Value::Int(ref s) => format!("{}", s),
-            &Value::None => format!("$None$"),
-            &Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
+        match *self {
+            Value::Str(ref s) => format!("{}", s),
+            Value::Int(ref s) => format!("{}", s),
+            Value::None => "$None$".to_string(),
+            Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
         }
     }
 
@@ -58,8 +58,8 @@ impl Value {
         let float_value = s.parse::<f64>();
         int_value
             .map(Value::Int)
-            .or(float_value.map(Value::Float))
-            .unwrap_or(Value::Str(s.to_string()))
+            .or_else(|_|float_value.map(Value::Float))
+            .unwrap_or_else(|_|Value::Str(s.to_string()))
     }
 }
 
@@ -94,7 +94,7 @@ impl Aggregate {
 
         Aggregate {
             data: raw_data,
-            columns: columns,
+            columns,
         }
     }
 }

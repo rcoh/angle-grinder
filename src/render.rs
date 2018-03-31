@@ -27,10 +27,10 @@ struct PrettyPrinter {
 impl PrettyPrinter {
     fn new(render_config: RenderConfig, term_size: Option<TerminalSize>) -> Self {
         PrettyPrinter {
-            render_config: render_config,
+            render_config,
+            term_size,
             column_widths: HashMap::new(),
             column_order: Vec::new(),
-            term_size: term_size,
         }
     }
 
@@ -75,7 +75,7 @@ impl PrettyPrinter {
         let expected = Self::projected_width(&self.column_widths);
         match self.term_size {
             None => false,
-            Some(TerminalSize { height: _, width }) => expected > (width as usize),
+            Some(TerminalSize { width, .. }) => expected > (width as usize),
         }
     }
 
@@ -84,7 +84,7 @@ impl PrettyPrinter {
         self.column_widths.extend(new_column_widths);
         let new_columns = self.new_columns(&(record.data));
         self.column_order.extend(new_columns);
-        if self.column_order.len() == 0 {
+        if self.column_order.is_empty() {
             return record.raw.to_string();
         }
 
@@ -115,7 +115,7 @@ impl PrettyPrinter {
                         "{:width$}",
                         unpadded,
                         width =
-                            column_name.len() + 3 + self.column_widths.get(column_name).unwrap()
+                            column_name.len() + 3 + self.column_widths[column_name]
                     )
                 }
             })
@@ -125,7 +125,7 @@ impl PrettyPrinter {
 
     fn format_aggregate_row(
         &self,
-        columns: &Vec<String>,
+        columns: &[String],
         row: &HashMap<String, data::Value>,
     ) -> String {
         let row: Vec<String> = columns
@@ -136,7 +136,7 @@ impl PrettyPrinter {
                     row.get(column_name)
                         .unwrap_or(&data::Value::None)
                         .render(&self.render_config),
-                    width = self.column_widths.get(column_name).unwrap()
+                    width = self.column_widths[column_name]
                 )
             })
             .collect();
@@ -155,7 +155,7 @@ impl PrettyPrinter {
                 format!(
                     "{:width$}",
                     column_name,
-                    width = self.column_widths.get(column_name).unwrap()
+                    width = self.column_widths[column_name]
                 )
             })
             .collect();
@@ -169,7 +169,7 @@ impl PrettyPrinter {
             .collect();
         let overlength_str = format!("{}\n{}\n", header, body.join("\n"));
         match self.term_size {
-            Some(TerminalSize { width: _, height }) => {
+            Some(TerminalSize { height, .. }) => {
                 let lines: Vec<&str> = overlength_str.lines().take((height as usize) - 1).collect();
                 lines.join("\n") + "\n"
             }
@@ -203,23 +203,23 @@ impl Renderer {
     }
 
     pub fn render(&mut self, row: &data::Row, last_row: bool) {
-        match row {
-            &data::Row::Aggregate(ref aggregate) => {
+        match *row {
+            data::Row::Aggregate(ref aggregate) => {
                 if !self.is_tty {
                     if last_row {
-                        let output = self.pretty_printer.format_aggregate(&aggregate);
+                        let output = self.pretty_printer.format_aggregate(aggregate);
                         write!(self.stdout, "{}", output).unwrap();
                     }
                 } else if self.should_print() || last_row {
-                    let output = self.pretty_printer.format_aggregate(&aggregate);
-                    let num_lines = output.matches("\n").count();
+                    let output = self.pretty_printer.format_aggregate(aggregate);
+                    let num_lines = output.matches('\n').count();
                     write!(self.stdout, "{}{}", self.reset_sequence, output).unwrap();
                     self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines);
                     self.last_print = Some(Instant::now());
                 }
             }
-            &data::Row::Record(ref record) => {
-                let output = self.pretty_printer.format_record(&record);
+            data::Row::Record(ref record) => {
+                let output = self.pretty_printer.format_record(record);
                 write!(self.stdout, "{}\n", output).unwrap();
             }
         }

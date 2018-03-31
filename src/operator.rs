@@ -16,10 +16,8 @@ type Data = HashMap<String, data::Value>;
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: Record) -> Option<Record>;
     fn get_input<'a>(&self, input_column: &Option<String>, rec: &'a Record) -> Option<&'a str> {
-        let inp_col: Option<&str> = match input_column {
-            &None => None,
-            &Some(ref s) => Some(s),
-        };
+        //inp_
+        let inp_col = input_column.as_ref().map(|s|&**s);
         rec.get_str(inp_col)
     }
 }
@@ -67,7 +65,7 @@ impl Sum {
     pub fn empty(column: String) -> Self {
         Sum {
             total: 0.0,
-            column: column,
+            column,
             warnings: Vec::new(),
             is_float: false,
         }
@@ -107,7 +105,7 @@ impl Average {
         Average {
             total: 0.0,
             count: 0,
-            column: column,
+            column,
             warnings: Vec::new(),
         }
     }
@@ -150,9 +148,9 @@ impl Percentile {
 
         Percentile {
             ckms: CKMS::<f64>::new(0.001),
-            column: column,
+            column,
             warnings: Vec::new(),
-            percentile: percentile,
+            percentile,
         }
     }
 }
@@ -213,7 +211,7 @@ impl Sorter {
 impl AggregateOperator for Sorter {
     fn emit(&self) -> data::Aggregate {
         Aggregate {
-            data: self.state.iter().map(|data| data.clone()).collect(),
+            data: self.state.to_vec(),
             columns: self.columns.clone(),
         }
     }
@@ -253,7 +251,7 @@ impl<T: AggregateFunction> Grouper<T> {
             key_cols: key_cols.iter().map(|s| s.to_string()).collect(),
             agg_col: String::from(agg_col),
             state: HashMap::new(),
-            empty: empty,
+            empty,
         }
     }
 
@@ -267,7 +265,7 @@ impl<T: AggregateFunction> Grouper<T> {
             .map(|value_opt| {
                 value_opt
                     .map(|value| value.to_string())
-                    .unwrap_or("$None$".to_string())
+                    .unwrap_or_else(||"$None$".to_string())
             })
             .collect();
         // TODO: potential performance issue, can make code less clean to make clone lazy.
@@ -281,7 +279,7 @@ impl<T: AggregateFunction> AggregateOperator for Grouper<T> {
         // TODO: restructure to avoid reallocating everything on emit
         let data: Vec<(HashMap<String, String>, data::Value)> = self.state
             .iter()
-            .map(|(ref key_cols, ref accum)| {
+            .map(|(key_cols, accum)| {
                 let key_value =
                     itertools::zip_eq(self.key_cols.iter().cloned(), key_cols.iter().cloned());
                 let res_map: HashMap<String, String> = HashMap::from_iter(key_value);
@@ -321,7 +319,7 @@ impl Parse {
         let regex_str = regex_syntax::quote(pattern);
         let mut regex_str = regex_str.replace("\\*", "(.*?)");
         // If it ends with a star, we need to ensure we read until the end.
-        if pattern.ends_with("*") {
+        if pattern.ends_with('*') {
             regex_str = format!("{}$", regex_str);
         }
         if pattern.matches('*').count() != fields.len() {
@@ -339,7 +337,7 @@ impl Parse {
         let inp_opt: Option<&str> = self.get_input(&self.input_column, rec);
         inp_opt.and_then(|inp| {
             let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
-            if matches.len() == 0 {
+            if matches.is_empty() {
                 None
             } else {
                 let capture = &matches[0];
@@ -361,8 +359,8 @@ impl UnaryPreAggOperator for Parse {
             None => None,
             Some(matches) => {
                 let mut rec = rec;
-                for i in 0..self.fields.len() {
-                    rec = rec.put(&self.fields[i], matches[i].clone());
+                for (i, field) in self.fields.iter().enumerate() {
+                    rec = rec.put(field, matches[i].clone());
                 }
                 Some(rec)
             }
@@ -390,11 +388,11 @@ impl Fields {
 impl UnaryPreAggOperator for Fields {
     fn process(&self, rec: Record) -> Option<Record> {
         let mut rec = rec;
-        match &self.mode {
-            &FieldMode::Only => {
+        match self.mode {
+            FieldMode::Only => {
                 rec.data.retain(|k, _| self.columns.contains(k));
             }
-            &FieldMode::Except => {
+            FieldMode::Except => {
                 rec.data.retain(|k, _| !self.columns.contains(k));
             }
         }
@@ -423,17 +421,17 @@ impl UnaryPreAggOperator for ParseJson {
                 let v: JsonValue = v;
                 match v {
                     JsonValue::Object(map) => {
-                        map.iter().fold(Some(rec), |record_opt, (ref k, ref v)| {
+                        map.iter().fold(Some(rec), |record_opt, (k, v)| {
                             record_opt.and_then(|record| match v {
-                                &&JsonValue::Number(ref num) => if num.is_i64() {
+                                &JsonValue::Number(ref num) => if num.is_i64() {
                                     Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
                                 } else {
                                     Some(record.put(k, data::Value::Float(num.as_f64().unwrap())))
                                 },
-                                &&JsonValue::String(ref s) => {
+                                &JsonValue::String(ref s) => {
                                     Some(record.put(k, data::Value::Str(s.to_string())))
                                 }
-                                &&JsonValue::Null => Some(record.put(k, data::Value::None)),
+                                &JsonValue::Null => Some(record.put(k, data::Value::None)),
                                 _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
                             })
                         })

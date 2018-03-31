@@ -79,11 +79,11 @@ pub struct Query {
 }
 
 fn is_ident(c: char) -> bool {
-    return is_alphanumeric(c as u8) || c == '_';
+    is_alphanumeric(c as u8) || c == '_'
 }
 
 fn not_escape(c: char) -> bool {
-    return c != '\\' && c != '\"';
+    c != '\\' && c != '\"'
 }
 
 fn vec_str_vec_string(vec: Vec<&str>) -> Vec<String> {
@@ -177,7 +177,7 @@ named!(p_nn<&str, AggregateFunction>, ws!(
 ));
 
 named!(inline_operator<&str, Operator>,
-   map!(alt!(parse | json | fields), |op|Operator::Inline(op))
+   map!(alt!(parse | json | fields), Operator::Inline)
 );
 named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum | p_nn));
 
@@ -187,11 +187,11 @@ named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator | sor
 // avg(foo) by x
 
 fn default_output(func: &AggregateFunction) -> String {
-    match func {
-        &AggregateFunction::Count { .. } => "_count".to_string(),
-        &AggregateFunction::Sum { .. } => "_sum".to_string(),
-        &AggregateFunction::Average { .. } => "_average".to_string(),
-        &AggregateFunction::Percentile {
+    match *func {
+        AggregateFunction::Count { .. } => "_count".to_string(),
+        AggregateFunction::Sum { .. } => "_sum".to_string(),
+        AggregateFunction::Average { .. } => "_average".to_string(),
+        AggregateFunction::Percentile {
             ref percentile_str, ..
         } => "p".to_string() + percentile_str,
     }
@@ -202,8 +202,8 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
     key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
     rename_opt: opt!(preceded!(tag!("as"), ident)) >>
     (Operator::Aggregate(AggregateOperator{
-        key_cols: vec_str_vec_string(key_cols_opt.unwrap_or(vec![])),
-        output_column: rename_opt.map(|s|s.to_string()).unwrap_or(default_output(&agg_function)),
+        key_cols: vec_str_vec_string(key_cols_opt.unwrap_or_default()),
+        output_column: rename_opt.map(|s|s.to_string()).unwrap_or_else(|| default_output(&agg_function)),
         aggregate_function: agg_function,
      })))
 ));
@@ -224,7 +224,7 @@ named!(sort<&str, Operator>, ws!(do_parse!(
     key_cols_opt: opt!(preceded!(opt!(tag!("by")), var_list)) >>
     dir: opt!(sort_mode) >>
     (Operator::Sort(SortOperator{
-        sort_cols: vec_str_vec_string(key_cols_opt.unwrap_or(vec![])),
+        sort_cols: vec_str_vec_string(key_cols_opt.unwrap_or_default()),
         direction: dir.unwrap_or(SortMode::Ascending) ,
      })))
 ));
@@ -239,7 +239,7 @@ named!(query<&str, Query>, ws!(do_parse!(
     operators: dbg!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
     (Query{
         search: filter,
-        operators: operators.unwrap_or(Vec::new())
+        operators: operators.unwrap_or_default()
     })
 )));
 

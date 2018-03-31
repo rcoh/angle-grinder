@@ -120,10 +120,7 @@ pub mod pipeline {
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
                 }
             }
-            match final_op {
-                Some(op) => post_agg.push(op),
-                None => (),
-            };
+            if let Some(op) = final_op { post_agg.push(op) };
             Result::Ok(Pipeline {
                 filter: query.search,
                 pre_aggregates: pre_agg,
@@ -140,9 +137,9 @@ pub mod pipeline {
         }
 
         fn matches(&self, raw: &str) -> bool {
-            match &self.filter {
-                &lang::Search::MatchAll => true,
-                &lang::Search::MatchFilter(ref filter) => raw.contains(filter),
+            match self.filter {
+                lang::Search::MatchAll => true,
+                lang::Search::MatchFilter(ref filter) => raw.contains(filter),
             }
         }
 
@@ -160,7 +157,7 @@ pub mod pipeline {
         }
 
         fn proc_str(&mut self, s: &str) {
-            if self.matches(&s) {
+            if self.matches(s) {
                 let mut rec = Record::new(s);
                 for pre_agg in &self.pre_aggregates {
                     match (*pre_agg).process(rec) {
@@ -170,7 +167,7 @@ pub mod pipeline {
                 }
 
                 let row = Row::Record(rec);
-                if self.aggregators.len() == 0 {
+                if self.aggregators.is_empty() {
                     self.renderer.render(&row, false);
                     return;
                 }
@@ -184,7 +181,7 @@ pub mod pipeline {
         }
 
         pub fn run_agg_pipeline(&mut self, last_row: bool) {
-            if self.aggregators.len() == 0 {
+            if self.aggregators.is_empty() {
                 return;
             }
             let mut row = Row::Aggregate((*self.aggregators[0]).emit());
