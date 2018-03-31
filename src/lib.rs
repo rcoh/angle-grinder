@@ -120,7 +120,9 @@ pub mod pipeline {
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
                 }
             }
-            if let Some(op) = final_op { post_agg.push(op) };
+            if let Some(op) = final_op {
+                post_agg.push(op)
+            };
             Result::Ok(Pipeline {
                 filter: query.search,
                 pre_aggregates: pre_agg,

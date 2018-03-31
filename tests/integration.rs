@@ -23,7 +23,6 @@ mod integration {
             .stderr()
             .contains("Could not parse")
             .unwrap();
-
     }
 
     #[test]
@@ -52,7 +51,6 @@ error        2
 $None$       1")
             .unwrap();
     }
-
 
     #[test]
     fn test_aggregate_of_aggregate() {

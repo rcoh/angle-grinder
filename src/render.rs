@@ -39,7 +39,10 @@ impl PrettyPrinter {
             .map(|(column_name, value)| {
                 let current_width = *self.column_widths.get(column_name).unwrap_or(&0);
                 // 1. If the width would increase, set it to max_buffer
-                let value_length = value.render(&self.render_config).len().max(column_name.len());
+                let value_length = value
+                    .render(&self.render_config)
+                    .len()
+                    .max(column_name.len());
                 let min_column_width = value_length + self.render_config.min_buffer;
                 let new_column_width = if min_column_width > current_width {
                     // if we're resizing, go to the max
@@ -114,8 +117,7 @@ impl PrettyPrinter {
                     format!(
                         "{:width$}",
                         unpadded,
-                        width =
-                            column_name.len() + 3 + self.column_widths[column_name]
+                        width = column_name.len() + 3 + self.column_widths[column_name]
                     )
                 }
             })

@@ -8,7 +8,7 @@ use std::fs::File;
 fn main() {
     ::std::process::exit(match run_agrind() {
         Ok(_) => 0,
-        Err(_) => 1
+        Err(_) => 1,
     });
 }
 fn run_agrind() -> Result<(), ()> {
@@ -46,6 +46,6 @@ fn run_agrind() -> Result<(), ()> {
         Result::Err(e) => {
             eprintln!("{}", e);
             Err(())
-        },
+        }
     }
 }

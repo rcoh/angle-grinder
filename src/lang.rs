@@ -203,7 +203,9 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
     rename_opt: opt!(preceded!(tag!("as"), ident)) >>
     (Operator::Aggregate(AggregateOperator{
         key_cols: vec_str_vec_string(key_cols_opt.unwrap_or_default()),
-        output_column: rename_opt.map(|s|s.to_string()).unwrap_or_else(|| default_output(&agg_function)),
+        output_column: rename_opt
+                            .map(|s|s.to_string())
+                            .unwrap_or_else(|| default_output(&agg_function)),
         aggregate_function: agg_function,
      })))
 ));

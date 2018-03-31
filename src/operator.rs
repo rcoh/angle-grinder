@@ -17,7 +17,7 @@ pub trait UnaryPreAggOperator {
     fn process(&self, rec: Record) -> Option<Record>;
     fn get_input<'a>(&self, input_column: &Option<String>, rec: &'a Record) -> Option<&'a str> {
         //inp_
-        let inp_col = input_column.as_ref().map(|s|&**s);
+        let inp_col = input_column.as_ref().map(|s| &**s);
         rec.get_str(inp_col)
     }
 }
@@ -265,7 +265,7 @@ impl<T: AggregateFunction> Grouper<T> {
             .map(|value_opt| {
                 value_opt
                     .map(|value| value.to_string())
-                    .unwrap_or_else(||"$None$".to_string())
+                    .unwrap_or_else(|| "$None$".to_string())
             })
             .collect();
         // TODO: potential performance issue, can make code less clean to make clone lazy.
@@ -420,22 +420,20 @@ impl UnaryPreAggOperator for ParseJson {
             Some(Ok(v)) => {
                 let v: JsonValue = v;
                 match v {
-                    JsonValue::Object(map) => {
-                        map.iter().fold(Some(rec), |record_opt, (k, v)| {
-                            record_opt.and_then(|record| match v {
-                                &JsonValue::Number(ref num) => if num.is_i64() {
-                                    Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
-                                } else {
-                                    Some(record.put(k, data::Value::Float(num.as_f64().unwrap())))
-                                },
-                                &JsonValue::String(ref s) => {
-                                    Some(record.put(k, data::Value::Str(s.to_string())))
-                                }
-                                &JsonValue::Null => Some(record.put(k, data::Value::None)),
-                                _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
-                            })
+                    JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
+                        record_opt.and_then(|record| match v {
+                            &JsonValue::Number(ref num) => if num.is_i64() {
+                                Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
+                            } else {
+                                Some(record.put(k, data::Value::Float(num.as_f64().unwrap())))
+                            },
+                            &JsonValue::String(ref s) => {
+                                Some(record.put(k, data::Value::Str(s.to_string())))
+                            }
+                            &JsonValue::Null => Some(record.put(k, data::Value::None)),
+                            _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
                         })
-                    }
+                    }),
                     _other => None,
                 }
             }

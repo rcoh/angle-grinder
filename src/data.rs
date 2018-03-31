@@ -58,8 +58,8 @@ impl Value {
         let float_value = s.parse::<f64>();
         int_value
             .map(Value::Int)
-            .or_else(|_|float_value.map(Value::Float))
-            .unwrap_or_else(|_|Value::Str(s.to_string()))
+            .or_else(|_| float_value.map(Value::Float))
+            .unwrap_or_else(|_| Value::Str(s.to_string()))
     }
 }
 
@@ -132,15 +132,13 @@ impl Record {
                 let l_val = rec_l.get(col);
                 let r_val = rec_r.get(col);
                 if l_val != r_val {
-                    if l_val == None {
-                        return Ordering::Less;
-                    }
-                    if r_val == None {
-                        return Ordering::Greater;
-                    }
-                    let l_val = l_val.unwrap();
-                    let r_val = r_val.unwrap();
-                    return l_val.partial_cmp(r_val).unwrap_or(Ordering::Less);
+                    return match (l_val, r_val) {
+                        (Some(l_val), Some(r_val)) => {
+                            l_val.partial_cmp(r_val).unwrap_or(Ordering::Less)
+                        }
+                        (_, None) => Ordering::Less,
+                        (None, _) => Ordering::Greater,
+                    };
                 }
             }
             Ordering::Equal
