@@ -285,7 +285,7 @@ mod tests {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
                     input_column: None,
-                }
+                },
             ))
         );
         assert_eq!(
@@ -296,7 +296,7 @@ mod tests {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
                     input_column: None,
-                }
+                },
             ))
         );
     }
@@ -318,7 +318,7 @@ mod tests {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
                     input_column: Some("field".to_string()),
-                })
+                },)
             ))
         );
     }
@@ -333,7 +333,7 @@ mod tests {
                     key_cols: vec_str_vec_string(vec!["x", "y"]),
                     aggregate_function: AggregateFunction::Count,
                     output_column: "renamed".to_string(),
-                })
+                },)
             ))
         );
     }
@@ -352,7 +352,7 @@ mod tests {
                         percentile_str: "50".to_string(),
                     },
                     output_column: "p50".to_string(),
-                })
+                },)
             ))
         );
     }
@@ -367,7 +367,7 @@ mod tests {
                 Query {
                     search: Search::MatchFilter("filter".to_string()),
                     operators: vec![],
-                }
+                },
             ))
         );
     }
@@ -401,7 +401,7 @@ mod tests {
                             direction: SortMode::Descending,
                         }),
                     ],
-                }
+                },
             ))
         );
     }

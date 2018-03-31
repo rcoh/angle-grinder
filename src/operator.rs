@@ -113,18 +113,20 @@ impl Average {
 
 impl AggregateFunction for Average {
     fn process(&mut self, data: &Data) {
-        data.get(&self.column).iter().for_each(|value| match *value {
-            &data::Value::Float(ref f) => {
-                self.total += f;
-                self.count += 1
-            }
-            &data::Value::Int(ref i) => {
-                self.total += *i as f64;
-                self.count += 1
-            }
-            _other => self.warnings
-                .push("Got string. Can only average into or float".to_string()),
-        });
+        data.get(&self.column)
+            .iter()
+            .for_each(|value| match *value {
+                &data::Value::Float(ref f) => {
+                    self.total += f;
+                    self.count += 1
+                }
+                &data::Value::Int(ref i) => {
+                    self.total += *i as f64;
+                    self.count += 1
+                }
+                _other => self.warnings
+                    .push("Got string. Can only average into or float".to_string()),
+            });
     }
 
     fn emit(&self) -> data::Value {
@@ -157,14 +159,16 @@ impl Percentile {
 
 impl AggregateFunction for Percentile {
     fn process(&mut self, data: &Data) {
-        data.get(&self.column).iter().for_each(|value| match *value {
-            &data::Value::Float(ref f) => {
-                self.ckms.insert(*f);
-            }
-            &data::Value::Int(ref i) => self.ckms.insert(*i as f64),
-            _other => self.warnings
-                .push("Got string. Can only average int or float".to_string()),
-        });
+        data.get(&self.column)
+            .iter()
+            .for_each(|value| match *value {
+                &data::Value::Float(ref f) => {
+                    self.ckms.insert(*f);
+                }
+                &data::Value::Int(ref i) => self.ckms.insert(*i as f64),
+                _other => self.warnings
+                    .push("Got string. Can only average int or float".to_string()),
+            });
     }
 
     fn emit(&self) -> data::Value {
