@@ -272,8 +272,10 @@ impl<T: AggregateFunction> Grouper<T> {
                     .unwrap_or_else(|| "$None$".to_string())
             })
             .collect();
-        // TODO: potential performance issue, can make code less clean to make clone lazy.
-        let accum = self.state.entry(key_columns).or_insert(self.empty.clone());
+        let empty = &self.empty;
+        let accum = self.state
+            .entry(key_columns)
+            .or_insert_with(|| empty.clone());
         accum.process(&data);
     }
 }
