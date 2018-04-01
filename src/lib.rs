@@ -5,6 +5,8 @@ extern crate nom;
 #[cfg(test)]
 extern crate maplit;
 
+extern crate crossbeam_channel;
+
 mod data;
 mod operator;
 mod lang;
