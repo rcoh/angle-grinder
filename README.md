@@ -12,12 +12,12 @@ Binaries are available for Linux and OS X: https://github.com/rcoh/angle-grinder
 
 Linux (statically linked with musl):
 ```
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.2/angle_grinder-v0.6.2-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.3/angle_grinder-v0.6.3-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
 ```
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.2/angle_grinder-v0.6.2-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.3/angle_grinder-v0.6.3-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 Or with Cargo:
