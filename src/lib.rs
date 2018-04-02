@@ -215,7 +215,7 @@ pub mod pipeline {
         }
 
         pub fn process<T: BufRead>(self, mut buf: T) {
-            let (tx, rx) = bounded(1);
+            let (tx, rx) = bounded(1000);
             let mut aggregators = self.aggregators;
             let preaggs = self.pre_aggregates;
             let search = self.filter;
