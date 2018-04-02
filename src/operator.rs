@@ -3,14 +3,14 @@ extern crate quantiles;
 extern crate regex;
 extern crate regex_syntax;
 extern crate serde_json;
+use self::quantiles::ckms::CKMS;
+use self::serde_json::Value as JsonValue;
+use data;
+use data::{Aggregate, Record, Row};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::iter::FromIterator;
-use data::{Aggregate, Record, Row};
-use data;
-use self::quantiles::ckms::CKMS;
-use std::cmp::Ordering;
-use self::serde_json::Value as JsonValue;
 
 type Data = HashMap<String, data::Value>;
 pub trait UnaryPreAggOperator {
@@ -22,7 +22,7 @@ pub trait UnaryPreAggOperator {
     }
 }
 
-pub trait AggregateOperator : Send + Sync {
+pub trait AggregateOperator: Send + Sync {
     fn emit(&self) -> data::Aggregate;
     fn process(&mut self, row: Row);
 }
@@ -280,7 +280,7 @@ impl<T: AggregateFunction> Grouper<T> {
     }
 }
 
-impl<T: AggregateFunction + Send+ Sync> AggregateOperator for Grouper<T> {
+impl<T: AggregateFunction + Send + Sync> AggregateOperator for Grouper<T> {
     fn emit(&self) -> data::Aggregate {
         // TODO: restructure to avoid reallocating everything on emit
         let data: Vec<(HashMap<String, String>, data::Value)> = self.state
@@ -450,9 +450,9 @@ impl UnaryPreAggOperator for ParseJson {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use data::Record;
     use data::Value;
-    use super::*;
     use operator::itertools::Itertools;
     #[test]
     fn test_json() {

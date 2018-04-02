@@ -8,20 +8,20 @@ extern crate maplit;
 extern crate crossbeam_channel;
 
 mod data;
-mod operator;
 mod lang;
+mod operator;
 mod render;
 
 pub mod pipeline {
-    use lang;
-    use operator;
-    use lang::*;
-    use render::{RenderConfig, Renderer};
+    use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
     use data::{Record, Row};
+    use lang;
+    use lang::*;
+    use operator;
+    use render::{RenderConfig, Renderer};
     use std::io::BufRead;
-    use std::time::Duration;
     use std::thread;
-    use crossbeam_channel::{bounded, RecvTimeoutError, Receiver};
+    use std::time::Duration;
 
     pub struct Pipeline {
         filter: lang::Search,
@@ -154,16 +154,19 @@ pub mod pipeline {
                 match next {
                     Ok(row) => {
                         renderer.render(&row, false);
-
-                    },
-                    Err(RecvTimeoutError::Timeout) => {
-                    },
-                    Err(RecvTimeoutError::Disconnected) => break
+                    }
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => break,
                 }
             }
         }
 
-        fn render_aggregate<'a>(mut head: Box<operator::AggregateOperator + 'a>, mut rest: Vec<Box<operator::AggregateOperator +'a>>, mut renderer: Renderer, rx: Receiver<Row>) {
+        fn render_aggregate<'a>(
+            mut head: Box<operator::AggregateOperator + 'a>,
+            mut rest: Vec<Box<operator::AggregateOperator + 'a>>,
+            mut renderer: Renderer,
+            rx: Receiver<Row>,
+        ) {
             loop {
                 let next = rx.recv_timeout(Duration::from_millis(50));
                 match next {
@@ -172,14 +175,13 @@ pub mod pipeline {
                         if renderer.should_print() {
                             renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
                         }
-
-                    },
+                    }
                     Err(RecvTimeoutError::Timeout) => {
                         if renderer.should_print() {
                             renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
                         }
-                    },
-                    Err(RecvTimeoutError::Disconnected) => break
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
                 }
             }
             renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), true);
@@ -196,9 +198,9 @@ pub mod pipeline {
                     panic!("Every aggregate pipeline should have a real operator and a sort");
                 }
                 let head = aggregators.remove(0);
-                thread::spawn(move||Pipeline::render_aggregate(head, aggregators, renderer, rx))
+                thread::spawn(move || Pipeline::render_aggregate(head, aggregators, renderer, rx))
             } else {
-                thread::spawn(move||Pipeline::render_noagg(renderer, rx))
+                thread::spawn(move || Pipeline::render_noagg(renderer, rx))
             };
 
             // This is pretty slow in practice. We could move line splitting until after
@@ -214,10 +216,13 @@ pub mod pipeline {
             // Drop tx when causes the thread to exit.
             drop(tx);
             t.join().unwrap();
-
         }
 
-        fn proc_preagg(s: &str, pattern: &lang::Search, pre_aggs: &[Box<operator::UnaryPreAggOperator>]) -> Option<Row> {
+        fn proc_preagg(
+            s: &str,
+            pattern: &lang::Search,
+            pre_aggs: &[Box<operator::UnaryPreAggOperator>],
+        ) -> Option<Row> {
             if Pipeline::matches(pattern, s) {
                 let mut rec = Record::new(s);
                 for pre_agg in pre_aggs {
@@ -232,7 +237,10 @@ pub mod pipeline {
             }
         }
 
-        pub fn run_agg_pipeline<'a>(head: &Box<operator::AggregateOperator +'a>, rest: &mut[Box<operator::AggregateOperator + 'a>]) -> Row {
+        pub fn run_agg_pipeline<'a>(
+            head: &Box<operator::AggregateOperator + 'a>,
+            rest: &mut [Box<operator::AggregateOperator + 'a>],
+        ) -> Row {
             let mut row = Row::Aggregate((*head).emit());
             for agg in (*rest).iter_mut() {
                 (*agg).process(row);

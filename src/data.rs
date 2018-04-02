@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::fmt;
-use std::cmp::Ordering;
 use render;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Display;
 
 type VMap = HashMap<String, Value>;
 
@@ -126,7 +126,9 @@ impl Record {
         }
     }
 
-    pub fn ordering<'a>(columns: Vec<String>) -> Box<Fn(&VMap, &VMap) -> Ordering + 'a + Send + Sync> {
+    pub fn ordering<'a>(
+        columns: Vec<String>,
+    ) -> Box<Fn(&VMap, &VMap) -> Ordering + 'a + Send + Sync> {
         Box::new(move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
                 let l_val = rec_l.get(col);
