@@ -23,35 +23,6 @@ pub mod pipeline {
     use std::thread;
     use crossbeam_channel::{bounded, RecvTimeoutError, Receiver};
 
-    /*
-    struct AggregatePipeline {
-        head: Mutex<Box<operator::AggregateOperator>>,
-        tail: Vec<Box<operator::AggregateOperator>>,
-        renderer: Renderer
-    }
-
-    impl AggregatePipeline {
-        pub fn process(&self, row: Row) {
-            (*self.head.lock().unwrap()).process(row);
-        }
-
-        fn run_agg_pipeline(head: Mutex<Box<operator::AggregateOperator>>, mut tail: Vec<Box<operator::AggregateOperator>>, last_row: bool) -> Row {
-            let mut row = Row::Aggregate((*head.lock().unwrap()).emit());
-            for agg in tail.iter_mut() {
-                (*agg).process(row);
-                row = Row::Aggregate((*agg).emit());
-            }
-            return row;
-        }
-
-        pub fn start_rendering(&mut self, sleep_duration: Duration, pipeline: Vec<Box<operator::AggregateOperator>>) -> thread::JoinHandle<()> {
-            let head = self.head;
-            thread::spawn(|| {
-                // let row = AggregatePipeline::run_agg_pipeline(head, pipeline, false);
-                //self.renderer.render(&row, false);
-            })
-        }
-    }*/
     pub struct Pipeline {
         filter: lang::Search,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
