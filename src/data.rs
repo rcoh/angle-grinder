@@ -67,7 +67,7 @@ impl Aggregate {
     pub fn new(
         key_columns: &[String],
         agg_column: String,
-        data: Vec<(HashMap<String, String>, Value)>,
+        data: &[(HashMap<String, String>, Value)],
     ) -> Aggregate {
         data.iter().for_each(|&(ref row, ref _value)| {
             if row.len() != key_columns.len() {
@@ -166,7 +166,7 @@ mod tests {
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
-            vec![
+            &[
                 (
                     hashmap!{
                         "kc1".to_string() => "k1".to_string(),
@@ -185,7 +185,7 @@ mod tests {
         Aggregate::new(
             &["k1".to_string(), "k2".to_string()],
             "count".to_string(),
-            vec![
+            &[
                 (
                     hashmap!{
                         "kc2".to_string() => "k2".to_string()

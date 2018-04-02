@@ -46,7 +46,7 @@ pub mod pipeline {
                         FieldMode::Except => operator::FieldMode::Except,
                         FieldMode::Only => operator::FieldMode::Only,
                     };
-                    Box::new(operator::Fields::new(fields, omode))
+                    Box::new(operator::Fields::new(&fields, omode))
                 }
             }
         }
@@ -62,20 +62,20 @@ pub mod pipeline {
         fn convert_agg(op: lang::AggregateOperator) -> Box<operator::AggregateOperator> {
             match op.aggregate_function {
                 AggregateFunction::Count => Box::new(operator::Grouper::<operator::Count>::new(
-                    op.key_cols.iter().map(AsRef::as_ref).collect(),
+                    op.key_cols,
                     &op.output_column,
                     operator::Count::new(),
                 )),
                 AggregateFunction::Average { column } => {
                     Box::new(operator::Grouper::<operator::Average>::new(
-                        op.key_cols.iter().map(AsRef::as_ref).collect(),
+                        op.key_cols,
                         &op.output_column,
                         operator::Average::empty(column),
                     ))
                 }
                 AggregateFunction::Sum { column } => {
                     Box::new(operator::Grouper::<operator::Sum>::new(
-                        op.key_cols.iter().map(AsRef::as_ref).collect(),
+                        op.key_cols,
                         &op.output_column,
                         operator::Sum::empty(column),
                     ))
@@ -83,7 +83,7 @@ pub mod pipeline {
                 AggregateFunction::Percentile {
                     column, percentile, ..
                 } => Box::new(operator::Grouper::<operator::Percentile>::new(
-                    op.key_cols.iter().map(AsRef::as_ref).collect(),
+                    op.key_cols,
                     &op.output_column,
                     operator::Percentile::empty(column, percentile),
                 )),
@@ -148,7 +148,7 @@ pub mod pipeline {
                 lang::Search::MatchFilter(ref filter) => raw.contains(filter),
             }
         }
-        fn render_noagg(mut renderer: Renderer, rx: Receiver<Row>) {
+        fn render_noagg(mut renderer: Renderer, rx: &Receiver<Row>) {
             loop {
                 let next = rx.recv_timeout(Duration::from_millis(50));
                 match next {
@@ -161,11 +161,11 @@ pub mod pipeline {
             }
         }
 
-        fn render_aggregate<'a>(
-            mut head: Box<operator::AggregateOperator + 'a>,
-            mut rest: Vec<Box<operator::AggregateOperator + 'a>>,
+        fn render_aggregate(
+            mut head: Box<operator::AggregateOperator>,
+            mut rest: Vec<Box<operator::AggregateOperator>>,
             mut renderer: Renderer,
-            rx: Receiver<Row>,
+            rx: &Receiver<Row>,
         ) {
             loop {
                 let next = rx.recv_timeout(Duration::from_millis(50));
@@ -193,14 +193,14 @@ pub mod pipeline {
             let preaggs = self.pre_aggregates;
             let search = self.filter;
             let renderer = self.renderer;
-            let t = if aggregators.len() > 0 {
+            let t = if !aggregators.is_empty() {
                 if aggregators.len() == 1 {
                     panic!("Every aggregate pipeline should have a real operator and a sort");
                 }
                 let head = aggregators.remove(0);
-                thread::spawn(move || Pipeline::render_aggregate(head, aggregators, renderer, rx))
+                thread::spawn(move || Pipeline::render_aggregate(head, aggregators, renderer, &rx))
             } else {
-                thread::spawn(move || Pipeline::render_noagg(renderer, rx))
+                thread::spawn(move || Pipeline::render_noagg(renderer, &rx))
             };
 
             // This is pretty slow in practice. We could move line splitting until after
@@ -237,9 +237,9 @@ pub mod pipeline {
             }
         }
 
-        pub fn run_agg_pipeline<'a>(
-            head: &Box<operator::AggregateOperator + 'a>,
-            rest: &mut [Box<operator::AggregateOperator + 'a>],
+        pub fn run_agg_pipeline(
+            head: &Box<operator::AggregateOperator>,
+            rest: &mut [Box<operator::AggregateOperator>],
         ) -> Row {
             let mut row = Row::Aggregate((*head).emit());
             for agg in (*rest).iter_mut() {
