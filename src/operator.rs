@@ -292,7 +292,7 @@ impl<T: AggregateFunction + Send+ Sync> AggregateOperator for Grouper<T> {
                 (res_map, accum.emit())
             })
             .collect();
-        Aggregate::new(self.key_cols.clone(), self.agg_col.clone(), data)
+        Aggregate::new(&self.key_cols, self.agg_col.clone(), data)
     }
 
     fn process(&mut self, row: Row) {
@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn test_sort_aggregate() {
         let agg = Aggregate::new(
-            vec!["kc1".to_string(), "kc2".to_string()],
+            &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
             vec![
                 (

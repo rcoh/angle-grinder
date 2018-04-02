@@ -177,6 +177,20 @@ pub mod pipeline {
                 lang::Search::MatchFilter(ref filter) => raw.contains(filter),
             }
         }
+        fn render_noagg(mut renderer: Renderer, rx: Receiver<Row>) {
+            loop {
+                let next = rx.recv_timeout(Duration::from_millis(50));
+                match next {
+                    Ok(row) => {
+                        renderer.render(&row, false);
+
+                    },
+                    Err(RecvTimeoutError::Timeout) => {
+                    },
+                    Err(RecvTimeoutError::Disconnected) => break
+                }
+            }
+        }
 
         fn render_aggregate<'a>(mut head: Box<operator::AggregateOperator + 'a>, mut rest: Vec<Box<operator::AggregateOperator +'a>>, mut renderer: Renderer, rx: Receiver<Row>) {
             loop {
@@ -206,8 +220,15 @@ pub mod pipeline {
             let preaggs = self.pre_aggregates;
             let search = self.filter;
             let renderer = self.renderer;
-            let head = aggregators.remove(0);
-            let t = thread::spawn(move||Pipeline::render_aggregate(head, aggregators, renderer, rx));
+            let t = if aggregators.len() > 0 {
+                if aggregators.len() == 1 {
+                    panic!("Every aggregate pipeline should have a real operator and a sort");
+                }
+                let head = aggregators.remove(0);
+                thread::spawn(move||Pipeline::render_aggregate(head, aggregators, renderer, rx))
+            } else {
+                thread::spawn(move||Pipeline::render_noagg(renderer, rx))
+            };
 
             // This is pretty slow in practice. We could move line splitting until after
             // we find a match. Another option is moving the transformation to String until
@@ -219,12 +240,13 @@ pub mod pipeline {
                 }
                 line.clear();
             }
+            // Drop tx when causes the thread to exit.
             drop(tx);
-            t.join();
+            t.join().unwrap();
 
         }
 
-        fn proc_preagg(s: &str, pattern: &lang::Search, pre_aggs: &Vec<Box<operator::UnaryPreAggOperator>>) -> Option<Row> {
+        fn proc_preagg(s: &str, pattern: &lang::Search, pre_aggs: &[Box<operator::UnaryPreAggOperator>]) -> Option<Row> {
             if Pipeline::matches(pattern, s) {
                 let mut rec = Record::new(s);
                 for pre_agg in pre_aggs {

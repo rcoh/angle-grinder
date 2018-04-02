@@ -65,7 +65,7 @@ impl Value {
 
 impl Aggregate {
     pub fn new(
-        key_columns: Vec<String>,
+        key_columns: &[String],
         agg_column: String,
         data: Vec<(HashMap<String, String>, Value)>,
     ) -> Aggregate {
@@ -89,7 +89,7 @@ impl Aggregate {
                 new_map
             })
             .collect();
-        let mut columns = key_columns.clone();
+        let mut columns = key_columns.to_owned();
         columns.push(agg_column);
 
         Aggregate {
@@ -149,14 +149,6 @@ impl Record {
 #[cfg(test)]
 mod tests {
     use super::*;
-    macro_rules! veclit {
-        // match a list of expressions separated by comma:
-        ($($str:expr),*) => ({
-            // create a Vec with this list of expressions,
-            // calling String::from on each:
-            vec![$(String::from($str),)*] as Vec<String>
-        });
-    }
 
     #[test]
     fn test_record_put_get() {
@@ -170,7 +162,7 @@ mod tests {
     #[test]
     fn test_agg() {
         let agg = Aggregate::new(
-            veclit!("kc1", "kc2"),
+            &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
             vec![
                 (
@@ -189,7 +181,7 @@ mod tests {
     #[should_panic]
     fn test_panic_on_invalid_row() {
         Aggregate::new(
-            veclit!("kc1", "kc2"),
+            &["k1".to_string(), "k2".to_string()],
             "count".to_string(),
             vec![
                 (

@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn test_pretty_print_aggregate() {
         let agg = Aggregate::new(
-            vec!["kc1".to_string(), "kc2".to_string()],
+            &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
             vec![
                 (
