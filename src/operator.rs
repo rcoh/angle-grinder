@@ -22,7 +22,7 @@ pub trait UnaryPreAggOperator {
     }
 }
 
-pub trait AggregateOperator : Send {
+pub trait AggregateOperator : Send + Sync {
     fn emit(&self) -> data::Aggregate;
     fn process(&mut self, row: Row);
 }
@@ -188,7 +188,7 @@ pub enum SortDirection {
 pub struct Sorter {
     columns: Vec<String>,
     state: Vec<Data>,
-    ordering: Box<Fn(&Data, &Data) -> Ordering + Send>,
+    ordering: Box<Fn(&Data, &Data) -> Ordering + Send + Sync>,
     direction: SortDirection,
 }
 
@@ -280,7 +280,7 @@ impl<T: AggregateFunction> Grouper<T> {
     }
 }
 
-impl<T: AggregateFunction + Send> AggregateOperator for Grouper<T> {
+impl<T: AggregateFunction + Send+ Sync> AggregateOperator for Grouper<T> {
     fn emit(&self) -> data::Aggregate {
         // TODO: restructure to avoid reallocating everything on emit
         let data: Vec<(HashMap<String, String>, data::Value)> = self.state

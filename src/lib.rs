@@ -20,7 +20,38 @@ pub mod pipeline {
     use data::{Record, Row};
     use std::io::BufRead;
     use std::time::Duration;
+    use std::thread;
+    use crossbeam_channel::{bounded, RecvTimeoutError, Receiver};
 
+    /*
+    struct AggregatePipeline {
+        head: Mutex<Box<operator::AggregateOperator>>,
+        tail: Vec<Box<operator::AggregateOperator>>,
+        renderer: Renderer
+    }
+
+    impl AggregatePipeline {
+        pub fn process(&self, row: Row) {
+            (*self.head.lock().unwrap()).process(row);
+        }
+
+        fn run_agg_pipeline(head: Mutex<Box<operator::AggregateOperator>>, mut tail: Vec<Box<operator::AggregateOperator>>, last_row: bool) -> Row {
+            let mut row = Row::Aggregate((*head.lock().unwrap()).emit());
+            for agg in tail.iter_mut() {
+                (*agg).process(row);
+                row = Row::Aggregate((*agg).emit());
+            }
+            return row;
+        }
+
+        pub fn start_rendering(&mut self, sleep_duration: Duration, pipeline: Vec<Box<operator::AggregateOperator>>) -> thread::JoinHandle<()> {
+            let head = self.head;
+            thread::spawn(|| {
+                // let row = AggregatePipeline::run_agg_pipeline(head, pipeline, false);
+                //self.renderer.render(&row, false);
+            })
+        }
+    }*/
     pub struct Pipeline {
         filter: lang::Search,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
@@ -140,60 +171,81 @@ pub mod pipeline {
             })
         }
 
-        fn matches(&self, raw: &str) -> bool {
-            match self.filter {
+        fn matches(pattern: &lang::Search, raw: &str) -> bool {
+            match *pattern {
                 lang::Search::MatchAll => true,
                 lang::Search::MatchFilter(ref filter) => raw.contains(filter),
             }
         }
 
-        pub fn process<T: BufRead>(&mut self, mut buf: T) {
+        fn render_aggregate<'a>(mut head: Box<operator::AggregateOperator + 'a>, mut rest: Vec<Box<operator::AggregateOperator +'a>>, mut renderer: Renderer, rx: Receiver<Row>) {
+            loop {
+                let next = rx.recv_timeout(Duration::from_millis(50));
+                match next {
+                    Ok(row) => {
+                        (*head).process(row);
+                        if renderer.should_print() {
+                            renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
+                        }
+
+                    },
+                    Err(RecvTimeoutError::Timeout) => {
+                        if renderer.should_print() {
+                            renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
+                        }
+                    },
+                    Err(RecvTimeoutError::Disconnected) => break
+                }
+            }
+            renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), true);
+        }
+
+        pub fn process<T: BufRead>(self, mut buf: T) {
+            let (tx, rx) = bounded(1);
+            let mut aggregators = self.aggregators;
+            let preaggs = self.pre_aggregates;
+            let search = self.filter;
+            let renderer = self.renderer;
+            let head = aggregators.remove(0);
+            let t = thread::spawn(move||Pipeline::render_aggregate(head, aggregators, renderer, rx));
+
             // This is pretty slow in practice. We could move line splitting until after
             // we find a match. Another option is moving the transformation to String until
             // after we match (staying as Vec<u8> until then)
             let mut line = String::with_capacity(1024);
             while buf.read_line(&mut line).unwrap() > 0 {
-                self.proc_str(&(line));
+                if let Some(row) = Pipeline::proc_preagg(&line, &search, &preaggs) {
+                    tx.send(row).unwrap();
+                }
                 line.clear();
             }
-            // Run the aggregate to ensure it's updated with the latest results
-            self.run_agg_pipeline(true);
+            drop(tx);
+            t.join();
+
         }
 
-        fn proc_str(&mut self, s: &str) {
-            if self.matches(s) {
+        fn proc_preagg(s: &str, pattern: &lang::Search, pre_aggs: &Vec<Box<operator::UnaryPreAggOperator>>) -> Option<Row> {
+            if Pipeline::matches(pattern, s) {
                 let mut rec = Record::new(s);
-                for pre_agg in &self.pre_aggregates {
+                for pre_agg in pre_aggs {
                     match (*pre_agg).process(rec) {
                         Some(next_rec) => rec = next_rec,
-                        None => return,
+                        None => return None,
                     }
                 }
-
-                let row = Row::Record(rec);
-                if self.aggregators.is_empty() {
-                    self.renderer.render(&row, false);
-                    return;
-                }
-                // For every row, send it to the head aggregate
-                (*self.aggregators[0]).process(row);
-                // Only when we need to render, run the entire pipeline
-                if self.renderer.should_print() {
-                    self.run_agg_pipeline(false);
-                }
+                Some(Row::Record(rec))
+            } else {
+                None
             }
         }
 
-        pub fn run_agg_pipeline(&mut self, last_row: bool) {
-            if self.aggregators.is_empty() {
-                return;
-            }
-            let mut row = Row::Aggregate((*self.aggregators[0]).emit());
-            for agg in self.aggregators[1..].iter_mut() {
+        pub fn run_agg_pipeline<'a>(head: &Box<operator::AggregateOperator +'a>, rest: &mut[Box<operator::AggregateOperator + 'a>]) -> Row {
+            let mut row = Row::Aggregate((*head).emit());
+            for agg in (*rest).iter_mut() {
                 (*agg).process(row);
                 row = Row::Aggregate((*agg).emit());
             }
-            self.renderer.render(&row, last_row);
+            row
         }
     }
 }
