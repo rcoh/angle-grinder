@@ -29,7 +29,7 @@ fn run_agrind() -> Result<(), ()> {
         .get_matches();
     let query_str = matches.value_of("query").unwrap();
     match pipeline::Pipeline::new(query_str) {
-        Result::Ok(mut pipeline) => match matches.value_of("file") {
+        Result::Ok(pipeline) => match matches.value_of("file") {
             None => {
                 let stdin = io::stdin();
                 let locked = stdin.lock();

@@ -1,3 +1,4 @@
+#!/usr/bin/python -u
 import time
 import random
 import json
@@ -10,13 +11,15 @@ def main():
 	try:
 		status_codes = [200, 200, 200, 200, 200, 200, 500]
 		urls = ['/login', '/posts', '/submit', '/']
+		total_outputs = 0
 		while True:
 			url = random.choice(urls)
 			status_code = random.choice(status_codes)
 			data = dict(status_code=status_code, response_ms=random.randint(1, len(url)*5), url=url)			    
 			sys.stdout.write(json.dumps(data) + '\n')
+			total_outputs += 1
 			time.sleep(random.randint(1,50) / 1000.0)
 	except KeyboardInterrupt:
-		pass
+		sys.stderr.write("Total rows: {}".format(total_outputs))
 if __name__ == "__main__":
 	main()

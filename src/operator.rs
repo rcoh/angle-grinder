@@ -22,7 +22,7 @@ pub trait UnaryPreAggOperator {
     }
 }
 
-pub trait AggregateOperator: Send {
+pub trait AggregateOperator: Send + Sync {
     fn emit(&self) -> data::Aggregate;
     fn process(&mut self, row: Row);
 }
@@ -188,7 +188,7 @@ pub enum SortDirection {
 pub struct Sorter {
     columns: Vec<String>,
     state: Vec<Data>,
-    ordering: Box<Fn(&Data, &Data) -> Ordering + Send>,
+    ordering: Box<Fn(&Data, &Data) -> Ordering + Send + Sync>,
     direction: SortDirection,
 }
 
@@ -250,16 +250,16 @@ pub struct Grouper<T: AggregateFunction> {
 }
 
 impl<T: AggregateFunction> Grouper<T> {
-    pub fn new(key_cols: Vec<&str>, agg_col: &str, empty: T) -> Grouper<T> {
+    pub fn new(key_cols: Vec<String>, agg_col: &str, empty: T) -> Grouper<T> {
         Grouper {
-            key_cols: key_cols.iter().map(|s| s.to_string()).collect(),
+            key_cols,
             agg_col: String::from(agg_col),
             state: HashMap::new(),
             empty,
         }
     }
 
-    fn process_map(&mut self, data: Data) {
+    fn process_map(&mut self, data: &Data) {
         let key_values: Vec<Option<&data::Value>> = self.key_cols
             .iter()
             .map(|column| data.get(column))
@@ -276,11 +276,11 @@ impl<T: AggregateFunction> Grouper<T> {
         let accum = self.state
             .entry(key_columns)
             .or_insert_with(|| empty.clone());
-        accum.process(&data);
+        accum.process(data);
     }
 }
 
-impl<T: AggregateFunction + Send> AggregateOperator for Grouper<T> {
+impl<T: AggregateFunction + Send + Sync> AggregateOperator for Grouper<T> {
     fn emit(&self) -> data::Aggregate {
         // TODO: restructure to avoid reallocating everything on emit
         let data: Vec<(HashMap<String, String>, data::Value)> = self.state
@@ -292,18 +292,18 @@ impl<T: AggregateFunction + Send> AggregateOperator for Grouper<T> {
                 (res_map, accum.emit())
             })
             .collect();
-        Aggregate::new(self.key_cols.clone(), self.agg_col.clone(), data)
+        Aggregate::new(&self.key_cols, self.agg_col.clone(), &data)
     }
 
     fn process(&mut self, row: Row) {
         match row {
             Row::Record(rec) => {
-                self.process_map(rec.data);
+                self.process_map(&rec.data);
             }
             Row::Aggregate(ag) => {
                 self.state.clear();
                 for row in ag.data {
-                    self.process_map(row);
+                    self.process_map(&row);
                 }
             }
         }
@@ -385,7 +385,7 @@ pub struct Fields {
 }
 
 impl Fields {
-    pub fn new(columns: Vec<String>, mode: FieldMode) -> Self {
+    pub fn new(columns: &[String], mode: FieldMode) -> Self {
         let columns = HashSet::from_iter(columns.iter().cloned());
         Fields { columns, mode }
     }
@@ -480,7 +480,7 @@ mod tests {
         let rec = rec.put("k2", Value::Str("v2".to_string()));
         let rec = rec.put("k3", Value::Str("v3".to_string()));
         let rec = rec.put("k4", Value::Str("v4".to_string()));
-        let fields = Fields::new(vec!["k1".to_string()], FieldMode::Only);
+        let fields = Fields::new(&["k1".to_string()], FieldMode::Only);
         let rec = fields.process(rec).unwrap();
         assert_eq!(
             rec.data,
@@ -497,7 +497,7 @@ mod tests {
         let rec = rec.put("k2", Value::Str("v2".to_string()));
         let rec = rec.put("k3", Value::Str("v3".to_string()));
         let rec = rec.put("k4", Value::Str("v4".to_string()));
-        let fields = Fields::new(vec!["k1".to_string()], FieldMode::Except);
+        let fields = Fields::new(&["k1".to_string()], FieldMode::Except);
         let rec = fields.process(rec).unwrap();
         assert_eq!(
             rec.data,
@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn test_count_groups() {
-        let mut count_agg = Grouper::<Count>::new(vec!["k1"], "_count", Count::new());
+        let mut count_agg = Grouper::<Count>::new(vec!["k1".to_string()], "_count", Count::new());
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
@@ -624,9 +624,9 @@ mod tests {
     #[test]
     fn test_sort_aggregate() {
         let agg = Aggregate::new(
-            vec!["kc1".to_string(), "kc2".to_string()],
+            &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
-            vec![
+            &[
                 (
                     hashmap!{
                         "kc1".to_string() => "k1".to_string(),
