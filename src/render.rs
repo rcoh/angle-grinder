@@ -1,6 +1,6 @@
+use data;
 use std;
 use std::collections::HashMap;
-use data;
 use std::io::{stdout, Write};
 extern crate terminal_size;
 use self::terminal_size::{terminal_size, Height, Width};
@@ -236,9 +236,9 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use data::*;
     use operator::*;
-    use super::*;
 
     #[test]
     fn test_pretty_print_record() {
@@ -298,9 +298,9 @@ mod tests {
     #[test]
     fn test_pretty_print_aggregate() {
         let agg = Aggregate::new(
-            vec!["kc1".to_string(), "kc2".to_string()],
+            &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
-            vec![
+            &[
                 (
                     hashmap!{
                         "kc1".to_string() => "k1".to_string(),

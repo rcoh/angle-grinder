@@ -2,9 +2,9 @@ extern crate ag;
 extern crate clap;
 use ag::pipeline;
 use clap::{App, Arg};
+use std::fs::File;
 use std::io;
 use std::io::BufReader;
-use std::fs::File;
 fn main() {
     ::std::process::exit(match run_agrind() {
         Ok(_) => 0,
@@ -29,7 +29,7 @@ fn run_agrind() -> Result<(), ()> {
         .get_matches();
     let query_str = matches.value_of("query").unwrap();
     match pipeline::Pipeline::new(query_str) {
-        Result::Ok(mut pipeline) => match matches.value_of("file") {
+        Result::Ok(pipeline) => match matches.value_of("file") {
             None => {
                 let stdin = io::stdin();
                 let locked = stdin.lock();

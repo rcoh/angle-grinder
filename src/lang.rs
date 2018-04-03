@@ -1,6 +1,6 @@
-use std::str;
-use nom::{is_alphanumeric, is_digit};
 use nom::IResult;
+use nom::{is_alphanumeric, is_digit};
+use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Search {
@@ -86,7 +86,7 @@ fn not_escape(c: char) -> bool {
     c != '\\' && c != '\"'
 }
 
-fn vec_str_vec_string(vec: Vec<&str>) -> Vec<String> {
+fn vec_str_vec_string(vec: &[&str]) -> Vec<String> {
     vec.iter().map(|s| s.to_string()).collect()
 }
 
@@ -117,7 +117,7 @@ named!(parse<&str, InlineOperator>, ws!(do_parse!(
     vars: var_list >>
     ( InlineOperator::Parse{
         pattern: pattern.replace("\\\"", "\""),
-        fields: vec_str_vec_string(vars),
+        fields: vec_str_vec_string(&vars),
         input_column: from_column_opt.map(|s|s.to_string())
         } )
 )));
@@ -140,7 +140,7 @@ named!(fields<&str, InlineOperator>, ws!(do_parse!(
     (
         InlineOperator::Fields {
             mode: mode.unwrap_or(FieldMode::Only),
-            fields: vec_str_vec_string(fields)
+            fields: vec_str_vec_string(&fields)
         }
     )
 )));
@@ -202,7 +202,7 @@ named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
     key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
     rename_opt: opt!(preceded!(tag!("as"), ident)) >>
     (Operator::Aggregate(AggregateOperator{
-        key_cols: vec_str_vec_string(key_cols_opt.unwrap_or_default()),
+        key_cols: vec_str_vec_string(&key_cols_opt.unwrap_or_default()),
         output_column: rename_opt
                             .map(|s|s.to_string())
                             .unwrap_or_else(|| default_output(&agg_function)),
@@ -226,7 +226,7 @@ named!(sort<&str, Operator>, ws!(do_parse!(
     key_cols_opt: opt!(preceded!(opt!(tag!("by")), var_list)) >>
     dir: opt!(sort_mode) >>
     (Operator::Sort(SortOperator{
-        sort_cols: vec_str_vec_string(key_cols_opt.unwrap_or_default()),
+        sort_cols: vec_str_vec_string(&key_cols_opt.unwrap_or_default()),
         direction: dir.unwrap_or(SortMode::Ascending) ,
      })))
 ));
@@ -330,7 +330,7 @@ mod tests {
             Ok((
                 "!",
                 Operator::Aggregate(AggregateOperator {
-                    key_cols: vec_str_vec_string(vec!["x", "y"]),
+                    key_cols: vec_str_vec_string(&["x", "y"]),
                     aggregate_function: AggregateFunction::Count,
                     output_column: "renamed".to_string(),
                 },)
