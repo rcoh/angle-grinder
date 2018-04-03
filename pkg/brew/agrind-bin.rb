@@ -1,5 +1,5 @@
 class AgrindBin < Formula
-  version '0.6.3'
+  version 'v0.6.3'
   desc "Slice and dice log files on the command line"
   homepage "https://github.com/rcoh/angle-grinder"
 
