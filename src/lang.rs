@@ -1,6 +1,6 @@
-use std::str;
-use nom::{is_alphanumeric, is_digit};
 use nom::IResult;
+use nom::{is_alphanumeric, is_digit};
+use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Search {

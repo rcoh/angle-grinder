@@ -2,9 +2,9 @@ extern crate ag;
 extern crate clap;
 use ag::pipeline;
 use clap::{App, Arg};
+use std::fs::File;
 use std::io;
 use std::io::BufReader;
-use std::fs::File;
 fn main() {
     ::std::process::exit(match run_agrind() {
         Ok(_) => 0,

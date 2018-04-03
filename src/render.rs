@@ -1,6 +1,6 @@
+use data;
 use std;
 use std::collections::HashMap;
-use data;
 use std::io::{stdout, Write};
 extern crate terminal_size;
 use self::terminal_size::{terminal_size, Height, Width};
@@ -236,9 +236,9 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use data::*;
     use operator::*;
-    use super::*;
 
     #[test]
     fn test_pretty_print_record() {

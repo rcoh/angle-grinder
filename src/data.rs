@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::fmt;
-use std::cmp::Ordering;
 use render;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Display;
 
 type VMap = HashMap<String, Value>;
 

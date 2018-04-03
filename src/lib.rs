@@ -8,16 +8,16 @@ extern crate maplit;
 extern crate crossbeam_channel;
 
 mod data;
-mod operator;
 mod lang;
+mod operator;
 mod render;
 
 pub mod pipeline {
-    use lang;
-    use operator;
-    use lang::*;
-    use render::{RenderConfig, Renderer};
     use data::{Record, Row};
+    use lang;
+    use lang::*;
+    use operator;
+    use render::{RenderConfig, Renderer};
     use std::io::BufRead;
     use std::time::Duration;
 
