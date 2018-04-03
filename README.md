@@ -8,9 +8,17 @@ Angle grinder can process about a million rows per second, so it's usable for fa
 ![overview gif](/screen_shots/overview.gif)
 
 ## Installation
-Binaries are available for Linux and OS X: https://github.com/rcoh/angle-grinder/releases. Many more platforms (including Windows) are available if you compile from source.
+Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`.
 
-Linux (statically linked with musl):
+### With Brew (OS X)
+Brew releases might be bit behind the statically linked binaries.
+```
+brew tap rcoh/angle-grinder https://github.com/rcoh/angle-grinder.git
+brew install agrind-bin
+```
+
+### With Curl (Single binary)
+Linux:
 ```
 curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.3/angle_grinder-v0.6.3-x86_64-unknown-linux-musl.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
@@ -20,15 +28,24 @@ OS X:
 curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.6.3/angle_grinder-v0.6.3-x86_64-apple-darwin.tar.gz | tar Ozxf -  | sudo tee -a /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
-Or with Cargo:
+### From Source
+
+If you have Cargo installed, you can compile & install from source: (Works with recent, `stable` Rust)
 ```
 cargo install ag
 ```
 
 ## Query Synax
 
+An angle grinder query is composed of a filter followed by a series of operators. Typically, the initial operators will transform the data in some way by parsing fields or JSON from the log line. 
+The subsequent operators can then aggregate or group the data via operators like `sum`, `average`, `percentile`, etc.
 ```
 agrind '<filter> | operator1 | operator2 | operator3 | ...'
+```
+
+A simple query that operates on JSON logs and counts the number of logs per level could be:
+```
+agrind '* | json | count by log_level
 ```
 
 ### Filters
