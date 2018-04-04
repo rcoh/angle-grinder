@@ -27,12 +27,17 @@ pub trait AggregateOperator: Send + Sync {
     fn process(&mut self, row: Row);
 }
 
-pub trait AggregateFunction: Clone {
+pub trait BoxableAggregateFunction {}
+
+pub trait AggregateFunction {
     fn process(&mut self, rec: &Data);
     fn emit(&self) -> data::Value;
+    fn empty_box(&self) -> Box<AggregateFunction>;
+    fn empty(&self) -> Self
+    where
+        Self: Sized;
 }
 
-#[derive(Clone)]
 pub struct Count {
     count: i64,
 }
@@ -51,9 +56,19 @@ impl AggregateFunction for Count {
     fn emit(&self) -> data::Value {
         data::Value::Int(self.count)
     }
+
+    fn empty(&self) -> Self
+    where
+        Self: Sized,
+    {
+        Count::new()
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Count::new())
+    }
 }
 
-#[derive(Clone)]
 pub struct Sum {
     total: f64,
     column: String,
@@ -90,9 +105,16 @@ impl AggregateFunction for Sum {
     fn emit(&self) -> data::Value {
         data::Value::Int(self.total as i64)
     }
+
+    fn empty(&self) -> Self {
+        Sum::empty(self.column.clone())
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Sum::empty(self.column.clone()))
+    }
 }
 
-#[derive(Clone)]
 pub struct Average {
     total: f64,
     count: i64,
@@ -132,9 +154,16 @@ impl AggregateFunction for Average {
     fn emit(&self) -> data::Value {
         data::Value::Float(self.total / self.count as f64)
     }
+
+    fn empty(&self) -> Self {
+        Average::empty(self.column.clone())
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Average::empty(self.column.clone()))
+    }
 }
 
-#[derive(Clone)]
 pub struct Percentile {
     ckms: CKMS<f64>,
     column: String,
@@ -176,6 +205,14 @@ impl AggregateFunction for Percentile {
         pct_opt
             .map(|(_usize, pct_float)| data::Value::Float(pct_float))
             .unwrap_or(data::Value::None)
+    }
+
+    fn empty(&self) -> Self {
+        Percentile::empty(self.column.clone(), self.percentile)
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Percentile::empty(self.column.clone(), self.percentile))
     }
 }
 
@@ -242,6 +279,11 @@ impl AggregateOperator for Sorter {
     }
 }
 
+pub struct MultiGrouper {
+    key_cols: Vec<String>,
+    agg_col: HashMap<String, Box<AggregateFunction>>,
+}
+
 pub struct Grouper<T: AggregateFunction> {
     key_cols: Vec<String>,
     agg_col: String,
@@ -275,7 +317,7 @@ impl<T: AggregateFunction> Grouper<T> {
         let empty = &self.empty;
         let accum = self.state
             .entry(key_columns)
-            .or_insert_with(|| empty.clone());
+            .or_insert_with(|| empty.empty());
         accum.process(data);
     }
 }
