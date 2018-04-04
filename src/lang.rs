@@ -11,7 +11,8 @@ pub enum Search {
 #[derive(Debug, PartialEq)]
 pub enum Operator {
     Inline(InlineOperator),
-    Aggregate(AggregateOperator),
+    //Aggregate(AggregateOperator),
+    MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
 }
 
@@ -64,6 +65,12 @@ pub struct AggregateOperator {
     pub key_cols: Vec<String>,
     pub aggregate_function: AggregateFunction,
     pub output_column: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct MultiAggregateOperator {
+    pub key_cols: Vec<String>,
+    pub aggregate_functions: Vec<(String, AggregateFunction)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -181,7 +188,7 @@ named!(inline_operator<&str, Operator>,
 );
 named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum | p_nn));
 
-named!(operator<&str, Operator>, alt!(inline_operator | aggregate_operator | sort));
+named!(operator<&str, Operator>, alt!(inline_operator | sort | multi_aggregate_operator));
 
 // count by x,y
 // avg(foo) by x
@@ -197,16 +204,23 @@ fn default_output(func: &AggregateFunction) -> String {
     }
 }
 
-named!(aggregate_operator<&str, Operator>, ws!(do_parse!(
-    agg_function: aggregate_function >>
+named!(complete_agg_function<&str, (String, AggregateFunction)>, ws!(do_parse!(
+        agg_function: aggregate_function >>
+        rename_opt: opt!(preceded!(tag!("as"), ident)) >>
+        (
+            (rename_opt.map(|s|s.to_string()).unwrap_or_else(||default_output(&agg_function)),
+            agg_function)
+        )
+    ))
+);
+
+
+named!(multi_aggregate_operator<&str, Operator>, ws!(do_parse!(
+    agg_functions: ws!(separated_nonempty_list!(tag!(","), complete_agg_function)) >>
     key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
-    rename_opt: opt!(preceded!(tag!("as"), ident)) >>
-    (Operator::Aggregate(AggregateOperator{
+    (Operator::MultiAggregate(MultiAggregateOperator{
         key_cols: vec_str_vec_string(&key_cols_opt.unwrap_or_default()),
-        output_column: rename_opt
-                            .map(|s|s.to_string())
-                            .unwrap_or_else(|| default_output(&agg_function)),
-        aggregate_function: agg_function,
+        aggregate_functions: agg_functions,
      })))
 ));
 
@@ -318,7 +332,7 @@ mod tests {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
                     input_column: Some("field".to_string()),
-                },)
+                }, )
             ))
         );
     }
@@ -326,14 +340,13 @@ mod tests {
     #[test]
     fn test_agg_operator() {
         assert_eq!(
-            aggregate_operator("count by x, y as renamed!"),
+            multi_aggregate_operator("count as renamed by x, y !"),
             Ok((
                 "!",
-                Operator::Aggregate(AggregateOperator {
+                Operator::MultiAggregate(MultiAggregateOperator {
                     key_cols: vec_str_vec_string(&["x", "y"]),
-                    aggregate_function: AggregateFunction::Count,
-                    output_column: "renamed".to_string(),
-                },)
+                    aggregate_functions: vec![("renamed".to_string(), AggregateFunction::Count)],
+                }, )
             ))
         );
     }
@@ -341,19 +354,16 @@ mod tests {
     #[test]
     fn test_percentile() {
         assert_eq!(
-            aggregate_operator("p50(x)!"),
+            complete_agg_function("p50(x)!"),
             Ok((
                 "!",
-                Operator::Aggregate(AggregateOperator {
-                    key_cols: vec![],
-                    aggregate_function: AggregateFunction::Percentile {
+               ("p50".to_string(), AggregateFunction::Percentile {
                         column: "x".to_string(),
                         percentile: 0.5,
                         percentile_str: "50".to_string(),
-                    },
-                    output_column: "p50".to_string(),
-                },)
-            ))
+                    }),
+                )
+            )
         );
     }
 
@@ -391,10 +401,9 @@ mod tests {
                             fields: vec!["foo".to_string()],
                             input_column: None,
                         }),
-                        Operator::Aggregate(AggregateOperator {
+                        Operator::MultiAggregate(MultiAggregateOperator {
                             key_cols: vec!["foo".to_string()],
-                            aggregate_function: AggregateFunction::Count {},
-                            output_column: "_count".to_string(),
+                            aggregate_functions: vec![("_count".to_string(), AggregateFunction::Count {})],
                         }),
                         Operator::Sort(SortOperator {
                             sort_cols: vec!["foo".to_string()],
@@ -405,5 +414,4 @@ mod tests {
             ))
         );
     }
-
 }

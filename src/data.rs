@@ -2,9 +2,10 @@ use render;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::fmt::Display;
 
-type VMap = HashMap<String, Value>;
+pub type VMap = HashMap<String, Value>;
 
 pub enum Row {
     Aggregate(Aggregate),
@@ -30,6 +31,27 @@ pub enum Value {
     Int(i64),
     Float(f64),
     None,
+}
+
+impl Eq for Value {
+    fn assert_receiver_is_total_eq(&self) {
+        unimplemented!()
+    }
+}
+
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_string().hash(state);
+    }
+
+    fn hash_slice<H: Hasher>(data: &[Self], state: &mut H)
+    where
+        Self: Sized,
+    {
+        for piece in data {
+            piece.to_string().hash(state);
+        }
+    }
 }
 
 impl Display for Value {
