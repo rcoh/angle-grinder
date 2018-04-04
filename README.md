@@ -55,14 +55,87 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 
 ### Operators
 
-- `json`: Extract json-serialized rows into fields for later use
+#### Non Aggregate Operators
+These operators have a 1 to 1 correspondence between input data and output data. 1 row in, 0 or 1 rows out.
+
+##### JSON
+`json [from other_field]`: Extract json-serialized rows into fields for later use. If the row is _not_ valid JSON, then it is dropped. Optionally, ``from other_field` can be 
+specified.
+
+*Examples*:
+```
+* | json
+```
+```
+* | parse "INFO *" as js | json from js
+```
 ![json.gif](/screen_shots/json.gif)
-- `parse "* pattern * otherpattern *" [from field] as a,b,c`: Parse text that matches the pattern into variables. Lines that don't match this pattern will be dropped. `*` is equivalent to `.*` and is greedy. By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.
+
+##### Parse
+`parse "* pattern * otherpattern *" [from field] as a,b,c`: Parse text that matches the pattern into variables. Lines that don't match the pattern will be dropped. `*` is equivalent to regular expression `.*` and is greedy. 
+By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.
+
+*Examples*:
+```
+* | parse "[status_code=*]" as status_code
+```
 ![parse.gif](/screen_shots/parse.gif)
-- `fields [only|except|-|+] a, b`: Drop fields `a, b` or include only `a, b` depending on specified mode. Eg: `fields + event, timestamp`, `fields except event`. `-` is short for `except` and `+` is short for `only`.
-- `count [as count_column] [by a, b] `: Count (potentially by key columns). Defaults to `_count` unless overridden with an `as` clause. eg: `* | count by source_host`
-- `sum(column) [as sum_column] [by a, b] `: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
-- `average(column) [as average_column] [by a, b] `: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
+
+##### Fields
+`fields [only|except|-|+] a, b`: Drop fields `a, b` or include only `a, b` depending on specified mode. 
+
+*Examples*:
+Drop all fields except `event` and `timestamp`
+```
+* | json | fields + event, timestamp
+```
+Drop only the `event` field
+```
+* | fields except event
+```
+#### Aggregate Operators
+Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
+The general syntax is:
+```
+operator [as renamed_column], operator [as renamed_column] [by key_col1, key_col2]
+```
+*Examples*:
+```
+* | count
+```
+```
+* | json | count by status_code
+```
+```
+* | json | count, p50(response_ms), p90(response_ms) by status_code
+```
+```
+* | json | count as num_requests, p50(response_ms), p90(response_ms) by status_code
+```
+
+There are several aggregate operators available.
+
+##### Count
+`count [as count_column]`: Counts the numer of input rows. Output column Defaults to `_count` 
+
+*Examples*:
+Count number of rows by `source_host`:
+```* | count by source_host```
+Count number of source_hosts:
+```* | count by source_host | count```
+
+##### Sum
+`sum(column) [as sum_column]`: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
+*Examples*:
+```* | json | sum(user_count) by action```
+
+##### Average
+`average(column) [as average_column] [by a, b] `: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
+
+*Examples*:
+```* | json | average(response_time)```
+
+##### Percentile
 - `pXX(column) [as pct_column] [by a, b] ` eg. `p50(col)`, `p05(col)`, `p99(col)` calculate the XXth percentile of `column`.
 - `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
 
