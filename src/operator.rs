@@ -92,7 +92,7 @@ impl AggregateFunction for Sum {
         rec.get(&self.column).iter().for_each(|value| match *value {
             &data::Value::Float(ref f) => {
                 self.is_float = true;
-                self.total += f;
+                self.total += f.into_inner();
             }
             &data::Value::Int(ref i) => {
                 self.total += *i as f64;
@@ -139,7 +139,7 @@ impl AggregateFunction for Average {
             .iter()
             .for_each(|value| match *value {
                 &data::Value::Float(ref f) => {
-                    self.total += f;
+                    self.total += f.into_inner();
                     self.count += 1
                 }
                 &data::Value::Int(ref i) => {
@@ -152,7 +152,7 @@ impl AggregateFunction for Average {
     }
 
     fn emit(&self) -> data::Value {
-        data::Value::Float(self.total / self.count as f64)
+        data::Value::from_float(self.total / self.count as f64)
     }
 
     fn empty(&self) -> Self {
@@ -192,7 +192,7 @@ impl AggregateFunction for Percentile {
             .iter()
             .for_each(|value| match *value {
                 &data::Value::Float(ref f) => {
-                    self.ckms.insert(*f);
+                    self.ckms.insert(f.into_inner());
                 }
                 &data::Value::Int(ref i) => self.ckms.insert(*i as f64),
                 _other => self.warnings
@@ -203,7 +203,7 @@ impl AggregateFunction for Percentile {
     fn emit(&self) -> data::Value {
         let pct_opt = self.ckms.query(self.percentile);
         pct_opt
-            .map(|(_usize, pct_float)| data::Value::Float(pct_float))
+            .map(|(_usize, pct_float)| data::Value::from_float(pct_float))
             .unwrap_or(data::Value::None)
     }
 
@@ -297,11 +297,7 @@ impl MultiGrouper {
     fn process_map(&mut self, data: &Data) {
         let key_values = self.key_cols.iter().map(|column| data.get(column));
         let key_columns: Vec<data::Value> = key_values
-            .map(|value_opt| {
-                value_opt
-                    .map(|s| s.clone())
-                    .unwrap_or_else(|| data::Value::None)
-            })
+            .map(|value_opt| value_opt.cloned().unwrap_or_else(|| data::Value::None))
             .collect();
         let agg_col = &self.agg_col;
         let row = self.state.entry(key_columns).or_insert_with(|| {
@@ -321,7 +317,7 @@ impl AggregateOperator for MultiGrouper {
         let mut columns = self.key_cols.to_vec();
         columns.extend(self.agg_col.keys().map(|k| k.to_string()));
         let data = self.state.iter().map(|(key_values, agg_map)| {
-            let key_values = key_values.iter().map(|v| v.clone());
+            let key_values = key_values.iter().cloned();
             let key_cols = self.key_cols.iter().map(|s| s.to_owned());
             let mut res_map: data::VMap =
                 HashMap::from_iter(itertools::zip_eq(key_cols, key_values));
@@ -472,7 +468,7 @@ impl UnaryPreAggOperator for ParseJson {
                             &JsonValue::Number(ref num) => if num.is_i64() {
                                 Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
                             } else {
-                                Some(record.put(k, data::Value::Float(num.as_f64().unwrap())))
+                                Some(record.put(k, data::Value::from_float(num.as_f64().unwrap())))
                             },
                             &JsonValue::String(ref s) => {
                                 Some(record.put(k, data::Value::Str(s.to_string())))
@@ -507,7 +503,7 @@ mod tests {
             rec.data,
             hashmap! {
                 "k1".to_string() => Value::Int(5),
-                "k2".to_string() => Value::Float(5.5),
+                "k2".to_string() => Value::from_float(5.5),
                 "k3".to_string() => Value::Str("str".to_string()),
                 "k4".to_string() => Value::None,
                 "k5".to_string() => Value::Str("[1,2,3]".to_string())

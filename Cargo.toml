@@ -17,6 +17,7 @@ regex-syntax = "0.2"
 terminal_size = "0.1.7"
 quantiles = "0.7.1"
 crossbeam-channel = "0.1"
+ordered-float = "0.5.0"
 
 [dev-dependencies]
 assert_cli = "0.5"

@@ -208,8 +208,8 @@ named!(complete_agg_function<&str, (String, AggregateFunction)>, ws!(do_parse!(
         agg_function: aggregate_function >>
         rename_opt: opt!(preceded!(tag!("as"), ident)) >>
         (
-            (rename_opt.map(|s|s.to_string()).unwrap_or_else(||default_output(&agg_function)),
-            agg_function)
+            rename_opt.map(|s|s.to_string()).unwrap_or_else(||default_output(&agg_function)),
+            agg_function
         )
     ))
 );
