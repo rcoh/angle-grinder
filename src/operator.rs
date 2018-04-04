@@ -33,9 +33,6 @@ pub trait AggregateFunction: Send + Sync {
     fn process(&mut self, rec: &Data);
     fn emit(&self) -> data::Value;
     fn empty_box(&self) -> Box<AggregateFunction>;
-    fn empty(&self) -> Self
-    where
-        Self: Sized;
 }
 
 pub struct Count {
@@ -55,13 +52,6 @@ impl AggregateFunction for Count {
 
     fn emit(&self) -> data::Value {
         data::Value::Int(self.count)
-    }
-
-    fn empty(&self) -> Self
-    where
-        Self: Sized,
-    {
-        Count::new()
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
@@ -104,10 +94,6 @@ impl AggregateFunction for Sum {
 
     fn emit(&self) -> data::Value {
         data::Value::Int(self.total as i64)
-    }
-
-    fn empty(&self) -> Self {
-        Sum::empty(self.column.clone())
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
@@ -153,10 +139,6 @@ impl AggregateFunction for Average {
 
     fn emit(&self) -> data::Value {
         data::Value::from_float(self.total / self.count as f64)
-    }
-
-    fn empty(&self) -> Self {
-        Average::empty(self.column.clone())
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
@@ -205,10 +187,6 @@ impl AggregateFunction for Percentile {
         pct_opt
             .map(|(_usize, pct_float)| data::Value::from_float(pct_float))
             .unwrap_or(data::Value::None)
-    }
-
-    fn empty(&self) -> Self {
-        Percentile::empty(self.column.clone(), self.percentile)
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
