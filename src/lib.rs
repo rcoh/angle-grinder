@@ -18,8 +18,8 @@ pub mod pipeline {
     use lang;
     use lang::*;
     use operator;
-    use std::collections::HashMap;
     use render::{RenderConfig, Renderer};
+    use std::collections::HashMap;
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
@@ -93,7 +93,12 @@ pub mod pipeline {
                 match last_op {
                     &Some(&Operator::MultiAggregate(ref agg_op)) => {
                         Some(Pipeline::convert_sort(SortOperator {
-                            sort_cols: agg_op.aggregate_functions.iter().map(|&(ref k, _)|k).cloned().collect(),
+                            sort_cols: agg_op
+                                .aggregate_functions
+                                .iter()
+                                .map(|&(ref k, _)| k)
+                                .cloned()
+                                .collect(),
                             direction: SortMode::Descending,
                         }))
                     }

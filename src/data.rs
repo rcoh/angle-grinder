@@ -2,8 +2,8 @@ use render;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::fmt::Display;
+use std::hash::{Hash, Hasher};
 
 pub type VMap = HashMap<String, Value>;
 

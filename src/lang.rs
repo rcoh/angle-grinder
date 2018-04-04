@@ -214,7 +214,6 @@ named!(complete_agg_function<&str, (String, AggregateFunction)>, ws!(do_parse!(
     ))
 );
 
-
 named!(multi_aggregate_operator<&str, Operator>, ws!(do_parse!(
     agg_functions: ws!(separated_nonempty_list!(tag!(","), complete_agg_function)) >>
     key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
@@ -332,7 +331,7 @@ mod tests {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
                     input_column: Some("field".to_string()),
-                }, )
+                },)
             ))
         );
     }
@@ -346,7 +345,7 @@ mod tests {
                 Operator::MultiAggregate(MultiAggregateOperator {
                     key_cols: vec_str_vec_string(&["x", "y"]),
                     aggregate_functions: vec![("renamed".to_string(), AggregateFunction::Count)],
-                }, )
+                },)
             ))
         );
     }
@@ -357,13 +356,15 @@ mod tests {
             complete_agg_function("p50(x)!"),
             Ok((
                 "!",
-               ("p50".to_string(), AggregateFunction::Percentile {
+                (
+                    "p50".to_string(),
+                    AggregateFunction::Percentile {
                         column: "x".to_string(),
                         percentile: 0.5,
                         percentile_str: "50".to_string(),
-                    }),
-                )
-            )
+                    }
+                ),
+            ))
         );
     }
 
@@ -403,7 +404,9 @@ mod tests {
                         }),
                         Operator::MultiAggregate(MultiAggregateOperator {
                             key_cols: vec!["foo".to_string()],
-                            aggregate_functions: vec![("_count".to_string(), AggregateFunction::Count {})],
+                            aggregate_functions: vec![
+                                ("_count".to_string(), AggregateFunction::Count {}),
+                            ],
                         }),
                         Operator::Sort(SortOperator {
                             sort_cols: vec!["foo".to_string()],
