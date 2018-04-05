@@ -63,13 +63,6 @@ pub enum AggregateFunction {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct AggregateOperator {
-    pub key_cols: Vec<String>,
-    pub aggregate_function: AggregateFunction,
-    pub output_column: String,
-}
-
-#[derive(Debug, PartialEq)]
 pub struct MultiAggregateOperator {
     pub key_cols: Vec<String>,
     pub aggregate_functions: Vec<(String, AggregateFunction)>,
