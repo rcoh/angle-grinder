@@ -119,25 +119,44 @@ There are several aggregate operators available.
 `count [as count_column]`: Counts the numer of input rows. Output column Defaults to `_count` 
 
 *Examples*:
+
 Count number of rows by `source_host`:
-```* | count by source_host```
+```
+* | count by source_host
+```
 Count number of source_hosts:
-```* | count by source_host | count```
+```
+* | count by source_host | count
+```
 
 ##### Sum
 `sum(column) [as sum_column]`: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 *Examples*:
-```* | json | sum(user_count) by action```
+```
+* | json | sum(num_records) by action
+```
 
 ##### Average
 `average(column) [as average_column] [by a, b] `: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 
 *Examples*:
-```* | json | average(response_time)```
+```
+* | json | average(response_time)
+```
 
 ##### Percentile
-- `pXX(column) [as pct_column] [by a, b] ` eg. `p50(col)`, `p05(col)`, `p99(col)` calculate the XXth percentile of `column`.
-- `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
+`pXX(column)`: calculate the XXth percentile of `column`
+*Examples*:
+```
+* | json | p50(response_time), p90(response_time) by endpoint_url, status_code
+```
+
+##### Sort
+`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
+*Examples*:
+```
+* | json | count by endpoint_url, status_code | sort by endpoint_url desc
+```
 
 ### Example Queries
 - Count the number of downloads of angle-grinder by release (with special guest jq)
