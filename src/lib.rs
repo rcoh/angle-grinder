@@ -19,7 +19,6 @@ pub mod pipeline {
     use lang::*;
     use operator;
     use render::{RenderConfig, Renderer};
-    use std::collections::HashMap;
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
@@ -68,17 +67,25 @@ pub mod pipeline {
                 AggregateFunction::Percentile {
                     column, percentile, ..
                 } => Box::new(operator::Percentile::empty(column, percentile)),
-                AggregateFunction::CountDistinct { column } => Box::new(operator::CountDistinct::empty(&column))
+                AggregateFunction::CountDistinct { column } => {
+                    Box::new(operator::CountDistinct::empty(&column))
+                }
             }
         }
 
         fn convert_multi_agg(op: lang::MultiAggregateOperator) -> Box<operator::AggregateOperator> {
-            let mut agg_map = HashMap::new();
+            /*let mut agg_map = HashMap::new();
             for (output_column, func) in op.aggregate_functions {
                 agg_map.insert(output_column, Pipeline::convert_agg_function(func));
-            }
+            }*/
+            let agg_functions = op.aggregate_functions
+                .into_iter()
+                .map(|(k, func)| (k, Pipeline::convert_agg_function(func)));
             let key_cols: Vec<&str> = op.key_cols.iter().map(AsRef::as_ref).collect();
-            Box::new(operator::MultiGrouper::new(&key_cols[..], agg_map))
+            Box::new(operator::MultiGrouper::new(
+                &key_cols[..],
+                agg_functions.collect(),
+            ))
         }
 
         pub fn new(pipeline: &str) -> Result<Self, String> {

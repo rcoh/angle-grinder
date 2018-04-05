@@ -26,13 +26,38 @@ pub struct Record {
     pub raw: String,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Value {
     Str(String),
     // Consider big int
     Int(i64),
     Float(OrderedFloat<f64>),
     None,
+}
+
+impl Ord for Value {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            // Ints and floats are converted to floats
+            (&Value::Int(ref int_val), &Value::Float(ref float_val)) => (OrderedFloat::from(*int_val as f64)).cmp(&float_val),
+            (&Value::Float(ref float_val), &Value::Int(ref int_val)) => float_val.cmp(&OrderedFloat::from(*int_val as f64)),
+
+            (&Value::Float(ref l), &Value::Float(ref r)) => l.cmp(r),
+            (&Value::Int(ref l), &Value::Int(ref r)) => l.cmp(r),
+            (&Value::Str(ref l), &Value::Str(ref r)) => l.cmp(r),
+            // None is less than everything
+            (&Value::None, _any) => Ordering::Less,
+            (_any, &Value::None) => Ordering::Greater,
+            (&Value::Str(..), _any) => Ordering::Greater,
+            (_any, &Value::Str(..)) => Ordering::Less
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Display for Value {

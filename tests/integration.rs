@@ -1,6 +1,5 @@
 extern crate assert_cli;
 
-#[macro_use]
 extern crate toml;
 
 #[macro_use]
@@ -11,9 +10,8 @@ struct TestDefinition {
     query: String,
     input: String,
     output: String,
-    notes: Option<String>
+    notes: Option<String>,
 }
-
 
 #[cfg(test)]
 mod integration {
@@ -29,12 +27,16 @@ mod integration {
             .stdout()
             .is(conf.output)
             .unwrap();
-
     }
 
     #[test]
     fn test_count_distinct() {
         structured_test(include_str!("structured_tests/count_distinct.toml"));
+    }
+
+    #[test]
+    fn test_sort_order() {
+        structured_test(include_str!("structured_tests/sort_order.toml"));
     }
 
     #[test]

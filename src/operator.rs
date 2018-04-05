@@ -117,12 +117,9 @@ impl CountDistinct {
 
 impl AggregateFunction for CountDistinct {
     fn process(&mut self, rec: &Data) {
-        rec.get(&self.column)
-            .iter()
-            .cloned()
-            .for_each(|value| {
-                self.state.insert(value.clone());
-            });
+        rec.get(&self.column).iter().cloned().for_each(|value| {
+            self.state.insert(value.clone());
+        });
     }
 
     fn emit(&self) -> data::Value {
@@ -292,13 +289,13 @@ impl AggregateOperator for Sorter {
 
 pub struct MultiGrouper {
     key_cols: Vec<String>,
-    agg_col: HashMap<String, Box<AggregateFunction>>,
+    agg_col: Vec<(String, Box<AggregateFunction>)>,
     // key-column values -> (agg_columns -> builders)
     state: HashMap<Vec<data::Value>, HashMap<String, Box<AggregateFunction>>>,
 }
 
 impl MultiGrouper {
-    pub fn new(key_cols: &[&str], aggregators: HashMap<String, Box<AggregateFunction>>) -> Self {
+    pub fn new(key_cols: &[&str], aggregators: Vec<(String, Box<AggregateFunction>)>) -> Self {
         MultiGrouper {
             key_cols: key_cols.to_vec().iter().map(|s| s.to_string()).collect(),
             agg_col: aggregators,
@@ -314,7 +311,7 @@ impl MultiGrouper {
         let row = self.state.entry(key_columns).or_insert_with(|| {
             agg_col
                 .iter()
-                .map(|(k, v)| (k.to_owned(), v.empty_box()))
+                .map(|&(ref k, ref v)| (k.to_owned(), v.empty_box()))
                 .collect()
         });
         for fun in row.values_mut() {
@@ -326,7 +323,7 @@ impl MultiGrouper {
 impl AggregateOperator for MultiGrouper {
     fn emit(&self) -> Aggregate {
         let mut columns = self.key_cols.to_vec();
-        columns.extend(self.agg_col.keys().map(|k| k.to_string()));
+        columns.extend(self.agg_col.iter().map(|&(ref k, ..)| k.to_string()));
         let data = self.state.iter().map(|(key_values, agg_map)| {
             let key_values = key_values.iter().cloned();
             let key_cols = self.key_cols.iter().map(|s| s.to_owned());
@@ -609,8 +606,8 @@ mod tests {
 
     #[test]
     fn test_count_no_groups() {
-        let mut ops: HashMap<String, Box<AggregateFunction>> = HashMap::new();
-        ops.insert("_count".to_string(), Box::new(Count::new()));
+        let ops: Vec<(String, Box<AggregateFunction>)> =
+            vec![("_count".to_string(), Box::new(Count::new()))];
         let mut count_agg = MultiGrouper::new(&[], ops);
         (0..10)
             .map(|n| Record::new(&n.to_string()))
@@ -632,10 +629,14 @@ mod tests {
 
     #[test]
     fn test_multi_grouper() {
-        let mut ops: HashMap<String, Box<AggregateFunction>> = HashMap::new();
-        ops.insert("_count".to_string(), Box::new(Count::new()));
-        ops.insert("_sum".to_string(), Box::new(Sum::empty("v1".to_string())));
-        ops.insert("_distinct".to_string(), Box::new(CountDistinct::empty("v1")));
+        let ops: Vec<(String, Box<AggregateFunction>)> = vec![
+            ("_count".to_string(), Box::new(Count::new())),
+            ("_sum".to_string(), Box::new(Sum::empty("v1".to_string()))),
+            (
+                "_distinct".to_string(),
+                Box::new(CountDistinct::empty("v1")),
+            ),
+        ];
 
         let mut grouper = MultiGrouper::new(&["k1"], ops);
         (0..10).foreach(|n| {
@@ -693,8 +694,8 @@ mod tests {
 
     #[test]
     fn test_count_groups() {
-        let mut ops: HashMap<String, Box<AggregateFunction>> = HashMap::new();
-        ops.insert("_count".to_string(), Box::new(Count::new()));
+        let ops: Vec<(String, Box<AggregateFunction>)> =
+            vec![("_count".to_string(), Box::new(Count::new()))];
         let mut count_agg = MultiGrouper::new(&["k1"], ops);
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());

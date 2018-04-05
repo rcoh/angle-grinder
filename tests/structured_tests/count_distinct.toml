@@ -1,4 +1,4 @@
-query = "* | json | count_distinct(message), count by level"
+query = "* | json | count, count_distinct(message) by level"
 input = """
 {"level": "info", "message": "A thing happened", "num_things": 1102}
 {"level": "error", "message": "Oh now an error!"}

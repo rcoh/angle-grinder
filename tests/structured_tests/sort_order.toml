@@ -1,0 +1,21 @@
+query = "* | json | count by message, num_things | sort by num_things"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 2}
+{"level": "info", "message": "A different event", "num_things": 2.000001}
+{"level": "info", "message": "A different event", "num_things": 0.2000001}
+{"level": "info", "message": "A different event", "num_things": "whoops not a number"}
+{"level": null}
+"""
+output = """
+message                  num_things                 _count
+------------------------------------------------------------------
+$None$                   $None$                     1
+A different event        0.20                       1
+A thing happened         2                          1
+A different event        2.00                       1
+A thing happened         12                         1
+A thing happened         1102                       1
+A different event        whoops not a number        1
+"""
