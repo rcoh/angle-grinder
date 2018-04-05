@@ -68,6 +68,7 @@ pub mod pipeline {
                 AggregateFunction::Percentile {
                     column, percentile, ..
                 } => Box::new(operator::Percentile::empty(column, percentile)),
+                AggregateFunction::CountDistinct { column } => Box::new(operator::CountDistinct::empty(&column))
             }
         }
 

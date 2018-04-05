@@ -11,7 +11,6 @@ pub enum Search {
 #[derive(Debug, PartialEq)]
 pub enum Operator {
     Inline(InlineOperator),
-    //Aggregate(AggregateOperator),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
 }
@@ -56,6 +55,9 @@ pub enum AggregateFunction {
     Percentile {
         percentile: f64,
         percentile_str: String,
+        column: String,
+    },
+    CountDistinct {
         column: String,
     },
 }
@@ -160,6 +162,12 @@ named!(average<&str, AggregateFunction>, ws!(do_parse!(
     (AggregateFunction::Average{column: column.to_string()})
 )));
 
+named!(count_distinct<&str, AggregateFunction>, ws!(do_parse!(
+    tag!("count_distinct") >>
+    column: delimited!(tag!("("), ident ,tag!(")")) >>
+    (AggregateFunction::CountDistinct{column: column.to_string()})
+)));
+
 named!(sum<&str, AggregateFunction>, ws!(do_parse!(
     tag!("sum") >>
     column: delimited!(tag!("("), ident ,tag!(")")) >>
@@ -186,7 +194,12 @@ named!(p_nn<&str, AggregateFunction>, ws!(
 named!(inline_operator<&str, Operator>,
    map!(alt!(parse | json | fields), Operator::Inline)
 );
-named!(aggregate_function<&str, AggregateFunction>, alt!(count | average | sum | p_nn));
+named!(aggregate_function<&str, AggregateFunction>, alt!(
+    count_distinct |
+    count |
+    average |
+    sum |
+    p_nn));
 
 named!(operator<&str, Operator>, alt!(inline_operator | sort | multi_aggregate_operator));
 
@@ -198,6 +211,7 @@ fn default_output(func: &AggregateFunction) -> String {
         AggregateFunction::Count { .. } => "_count".to_string(),
         AggregateFunction::Sum { .. } => "_sum".to_string(),
         AggregateFunction::Average { .. } => "_average".to_string(),
+        AggregateFunction::CountDistinct { .. } => "_countDistinct".to_string(),
         AggregateFunction::Percentile {
             ref percentile_str, ..
         } => "p".to_string() + percentile_str,

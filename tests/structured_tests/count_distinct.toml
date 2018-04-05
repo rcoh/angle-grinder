@@ -1,0 +1,16 @@
+query = "* | json | count_distinct(message), count by level"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+{"level": "error", "message": "So many more errors!"}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A different event", "event_duration": 1002.5}
+{"level": null}
+"""
+output = """
+level        _count        _countDistinct
+-------------------------------------------------
+info         3             2
+error        2             2
+$None$       1             0
+"""

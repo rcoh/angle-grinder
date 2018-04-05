@@ -101,6 +101,39 @@ impl AggregateFunction for Sum {
     }
 }
 
+pub struct CountDistinct {
+    state: HashSet<data::Value>,
+    column: String,
+}
+
+impl CountDistinct {
+    pub fn empty(column: &str) -> Self {
+        CountDistinct {
+            state: HashSet::new(),
+            column: column.to_string(),
+        }
+    }
+}
+
+impl AggregateFunction for CountDistinct {
+    fn process(&mut self, rec: &Data) {
+        rec.get(&self.column)
+            .iter()
+            .cloned()
+            .for_each(|value| {
+                self.state.insert(value.clone());
+            });
+    }
+
+    fn emit(&self) -> data::Value {
+        data::Value::Int(self.state.len() as i64)
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(CountDistinct::empty(&self.column))
+    }
+}
+
 pub struct Average {
     total: f64,
     count: i64,
@@ -602,8 +635,15 @@ mod tests {
         let mut ops: HashMap<String, Box<AggregateFunction>> = HashMap::new();
         ops.insert("_count".to_string(), Box::new(Count::new()));
         ops.insert("_sum".to_string(), Box::new(Sum::empty("v1".to_string())));
+        ops.insert("_distinct".to_string(), Box::new(CountDistinct::empty("v1")));
 
         let mut grouper = MultiGrouper::new(&["k1"], ops);
+        (0..10).foreach(|n| {
+            let rec = Record::new(&n.to_string());
+            let rec = rec.put("k1", data::Value::Str("ok".to_string()));
+            let rec = rec.put("v1", data::Value::Int(n));
+            grouper.process(Row::Record(rec));
+        });
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
@@ -632,16 +672,19 @@ mod tests {
                 hashmap! {
                     "k1".to_string() => data::Value::Str("not ok".to_string()),
                     "_count".to_string() => data::Value::Int(25),
+                    "_distinct".to_string() => data::Value::Int(25),
                     "_sum".to_string() => data::Value::Int(300),
                 },
                 hashmap! {
                     "k1".to_string() => data::Value::Str("ok".to_string()),
-                    "_count".to_string() => data::Value::Int(10),
-                    "_sum".to_string() => data::Value::Int(45)
+                    "_count".to_string() => data::Value::Int(20),
+                    "_distinct".to_string() => data::Value::Int(10),
+                    "_sum".to_string() => data::Value::Int(90)
                 },
                 hashmap! {
                     "k1".to_string() => data::Value::None,
                     "_count".to_string() => data::Value::Int(3),
+                    "_distinct".to_string() => data::Value::Int(3),
                     "_sum".to_string() => data::Value::Int(3)
                 },
             ]
