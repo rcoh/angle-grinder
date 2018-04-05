@@ -59,7 +59,7 @@ Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only line
 These operators have a 1 to 1 correspondence between input data and output data. 1 row in, 0 or 1 rows out.
 
 ##### JSON
-`json [from other_field]`: Extract json-serialized rows into fields for later use. If the row is _not_ valid JSON, then it is dropped. Optionally, ``from other_field` can be 
+`json [from other_field]`: Extract json-serialized rows into fields for later use. If the row is _not_ valid JSON, then it is dropped. Optionally, `from other_field` can be 
 specified.
 
 *Examples*:
