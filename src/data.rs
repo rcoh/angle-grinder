@@ -1,11 +1,11 @@
 extern crate ordered_float;
 
+use self::ordered_float::OrderedFloat;
 use render;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
-use self::ordered_float::OrderedFloat;
 
 pub type VMap = HashMap<String, Value>;
 
@@ -39,8 +39,12 @@ impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
             // Ints and floats are converted to floats
-            (&Value::Int(ref int_val), &Value::Float(ref float_val)) => (OrderedFloat::from(*int_val as f64)).cmp(&float_val),
-            (&Value::Float(ref float_val), &Value::Int(ref int_val)) => float_val.cmp(&OrderedFloat::from(*int_val as f64)),
+            (&Value::Int(ref int_val), &Value::Float(ref float_val)) => {
+                (OrderedFloat::from(*int_val as f64)).cmp(float_val)
+            }
+            (&Value::Float(ref float_val), &Value::Int(ref int_val)) => {
+                float_val.cmp(&OrderedFloat::from(*int_val as f64))
+            }
 
             (&Value::Float(ref l), &Value::Float(ref r)) => l.cmp(r),
             (&Value::Int(ref l), &Value::Int(ref r)) => l.cmp(r),
@@ -49,7 +53,7 @@ impl Ord for Value {
             (&Value::None, _any) => Ordering::Less,
             (_any, &Value::None) => Ordering::Greater,
             (&Value::Str(..), _any) => Ordering::Greater,
-            (_any, &Value::Str(..)) => Ordering::Less
+            (_any, &Value::Str(..)) => Ordering::Less,
         }
     }
 }

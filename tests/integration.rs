@@ -15,9 +15,9 @@ struct TestDefinition {
 
 #[cfg(test)]
 mod integration {
+    use super::*;
     use assert_cli;
     use toml;
-    use super::*;
 
     fn structured_test(s: &str) {
         let conf: TestDefinition = toml::from_str(s).unwrap();
