@@ -3,6 +3,7 @@ extern crate quantiles;
 extern crate regex;
 extern crate regex_syntax;
 extern crate serde_json;
+
 use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
 use data;
@@ -13,6 +14,7 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 
 type Data = HashMap<String, data::Value>;
+
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: Record) -> Option<Record>;
     fn get_input<'a>(&self, input_column: &Option<String>, rec: &'a Record) -> Option<&'a str> {
@@ -27,12 +29,12 @@ pub trait AggregateOperator: Send + Sync {
     fn process(&mut self, row: Row);
 }
 
-pub trait AggregateFunction: Clone {
+pub trait AggregateFunction: Send + Sync {
     fn process(&mut self, rec: &Data);
     fn emit(&self) -> data::Value;
+    fn empty_box(&self) -> Box<AggregateFunction>;
 }
 
-#[derive(Clone)]
 pub struct Count {
     count: i64,
 }
@@ -51,9 +53,12 @@ impl AggregateFunction for Count {
     fn emit(&self) -> data::Value {
         data::Value::Int(self.count)
     }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Count::new())
+    }
 }
 
-#[derive(Clone)]
 pub struct Sum {
     total: f64,
     column: String,
@@ -77,7 +82,7 @@ impl AggregateFunction for Sum {
         rec.get(&self.column).iter().for_each(|value| match *value {
             &data::Value::Float(ref f) => {
                 self.is_float = true;
-                self.total += f;
+                self.total += f.into_inner();
             }
             &data::Value::Int(ref i) => {
                 self.total += *i as f64;
@@ -90,9 +95,12 @@ impl AggregateFunction for Sum {
     fn emit(&self) -> data::Value {
         data::Value::Int(self.total as i64)
     }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Sum::empty(self.column.clone()))
+    }
 }
 
-#[derive(Clone)]
 pub struct Average {
     total: f64,
     count: i64,
@@ -117,7 +125,7 @@ impl AggregateFunction for Average {
             .iter()
             .for_each(|value| match *value {
                 &data::Value::Float(ref f) => {
-                    self.total += f;
+                    self.total += f.into_inner();
                     self.count += 1
                 }
                 &data::Value::Int(ref i) => {
@@ -130,11 +138,14 @@ impl AggregateFunction for Average {
     }
 
     fn emit(&self) -> data::Value {
-        data::Value::Float(self.total / self.count as f64)
+        data::Value::from_float(self.total / self.count as f64)
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Average::empty(self.column.clone()))
     }
 }
 
-#[derive(Clone)]
 pub struct Percentile {
     ckms: CKMS<f64>,
     column: String,
@@ -163,7 +174,7 @@ impl AggregateFunction for Percentile {
             .iter()
             .for_each(|value| match *value {
                 &data::Value::Float(ref f) => {
-                    self.ckms.insert(*f);
+                    self.ckms.insert(f.into_inner());
                 }
                 &data::Value::Int(ref i) => self.ckms.insert(*i as f64),
                 _other => self.warnings
@@ -174,8 +185,12 @@ impl AggregateFunction for Percentile {
     fn emit(&self) -> data::Value {
         let pct_opt = self.ckms.query(self.percentile);
         pct_opt
-            .map(|(_usize, pct_float)| data::Value::Float(pct_float))
+            .map(|(_usize, pct_float)| data::Value::from_float(pct_float))
             .unwrap_or(data::Value::None)
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Percentile::empty(self.column.clone(), self.percentile))
     }
 }
 
@@ -242,57 +257,57 @@ impl AggregateOperator for Sorter {
     }
 }
 
-pub struct Grouper<T: AggregateFunction> {
+pub struct MultiGrouper {
     key_cols: Vec<String>,
-    agg_col: String,
-    state: HashMap<Vec<String>, T>,
-    empty: T,
+    agg_col: HashMap<String, Box<AggregateFunction>>,
+    // key-column values -> (agg_columns -> builders)
+    state: HashMap<Vec<data::Value>, HashMap<String, Box<AggregateFunction>>>,
 }
 
-impl<T: AggregateFunction> Grouper<T> {
-    pub fn new(key_cols: Vec<String>, agg_col: &str, empty: T) -> Grouper<T> {
-        Grouper {
-            key_cols,
-            agg_col: String::from(agg_col),
+impl MultiGrouper {
+    pub fn new(key_cols: &[&str], aggregators: HashMap<String, Box<AggregateFunction>>) -> Self {
+        MultiGrouper {
+            key_cols: key_cols.to_vec().iter().map(|s| s.to_string()).collect(),
+            agg_col: aggregators,
             state: HashMap::new(),
-            empty,
         }
     }
-
     fn process_map(&mut self, data: &Data) {
-        let key_values: Vec<Option<&data::Value>> = self.key_cols
-            .iter()
-            .map(|column| data.get(column))
+        let key_values = self.key_cols.iter().map(|column| data.get(column));
+        let key_columns: Vec<data::Value> = key_values
+            .map(|value_opt| value_opt.cloned().unwrap_or_else(|| data::Value::None))
             .collect();
-        let key_columns: Vec<String> = key_values
-            .iter()
-            .map(|value_opt| {
-                value_opt
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "$None$".to_string())
-            })
-            .collect();
-        let empty = &self.empty;
-        let accum = self.state
-            .entry(key_columns)
-            .or_insert_with(|| empty.clone());
-        accum.process(data);
+        let agg_col = &self.agg_col;
+        let row = self.state.entry(key_columns).or_insert_with(|| {
+            agg_col
+                .iter()
+                .map(|(k, v)| (k.to_owned(), v.empty_box()))
+                .collect()
+        });
+        for fun in row.values_mut() {
+            fun.process(data);
+        }
     }
 }
 
-impl<T: AggregateFunction + Send + Sync> AggregateOperator for Grouper<T> {
-    fn emit(&self) -> data::Aggregate {
-        // TODO: restructure to avoid reallocating everything on emit
-        let data: Vec<(HashMap<String, String>, data::Value)> = self.state
-            .iter()
-            .map(|(key_cols, accum)| {
-                let key_value =
-                    itertools::zip_eq(self.key_cols.iter().cloned(), key_cols.iter().cloned());
-                let res_map: HashMap<String, String> = HashMap::from_iter(key_value);
-                (res_map, accum.emit())
-            })
-            .collect();
-        Aggregate::new(&self.key_cols, self.agg_col.clone(), &data)
+impl AggregateOperator for MultiGrouper {
+    fn emit(&self) -> Aggregate {
+        let mut columns = self.key_cols.to_vec();
+        columns.extend(self.agg_col.keys().map(|k| k.to_string()));
+        let data = self.state.iter().map(|(key_values, agg_map)| {
+            let key_values = key_values.iter().cloned();
+            let key_cols = self.key_cols.iter().map(|s| s.to_owned());
+            let mut res_map: data::VMap =
+                HashMap::from_iter(itertools::zip_eq(key_cols, key_values));
+            for (k, v) in agg_map {
+                res_map.insert(k.to_string(), v.emit());
+            }
+            res_map
+        });
+        Aggregate {
+            columns,
+            data: data.collect(),
+        }
     }
 
     fn process(&mut self, row: Row) {
@@ -431,7 +446,7 @@ impl UnaryPreAggOperator for ParseJson {
                             &JsonValue::Number(ref num) => if num.is_i64() {
                                 Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
                             } else {
-                                Some(record.put(k, data::Value::Float(num.as_f64().unwrap())))
+                                Some(record.put(k, data::Value::from_float(num.as_f64().unwrap())))
                             },
                             &JsonValue::String(ref s) => {
                                 Some(record.put(k, data::Value::Str(s.to_string())))
@@ -454,6 +469,7 @@ mod tests {
     use data::Record;
     use data::Value;
     use operator::itertools::Itertools;
+
     #[test]
     fn test_json() {
         let rec = Record::new(
@@ -463,9 +479,9 @@ mod tests {
         let rec = parser.process(rec).unwrap();
         assert_eq!(
             rec.data,
-            hashmap!{
+            hashmap! {
                 "k1".to_string() => Value::Int(5),
-                "k2".to_string() => Value::Float(5.5),
+                "k2".to_string() => Value::from_float(5.5),
                 "k3".to_string() => Value::Str("str".to_string()),
                 "k4".to_string() => Value::None,
                 "k5".to_string() => Value::Str("[1,2,3]".to_string())
@@ -484,7 +500,7 @@ mod tests {
         let rec = fields.process(rec).unwrap();
         assert_eq!(
             rec.data,
-            hashmap!{
+            hashmap! {
                 "k1".to_string() => Value::Str("v1".to_string()),
             }
         );
@@ -501,7 +517,7 @@ mod tests {
         let rec = fields.process(rec).unwrap();
         assert_eq!(
             rec.data,
-            hashmap!{
+            hashmap! {
                 "k2".to_string() => Value::Str("v2".to_string()),
                 "k3".to_string() => Value::Str("v3".to_string()),
                 "k4".to_string() => Value::Str("v4".to_string()),
@@ -560,7 +576,9 @@ mod tests {
 
     #[test]
     fn test_count_no_groups() {
-        let mut count_agg = Grouper::<Count>::new(Vec::new(), "_count", Count::new());
+        let mut ops: HashMap<String, Box<AggregateFunction>> = HashMap::new();
+        ops.insert("_count".to_string(), Box::new(Count::new()));
+        let mut count_agg = MultiGrouper::new(&[], ops);
         (0..10)
             .map(|n| Record::new(&n.to_string()))
             .foreach(|rec| count_agg.process(Row::Record(rec)));
@@ -568,20 +586,73 @@ mod tests {
         assert_eq!(agg.columns, vec!["_count"]);
         assert_eq!(
             agg.data,
-            vec![hashmap!{"_count".to_string() => data::Value::Int(10)}]
+            vec![hashmap! {"_count".to_string() => data::Value::Int(10)}]
         );
         (0..10)
             .map(|n| Record::new(&n.to_string()))
             .foreach(|rec| count_agg.process(Row::Record(rec)));
         assert_eq!(
             count_agg.emit().data,
-            vec![hashmap!{"_count".to_string() => data::Value::Int(20)}]
+            vec![hashmap! {"_count".to_string() => data::Value::Int(20)}]
+        );
+    }
+
+    #[test]
+    fn test_multi_grouper() {
+        let mut ops: HashMap<String, Box<AggregateFunction>> = HashMap::new();
+        ops.insert("_count".to_string(), Box::new(Count::new()));
+        ops.insert("_sum".to_string(), Box::new(Sum::empty("v1".to_string())));
+
+        let mut grouper = MultiGrouper::new(&["k1"], ops);
+        (0..10).foreach(|n| {
+            let rec = Record::new(&n.to_string());
+            let rec = rec.put("k1", data::Value::Str("ok".to_string()));
+            let rec = rec.put("v1", data::Value::Int(n));
+            grouper.process(Row::Record(rec));
+        });
+        (0..25).foreach(|n| {
+            let rec = Record::new(&n.to_string());
+            let rec = rec.put("k1", data::Value::Str("not ok".to_string()));
+            let rec = rec.put("v1", data::Value::Int(n));
+            grouper.process(Row::Record(rec));
+        });
+        (0..3).foreach(|n| {
+            let rec = Record::new(&n.to_string());
+            let rec = rec.put("v1", data::Value::Int(n));
+            grouper.process(Row::Record(rec));
+        });
+        let agg = grouper.emit();
+        let mut sorted_data = agg.data.clone();
+        let ordering = Record::ordering(vec!["_count".to_string()]);
+        sorted_data.sort_by(|l, r| ordering(l, r));
+        sorted_data.reverse();
+        assert_eq!(
+            sorted_data,
+            vec![
+                hashmap! {
+                    "k1".to_string() => data::Value::Str("not ok".to_string()),
+                    "_count".to_string() => data::Value::Int(25),
+                    "_sum".to_string() => data::Value::Int(300),
+                },
+                hashmap! {
+                    "k1".to_string() => data::Value::Str("ok".to_string()),
+                    "_count".to_string() => data::Value::Int(10),
+                    "_sum".to_string() => data::Value::Int(45)
+                },
+                hashmap! {
+                    "k1".to_string() => data::Value::None,
+                    "_count".to_string() => data::Value::Int(3),
+                    "_sum".to_string() => data::Value::Int(3)
+                },
+            ]
         );
     }
 
     #[test]
     fn test_count_groups() {
-        let mut count_agg = Grouper::<Count>::new(vec!["k1".to_string()], "_count", Count::new());
+        let mut ops: HashMap<String, Box<AggregateFunction>> = HashMap::new();
+        ops.insert("_count".to_string(), Box::new(Count::new()));
+        let mut count_agg = MultiGrouper::new(&["k1"], ops);
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
@@ -604,14 +675,14 @@ mod tests {
         assert_eq!(
             sorted_data,
             vec![
-                hashmap!{
+                hashmap! {
                     "k1".to_string() => data::Value::Str("not ok".to_string()),
                     "_count".to_string() => data::Value::Int(25),
                 },
-                hashmap!{"k1".to_string() =>
+                hashmap! {"k1".to_string() =>
                 data::Value::Str("ok".to_string()), "_count".to_string() => data::Value::Int(10)},
-                hashmap!{
-                    "k1".to_string() => data::Value::Str("$None$".to_string()),
+                hashmap! {
+                    "k1".to_string() => data::Value::None,
                     "_count".to_string() => data::Value::Int(3)
                 },
             ]
@@ -628,14 +699,14 @@ mod tests {
             "count".to_string(),
             &[
                 (
-                    hashmap!{
+                    hashmap! {
                         "kc1".to_string() => "k1".to_string(),
                         "kc2".to_string() => "k2".to_string()
                     },
                     Value::Int(100),
                 ),
                 (
-                    hashmap!{
+                    hashmap! {
                         "kc1".to_string() => "k300".to_string(),
                         "kc2".to_string() => "k40000".to_string()
                     },

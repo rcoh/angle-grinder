@@ -146,6 +146,9 @@ impl PrettyPrinter {
     }
 
     fn format_aggregate(&mut self, aggregate: &data::Aggregate) -> String {
+        if aggregate.data.is_empty() {
+            return "No data\n".to_string();
+        }
         aggregate
             .data
             .iter()

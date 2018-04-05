@@ -88,7 +88,7 @@ $None$       1")
             .with_args(&[
                 r#""error" | parse "* *" as lev, js 
                      | json from js 
-                     | fields -js, lev"#,
+                     | fields except js, lev"#,
                 "--file",
                 "test_files/test_partial_json.log",
             ])

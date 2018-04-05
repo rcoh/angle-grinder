@@ -1,10 +1,13 @@
+extern crate ordered_float;
+
 use render;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
+use self::ordered_float::OrderedFloat;
 
-type VMap = HashMap<String, Value>;
+pub type VMap = HashMap<String, Value>;
 
 pub enum Row {
     Aggregate(Aggregate),
@@ -23,12 +26,12 @@ pub struct Record {
     pub raw: String,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub enum Value {
     Str(String),
     // Consider big int
     Int(i64),
-    Float(f64),
+    Float(OrderedFloat<f64>),
     None,
 }
 
@@ -53,12 +56,16 @@ impl Value {
         }
     }
 
+    pub fn from_float(f: f64) -> Value {
+        Value::Float(OrderedFloat(f))
+    }
+
     pub fn from_string(s: &str) -> Value {
         let int_value = s.parse::<i64>();
         let float_value = s.parse::<f64>();
         int_value
             .map(Value::Int)
-            .or_else(|_| float_value.map(Value::Float))
+            .or_else(|_| float_value.map(Value::from_float))
             .unwrap_or_else(|_| Value::Str(s.to_string()))
     }
 }
@@ -134,13 +141,7 @@ impl Record {
                 let l_val = rec_l.get(col);
                 let r_val = rec_r.get(col);
                 if l_val != r_val {
-                    return match (l_val, r_val) {
-                        (Some(l_val), Some(r_val)) => {
-                            l_val.partial_cmp(r_val).unwrap_or(Ordering::Less)
-                        }
-                        (_, None) => Ordering::Less,
-                        (None, _) => Ordering::Greater,
-                    };
+                    return l_val.cmp(&r_val);
                 }
             }
             Ordering::Equal
@@ -199,7 +200,7 @@ mod tests {
     #[test]
     fn test_from_string() {
         assert_eq!(Value::from_string("949919"), Value::Int(949919));
-        assert_eq!(Value::from_string("0.00001"), Value::Float(0.00001));
+        assert_eq!(Value::from_string("0.00001"), Value::from_float(0.00001));
         assert_eq!(
             Value::from_string("not a number"),
             Value::Str("not a number".to_string())
@@ -210,12 +211,12 @@ mod tests {
     fn test_ordering() {
         let mut r1 = HashMap::<String, Value>::new();
         r1.insert("k1".to_string(), Value::Int(5));
-        r1.insert("k3".to_string(), Value::Float(0.1));
+        r1.insert("k3".to_string(), Value::from_float(0.1));
         r1.insert("k2".to_string(), Value::Str("abc".to_string()));
         let mut r2 = HashMap::<String, Value>::new();
         r2.insert("k1".to_string(), Value::Int(4));
         r2.insert("k2".to_string(), Value::Str("xyz".to_string()));
-        r2.insert("k3".to_string(), Value::Float(0.1));
+        r2.insert("k3".to_string(), Value::from_float(0.1));
         let ord1 = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
         assert_eq!(ord1(&r1, &r2), Ordering::Greater);
         assert_eq!(ord1(&r1, &r1), Ordering::Equal);

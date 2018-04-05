@@ -19,6 +19,7 @@ pub mod pipeline {
     use lang::*;
     use operator;
     use render::{RenderConfig, Renderer};
+    use std::collections::HashMap;
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
@@ -59,35 +60,24 @@ pub mod pipeline {
             Box::new(operator::Sorter::new(op.sort_cols, mode))
         }
 
-        fn convert_agg(op: lang::AggregateOperator) -> Box<operator::AggregateOperator> {
-            match op.aggregate_function {
-                AggregateFunction::Count => Box::new(operator::Grouper::<operator::Count>::new(
-                    op.key_cols,
-                    &op.output_column,
-                    operator::Count::new(),
-                )),
-                AggregateFunction::Average { column } => {
-                    Box::new(operator::Grouper::<operator::Average>::new(
-                        op.key_cols,
-                        &op.output_column,
-                        operator::Average::empty(column),
-                    ))
-                }
-                AggregateFunction::Sum { column } => {
-                    Box::new(operator::Grouper::<operator::Sum>::new(
-                        op.key_cols,
-                        &op.output_column,
-                        operator::Sum::empty(column),
-                    ))
-                }
+        fn convert_agg_function(func: lang::AggregateFunction) -> Box<operator::AggregateFunction> {
+            match func {
+                AggregateFunction::Count => Box::new(operator::Count::new()),
+                AggregateFunction::Average { column } => Box::new(operator::Average::empty(column)),
+                AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(column)),
                 AggregateFunction::Percentile {
                     column, percentile, ..
-                } => Box::new(operator::Grouper::<operator::Percentile>::new(
-                    op.key_cols,
-                    &op.output_column,
-                    operator::Percentile::empty(column, percentile),
-                )),
+                } => Box::new(operator::Percentile::empty(column, percentile)),
             }
+        }
+
+        fn convert_multi_agg(op: lang::MultiAggregateOperator) -> Box<operator::AggregateOperator> {
+            let mut agg_map = HashMap::new();
+            for (output_column, func) in op.aggregate_functions {
+                agg_map.insert(output_column, Pipeline::convert_agg_function(func));
+            }
+            let key_cols: Vec<&str> = op.key_cols.iter().map(AsRef::as_ref).collect();
+            Box::new(operator::MultiGrouper::new(&key_cols[..], agg_map))
         }
 
         pub fn new(pipeline: &str) -> Result<Self, String> {
@@ -101,9 +91,14 @@ pub mod pipeline {
             let final_op = {
                 let last_op = &(query.operators).last();
                 match last_op {
-                    &Some(&Operator::Aggregate(ref agg_op)) => {
+                    &Some(&Operator::MultiAggregate(ref agg_op)) => {
                         Some(Pipeline::convert_sort(SortOperator {
-                            sort_cols: vec![agg_op.output_column.clone()],
+                            sort_cols: agg_op
+                                .aggregate_functions
+                                .iter()
+                                .map(|&(ref k, _)| k)
+                                .cloned()
+                                .collect(),
                             direction: SortMode::Descending,
                         }))
                     }
@@ -117,9 +112,9 @@ pub mod pipeline {
                     } else {
                         return Result::Err("non aggregate cannot follow aggregate".to_string());
                     },
-                    Operator::Aggregate(agg_op) => {
+                    Operator::MultiAggregate(agg_op) => {
                         in_agg = true;
-                        post_agg.push(Pipeline::convert_agg(agg_op))
+                        post_agg.push(Pipeline::convert_multi_agg(agg_op))
                     }
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
                 }
