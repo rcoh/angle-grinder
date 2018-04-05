@@ -162,6 +162,13 @@ Count number of source_hosts:
 * | json | count by endpoint_url, status_code | sort by endpoint_url desc
 ```
 
+##### Count Distinct
+`count_distinct(a)`: Count distinct values of column `a`. Warning: this is not fixed memory. Be careful about processing too many groups.
+*Examples*:
+```
+* | json | count_distinct(ip_address)
+```
+
 ### Example Queries
 - Count the number of downloads of angle-grinder by release (with special guest jq)
 ``` 
