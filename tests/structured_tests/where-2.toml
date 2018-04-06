@@ -1,0 +1,11 @@
+query = """* | json | where thing_a == 5"""
+input = """
+{"thing_a": 5, "thing_b": 99, "thing_c": 9999}
+{"thing_a": 6, "thing_b": 5}
+{"thing_a": "hello", "thing_b": 5}
+{"thing_a": 5, "thing_b": true}
+"""
+output = """
+[thing_a=5]              [thing_b=99]             [thing_c=9999]
+[thing_a=5]              [thing_b=true]
+"""

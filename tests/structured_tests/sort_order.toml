@@ -1,4 +1,4 @@
-query = "* | json | count by message, num_things | sort by num_things"
+query = "* | json | count by message, num_things | sort  by   num_things"
 input = """
 {"level": "info", "message": "A thing happened", "num_things": 1102}
 {"level": "info", "message": "A thing happened", "num_things": 12}

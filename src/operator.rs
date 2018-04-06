@@ -15,6 +15,10 @@ use std::iter::FromIterator;
 
 type Data = HashMap<String, data::Value>;
 
+pub trait Evaluatable<T> {
+    fn eval(&self, record: &Data) -> Option<T>;
+}
+
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: Record) -> Option<Record>;
     fn get_input<'a>(&self, input_column: &Option<String>, rec: &'a Record) -> Option<&'a str> {
@@ -33,6 +37,31 @@ pub trait AggregateFunction: Send + Sync {
     fn process(&mut self, rec: &Data);
     fn emit(&self) -> data::Value;
     fn empty_box(&self) -> Box<AggregateFunction>;
+}
+
+#[derive(Clone)]
+pub enum Expr {
+    Column(String),
+    Equal { left: Box<Expr>, right: Box<Expr> },
+    Value(data::Value),
+}
+
+impl Evaluatable<data::Value> for Expr {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Option<data::Value> {
+        match *self {
+            Expr::Column(ref str) => record.get(str).cloned(),
+            Expr::Equal {
+                ref left,
+                ref right,
+            } => {
+                let l = (*left).eval(record);
+                let r = (*right).eval(record);
+                let value = data::Value::Bool(l == r);
+                Some(value)
+            }
+            Expr::Value(ref v) => Some(v.clone()),
+        }
+    }
 }
 
 pub struct Count {
@@ -61,16 +90,16 @@ impl AggregateFunction for Count {
 
 pub struct Sum {
     total: f64,
-    column: String,
+    column: Expr,
     warnings: Vec<String>,
     is_float: bool,
 }
 
 impl Sum {
-    pub fn empty(column: String) -> Self {
+    pub fn empty<T: Into<Expr>>(column: T) -> Self {
         Sum {
             total: 0.0,
-            column,
+            column: column.into(),
             warnings: Vec::new(),
             is_float: false,
         }
@@ -79,7 +108,7 @@ impl Sum {
 
 impl AggregateFunction for Sum {
     fn process(&mut self, rec: &Data) {
-        rec.get(&self.column).iter().for_each(|value| match *value {
+        self.column.eval(rec).iter().for_each(|value| match value {
             &data::Value::Float(ref f) => {
                 self.is_float = true;
                 self.total += f.into_inner();
@@ -93,7 +122,11 @@ impl AggregateFunction for Sum {
     }
 
     fn emit(&self) -> data::Value {
-        data::Value::Int(self.total as i64)
+        if self.is_float {
+            data::Value::from_float(self.total)
+        } else {
+            data::Value::Int(self.total as i64)
+        }
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
@@ -134,16 +167,16 @@ impl AggregateFunction for CountDistinct {
 pub struct Average {
     total: f64,
     count: i64,
-    column: String,
+    column: Expr,
     warnings: Vec<String>,
 }
 
 impl Average {
-    pub fn empty(column: String) -> Average {
+    pub fn empty<T: Into<Expr>>(column: T) -> Average {
         Average {
             total: 0.0,
             count: 0,
-            column,
+            column: column.into(),
             warnings: Vec::new(),
         }
     }
@@ -151,10 +184,10 @@ impl Average {
 
 impl AggregateFunction for Average {
     fn process(&mut self, data: &Data) {
-        data.get(&self.column)
+        self.column.eval(data)
             .iter()
-            .for_each(|value| match *value {
-                &data::Value::Float(ref f) => {
+            .for_each(|value| match value {
+                &data::Value::Float(ref  f) => {
                     self.total += f.into_inner();
                     self.count += 1
                 }
@@ -419,6 +452,26 @@ impl UnaryPreAggOperator for Parse {
     }
 }
 
+pub struct Where {
+    expr: Expr,
+}
+
+impl Where {
+    pub fn new<T: Into<Expr>>(expr: T) -> Self {
+        Where { expr: expr.into() }
+    }
+}
+
+impl UnaryPreAggOperator for Where {
+    fn process(&self, rec: Record) -> Option<Record> {
+        let res = self.expr.eval(&rec.data);
+        match res {
+            Some(data::Value::Bool(true)) => Some(rec),
+            _other => None,
+        }
+    }
+}
+
 pub enum FieldMode {
     Only,
     Except,
@@ -482,6 +535,7 @@ impl UnaryPreAggOperator for ParseJson {
                                 Some(record.put(k, data::Value::Str(s.to_string())))
                             }
                             &JsonValue::Null => Some(record.put(k, data::Value::None)),
+                            &JsonValue::Bool(b) => Some(record.put(k, data::Value::Bool(b))),
                             _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
                         })
                     }),
@@ -499,6 +553,12 @@ mod tests {
     use data::Record;
     use data::Value;
     use operator::itertools::Itertools;
+
+    impl From<String> for Expr {
+        fn from(inp: String) -> Self {
+            Expr::Column(inp)
+        }
+    }
 
     #[test]
     fn test_json() {
