@@ -43,19 +43,23 @@ pub trait AggregateFunction: Send + Sync {
 pub enum Expr {
     Column(String),
     Equal { left: Box<Expr>, right: Box<Expr> },
+    Value(data::Value),
 }
-
 
 impl Evaluatable<data::Value> for Expr {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Option<data::Value> {
-        match self {
-            &Expr::Column(ref str) => record.get(str).cloned(),
-            &Expr::Equal { ref left, ref right } => {
+        match *self {
+            Expr::Column(ref str) => record.get(str).cloned(),
+            Expr::Equal {
+                ref left,
+                ref right,
+            } => {
                 let l = (*left).eval(record);
                 let r = (*right).eval(record);
                 let value = data::Value::Bool(l == r);
                 Some(value)
             }
+            Expr::Value(ref v) => Some(v.clone()),
         }
     }
 }
@@ -448,6 +452,26 @@ impl UnaryPreAggOperator for Parse {
     }
 }
 
+pub struct Where {
+    expr: Expr,
+}
+
+impl Where {
+    pub fn new<T: Into<Expr>>(expr: T) -> Self {
+        Where { expr: expr.into() }
+    }
+}
+
+impl UnaryPreAggOperator for Where {
+    fn process(&self, rec: Record) -> Option<Record> {
+        let res = self.expr.eval(&rec.data);
+        match res {
+            Some(data::Value::Bool(true)) => Some(rec),
+            _other => None,
+        }
+    }
+}
+
 pub enum FieldMode {
     Only,
     Except,
@@ -511,6 +535,7 @@ impl UnaryPreAggOperator for ParseJson {
                                 Some(record.put(k, data::Value::Str(s.to_string())))
                             }
                             &JsonValue::Null => Some(record.put(k, data::Value::None)),
+                            &JsonValue::Bool(b) => Some(record.put(k, data::Value::Bool(b))),
                             _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
                         })
                     }),

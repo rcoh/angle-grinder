@@ -1,18 +1,20 @@
-use nom::{is_alphanumeric, is_digit};
+use data;
 use nom::IResult;
+use nom::{is_alphanumeric, is_digit, alpha1, digit1};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Column(String),
     Equal { left: Box<Expr>, right: Box<Expr> },
+    Value(data::Value),
 }
 
 impl Expr {
     pub fn force(&self) -> String {
         match self {
             &Expr::Column(ref s) => s.clone(),
-            _other => unimplemented!()
+            _other => unimplemented!(),
         }
     }
 }
@@ -43,6 +45,9 @@ pub enum InlineOperator {
     Fields {
         mode: FieldMode,
         fields: Vec<String>,
+    },
+    Where {
+        expr: Expr,
     },
 }
 
@@ -103,18 +108,46 @@ fn not_escape(c: char) -> bool {
     c != '\\' && c != '\"'
 }
 
-fn vec_str_vec_string(vec: &[&str]) -> Vec<String> {
-    vec.iter().map(|s| s.to_string()).collect()
-}
+named!(value<&str, data::Value>, ws!(
+    alt!(
+        map!(quoted_string, |s|data::Value::Str(s.to_string()))
+        | map!(digit1, |s|data::Value::from_string(s))
+    )
+));
+named!(ident<&str, String>, do_parse!(
+    start: alpha1 >>
+    rest: take_while!(is_ident) >>
+    (start.to_owned() + rest)
+    //(rest.to_owned())
+));
+//named!(ident<&str, String>, ws!(take_while1!(is_ident)));
 
-named!(ident<&str, &str>, ws!(take_while1!(is_ident)));
 
-named!(expr<&str, Expr>, map!(ident, |ident|Expr::Column(ident.to_owned())));
+named!(e_ident<&str, Expr>,
+    ws!(alt!(
+      map!(ident, |col|Expr::Column(col.to_owned()))
+    | map!(value, Expr::Value)
+      //expr
+    |  ws!(delimited!( tag_s!("("), expr, tag_s!(")") ))
+)));
+
+named!(expr<&str, Expr>, ws!(alt!(
+    map!(
+        ws!(separated_pair!(e_ident, tag!("=="), e_ident)), |(l, r)| Expr::Equal { left: Box::new(l), right: Box::new(r)}
+    )
+    | e_ident
+)));
 
 named!(json<&str, InlineOperator>, ws!(do_parse!(
     tag!("json") >>
-    from_column_opt: opt!(preceded!(tag!("from"), ident)) >>
+    from_column_opt: opt!(ws!(preceded!(tag!("from"), ident))) >>
     (InlineOperator::Json { input_column: from_column_opt.map(|s|s.to_string()) })
+)));
+
+named!(whre<&str, InlineOperator>, ws!(do_parse!(
+    tag!("where") >>
+    ex: expr >>
+    (InlineOperator::Where { expr: ex })
 )));
 
 named!(quoted_string <&str, &str>, delimited!(
@@ -123,20 +156,20 @@ named!(quoted_string <&str, &str>, delimited!(
     tag!("\"") 
 ));
 
-named!(var_list<&str, Vec<&str> >, ws!(separated_nonempty_list!(
-    tag!(","), ident
+named!(var_list<&str, Vec<String> >, ws!(separated_nonempty_list!(
+    tag!(","), ws!(ident)
 )));
 
 // parse "blah * ... *" [from other_field] as x, y
 named!(parse<&str, InlineOperator>, ws!(do_parse!(
     tag!("parse") >>
     pattern: quoted_string >>
-    from_column_opt: opt!(preceded!(tag!("from"), expr)) >>
+    from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
     tag!("as") >>
     vars: var_list >>
     ( InlineOperator::Parse{
         pattern: pattern.replace("\\\"", "\""),
-        fields: vec_str_vec_string(&vars),
+        fields: vars,
         input_column: from_column_opt
         } )
 )));
@@ -159,7 +192,7 @@ named!(fields<&str, InlineOperator>, ws!(do_parse!(
     (
         InlineOperator::Fields {
             mode: mode.unwrap_or(FieldMode::Only),
-            fields: vec_str_vec_string(&fields)
+            fields
         }
     )
 )));
@@ -202,7 +235,7 @@ named!(p_nn<&str, AggregateFunction>, ws!(
 ));
 
 named!(inline_operator<&str, Operator>,
-   map!(alt!(parse | json | fields), Operator::Inline)
+   map!(alt!(parse | json | fields | whre), Operator::Inline)
 );
 named!(aggregate_function<&str, AggregateFunction>, alt!(
     count_distinct |
@@ -230,7 +263,7 @@ fn default_output(func: &AggregateFunction) -> String {
 
 named!(complete_agg_function<&str, (String, AggregateFunction)>, ws!(do_parse!(
         agg_function: aggregate_function >>
-        rename_opt: opt!(preceded!(tag!("as"), ident)) >>
+        rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
         (
             rename_opt.map(|s|s.to_string()).unwrap_or_else(||default_output(&agg_function)),
             agg_function
@@ -242,7 +275,7 @@ named!(multi_aggregate_operator<&str, Operator>, ws!(do_parse!(
     agg_functions: ws!(separated_nonempty_list!(tag!(","), complete_agg_function)) >>
     key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
     (Operator::MultiAggregate(MultiAggregateOperator{
-        key_cols: vec_str_vec_string(&key_cols_opt.unwrap_or_default()),
+        key_cols: key_cols_opt.unwrap_or_default(),
         aggregate_functions: agg_functions,
      })))
 ));
@@ -263,7 +296,7 @@ named!(sort<&str, Operator>, ws!(do_parse!(
     key_cols_opt: opt!(preceded!(opt!(tag!("by")), var_list)) >>
     dir: opt!(sort_mode) >>
     (Operator::Sort(SortOperator{
-        sort_cols: vec_str_vec_string(&key_cols_opt.unwrap_or_default()),
+        sort_cols: key_cols_opt.unwrap_or_default(),
         direction: dir.unwrap_or(SortMode::Ascending) ,
      })))
 ));
@@ -286,7 +319,6 @@ pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
     terminated!(query_str, query, tag!("!"))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,15 +332,44 @@ mod tests {
     }
 
     #[test]
+    fn test_expr() {
+        assert_eq!(
+            expr("a == b!"),
+            Ok((
+                "!",
+                Expr::Equal {
+                    left: Box::new(Expr::Column("a".to_string())),
+                    right: Box::new(Expr::Column("b".to_string())),
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn test_expr_value() {
+        assert_eq!(
+            expr("a == \"b\"!"),
+            Ok((
+                "!",
+                Expr::Equal {
+                    left: Box::new(Expr::Column("a".to_string())),
+                    right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
+                }
+            ))
+        );
+    }
+
+    #[test]
     fn test_ident() {
-        assert_eq!(ident("hello123!"), Ok(("!", "hello123")));
+        assert_eq!(ident("hello123!"), Ok(("!", "hello123".to_string())));
+        assert_eq!(ident("x!"), Ok(("!", "x".to_string())));
     }
 
     #[test]
     fn test_var_list() {
         assert_eq!(
             var_list("a, b, def, g_55!"),
-            Ok(("!", vec!["a", "b", "def", "g_55"]))
+            Ok(("!", vec!["a".to_string(), "b".to_string(), "def".to_string(), "g_55".to_string()]))
         );
     }
 
@@ -367,7 +428,7 @@ mod tests {
             Ok((
                 "!",
                 Operator::MultiAggregate(MultiAggregateOperator {
-                    key_cols: vec_str_vec_string(&["x", "y"]),
+                    key_cols: vec!["x".to_string(), "y".to_string()],
                     aggregate_functions: vec![("renamed".to_string(), AggregateFunction::Count)],
                 },)
             ))

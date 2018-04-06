@@ -40,6 +40,12 @@ mod integration {
     }
 
     #[test]
+    fn test_where() {
+        structured_test(include_str!("structured_tests/where-1.toml"));
+        structured_test(include_str!("structured_tests/where-2.toml"));
+    }
+
+    #[test]
     fn test_sort_order() {
         structured_test(include_str!("structured_tests/sort_order.toml"));
     }

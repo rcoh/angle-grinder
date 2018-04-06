@@ -34,7 +34,11 @@ pub mod pipeline {
         fn from(inp: lang::Expr) -> Self {
             match inp {
                 lang::Expr::Column(s) => operator::Expr::Column(s),
-                lang::Expr::Equal { left, right } => operator::Expr::Equal { left: Box::new((*left).into()), right: Box::new((*right).into()) }
+                lang::Expr::Equal { left, right } => operator::Expr::Equal {
+                    left: Box::new((*left).into()),
+                    right: Box::new((*right).into()),
+                },
+                lang::Expr::Value(value) => operator::Expr::Value(value),
             }
         }
     }
@@ -49,7 +53,10 @@ pub mod pipeline {
                     pattern,
                     fields,
                     input_column,
-                } => Box::new(operator::Parse::new(&pattern, fields, input_column.map(|c| c.force())).unwrap()),
+                } => Box::new(
+                    operator::Parse::new(&pattern, fields, input_column.map(|c| c.force()))
+                        .unwrap(),
+                ),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
                         FieldMode::Except => operator::FieldMode::Except,
@@ -57,6 +64,7 @@ pub mod pipeline {
                     };
                     Box::new(operator::Fields::new(&fields, omode))
                 }
+                InlineOperator::Where { expr } => Box::new(operator::Where::new(expr)),
             }
         }
 
@@ -71,8 +79,12 @@ pub mod pipeline {
         fn convert_agg_function(func: lang::AggregateFunction) -> Box<operator::AggregateFunction> {
             match func {
                 AggregateFunction::Count => Box::new(operator::Count::new()),
-                AggregateFunction::Average { column } => Box::new(operator::Average::empty(column.force())),
-                AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(operator::Expr::from(column))),
+                AggregateFunction::Average { column } => {
+                    Box::new(operator::Average::empty(column.force()))
+                }
+                AggregateFunction::Sum { column } => {
+                    Box::new(operator::Sum::empty(operator::Expr::from(column)))
+                }
                 AggregateFunction::Percentile {
                     column, percentile, ..
                 } => Box::new(operator::Percentile::empty(column.force(), percentile)),
@@ -101,7 +113,10 @@ pub mod pipeline {
             let fixed_pipeline = format!("{}!", pipeline); // todo: fix hack
             let parsed = lang::parse_query(&fixed_pipeline)
                 .map_err(|e| format!("Could not parse query: {:?}", e));
-            let (_, query) = parsed?;
+            let (extra, query) = parsed?;
+            if extra != "" {
+                return Err("Leftovers after parsing. This is a bug.".to_string())
+            }
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();

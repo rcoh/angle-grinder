@@ -1,6 +1,6 @@
 [[package]]
 name = "ag"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "assert_cli 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
