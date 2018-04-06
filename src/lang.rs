@@ -118,9 +118,7 @@ named!(ident<&str, String>, do_parse!(
     start: alpha1 >>
     rest: take_while!(is_ident) >>
     (start.to_owned() + rest)
-    //(rest.to_owned())
 ));
-//named!(ident<&str, String>, ws!(take_while1!(is_ident)));
 
 
 named!(e_ident<&str, Expr>,
