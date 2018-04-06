@@ -15,6 +15,10 @@ use std::iter::FromIterator;
 
 type Data = HashMap<String, data::Value>;
 
+pub trait Evaluatable<T> {
+    fn eval(&self, record: &Data) -> Option<T>;
+}
+
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: Record) -> Option<Record>;
     fn get_input<'a>(&self, input_column: &Option<String>, rec: &'a Record) -> Option<&'a str> {
@@ -33,6 +37,27 @@ pub trait AggregateFunction: Send + Sync {
     fn process(&mut self, rec: &Data);
     fn emit(&self) -> data::Value;
     fn empty_box(&self) -> Box<AggregateFunction>;
+}
+
+#[derive(Clone)]
+pub enum Expr {
+    Column(String),
+    Equal { left: Box<Expr>, right: Box<Expr> },
+}
+
+
+impl Evaluatable<data::Value> for Expr {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Option<data::Value> {
+        match self {
+            &Expr::Column(ref str) => record.get(str).cloned(),
+            &Expr::Equal { ref left, ref right } => {
+                let l = (*left).eval(record);
+                let r = (*right).eval(record);
+                let value = data::Value::Bool(l == r);
+                Some(value)
+            }
+        }
+    }
 }
 
 pub struct Count {
@@ -61,16 +86,16 @@ impl AggregateFunction for Count {
 
 pub struct Sum {
     total: f64,
-    column: String,
+    column: Expr,
     warnings: Vec<String>,
     is_float: bool,
 }
 
 impl Sum {
-    pub fn empty(column: String) -> Self {
+    pub fn empty<T: Into<Expr>>(column: T) -> Self {
         Sum {
             total: 0.0,
-            column,
+            column: column.into(),
             warnings: Vec::new(),
             is_float: false,
         }
@@ -79,7 +104,7 @@ impl Sum {
 
 impl AggregateFunction for Sum {
     fn process(&mut self, rec: &Data) {
-        rec.get(&self.column).iter().for_each(|value| match *value {
+        self.column.eval(rec).iter().for_each(|value| match value {
             &data::Value::Float(ref f) => {
                 self.is_float = true;
                 self.total += f.into_inner();
@@ -93,7 +118,11 @@ impl AggregateFunction for Sum {
     }
 
     fn emit(&self) -> data::Value {
-        data::Value::Int(self.total as i64)
+        if self.is_float {
+            data::Value::from_float(self.total)
+        } else {
+            data::Value::Int(self.total as i64)
+        }
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
@@ -499,6 +528,12 @@ mod tests {
     use data::Record;
     use data::Value;
     use operator::itertools::Itertools;
+
+    impl From<String> for Expr {
+        fn from(inp: String) -> Self {
+            Expr::Column(inp)
+        }
+    }
 
     #[test]
     fn test_json() {

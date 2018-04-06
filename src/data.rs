@@ -32,6 +32,7 @@ pub enum Value {
     // Consider big int
     Int(i64),
     Float(OrderedFloat<f64>),
+    Bool(bool),
     None,
 }
 
@@ -49,11 +50,18 @@ impl Ord for Value {
             (&Value::Float(ref l), &Value::Float(ref r)) => l.cmp(r),
             (&Value::Int(ref l), &Value::Int(ref r)) => l.cmp(r),
             (&Value::Str(ref l), &Value::Str(ref r)) => l.cmp(r),
+            (&Value::Bool(l), &Value::Bool(r)) => l.cmp(&r),
             // None is less than everything
             (&Value::None, _any) => Ordering::Less,
             (_any, &Value::None) => Ordering::Greater,
             (&Value::Str(..), _any) => Ordering::Greater,
             (_any, &Value::Str(..)) => Ordering::Less,
+
+            // Bool is in the middle
+            (&Value::Bool(_), &Value::Int(_)) => Ordering::Greater,
+            (&Value::Int(_), &Value::Bool(_)) => Ordering::Less,
+            (&Value::Bool(_), &Value::Float(_)) => Ordering::Greater,
+            (&Value::Float(_), &Value::Bool(_)) => Ordering::Less,
         }
     }
 }
@@ -70,6 +78,7 @@ impl Display for Value {
             Value::Str(ref s) => write!(f, "{}", s),
             Value::Int(ref s) => write!(f, "{}", s),
             Value::Float(ref s) => write!(f, "{}", s),
+            Value::Bool(ref s) => write!(f, "{}", s),
             Value::None => write!(f, "$None$"),
         }
     }
@@ -82,6 +91,7 @@ impl Value {
             Value::Int(ref s) => format!("{}", s),
             Value::None => "$None$".to_string(),
             Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
+            Value::Bool(ref s) => format!("{}", s),
         }
     }
 
@@ -92,9 +102,11 @@ impl Value {
     pub fn from_string(s: &str) -> Value {
         let int_value = s.parse::<i64>();
         let float_value = s.parse::<f64>();
+        let bool_value = s.parse::<bool>();
         int_value
             .map(Value::Int)
             .or_else(|_| float_value.map(Value::from_float))
+            .or_else(|_| bool_value.map(Value::Bool))
             .unwrap_or_else(|_| Value::Str(s.to_string()))
     }
 }

@@ -35,6 +35,11 @@ mod integration {
     }
 
     #[test]
+    fn test_sum() {
+        structured_test(include_str!("structured_tests/sum.toml"));
+    }
+
+    #[test]
     fn test_sort_order() {
         structured_test(include_str!("structured_tests/sort_order.toml"));
     }

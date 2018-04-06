@@ -30,6 +30,15 @@ pub mod pipeline {
         renderer: Renderer,
     }
 
+    impl From<lang::Expr> for operator::Expr {
+        fn from(inp: lang::Expr) -> Self {
+            match inp {
+                lang::Expr::Column(s) => operator::Expr::Column(s),
+                lang::Expr::Equal { left, right } => operator::Expr::Equal { left: Box::new((*left).into()), right: Box::new((*right).into()) }
+            }
+        }
+    }
+
     impl Pipeline {
         fn convert_inline(op: lang::InlineOperator) -> Box<operator::UnaryPreAggOperator> {
             match op {
@@ -40,7 +49,7 @@ pub mod pipeline {
                     pattern,
                     fields,
                     input_column,
-                } => Box::new(operator::Parse::new(&pattern, fields, input_column).unwrap()),
+                } => Box::new(operator::Parse::new(&pattern, fields, input_column.map(|c| c.force())).unwrap()),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
                         FieldMode::Except => operator::FieldMode::Except,
@@ -62,13 +71,13 @@ pub mod pipeline {
         fn convert_agg_function(func: lang::AggregateFunction) -> Box<operator::AggregateFunction> {
             match func {
                 AggregateFunction::Count => Box::new(operator::Count::new()),
-                AggregateFunction::Average { column } => Box::new(operator::Average::empty(column)),
-                AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(column)),
+                AggregateFunction::Average { column } => Box::new(operator::Average::empty(column.force())),
+                AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(operator::Expr::from(column))),
                 AggregateFunction::Percentile {
                     column, percentile, ..
-                } => Box::new(operator::Percentile::empty(column, percentile)),
+                } => Box::new(operator::Percentile::empty(column.force(), percentile)),
                 AggregateFunction::CountDistinct { column } => {
-                    Box::new(operator::CountDistinct::empty(&column))
+                    Box::new(operator::CountDistinct::empty(&column.force()))
                 }
             }
         }

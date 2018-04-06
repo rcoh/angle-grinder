@@ -1,6 +1,21 @@
-use nom::IResult;
 use nom::{is_alphanumeric, is_digit};
+use nom::IResult;
 use std::str;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Expr {
+    Column(String),
+    Equal { left: Box<Expr>, right: Box<Expr> },
+}
+
+impl Expr {
+    pub fn force(&self) -> String {
+        match self {
+            &Expr::Column(ref s) => s.clone(),
+            _other => unimplemented!()
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Search {
@@ -23,7 +38,7 @@ pub enum InlineOperator {
     Parse {
         pattern: String,
         fields: Vec<String>,
-        input_column: Option<String>,
+        input_column: Option<Expr>,
     },
     Fields {
         mode: FieldMode,
@@ -47,18 +62,18 @@ pub enum SortMode {
 pub enum AggregateFunction {
     Count,
     Sum {
-        column: String,
+        column: Expr,
     },
     Average {
-        column: String,
+        column: Expr,
     },
     Percentile {
         percentile: f64,
         percentile_str: String,
-        column: String,
+        column: Expr,
     },
     CountDistinct {
-        column: String,
+        column: Expr,
     },
 }
 
@@ -94,6 +109,8 @@ fn vec_str_vec_string(vec: &[&str]) -> Vec<String> {
 
 named!(ident<&str, &str>, ws!(take_while1!(is_ident)));
 
+named!(expr<&str, Expr>, map!(ident, |ident|Expr::Column(ident.to_owned())));
+
 named!(json<&str, InlineOperator>, ws!(do_parse!(
     tag!("json") >>
     from_column_opt: opt!(preceded!(tag!("from"), ident)) >>
@@ -114,13 +131,13 @@ named!(var_list<&str, Vec<&str> >, ws!(separated_nonempty_list!(
 named!(parse<&str, InlineOperator>, ws!(do_parse!(
     tag!("parse") >>
     pattern: quoted_string >>
-    from_column_opt: opt!(preceded!(tag!("from"), ident)) >>
+    from_column_opt: opt!(preceded!(tag!("from"), expr)) >>
     tag!("as") >>
     vars: var_list >>
     ( InlineOperator::Parse{
         pattern: pattern.replace("\\\"", "\""),
         fields: vec_str_vec_string(&vars),
-        input_column: from_column_opt.map(|s|s.to_string())
+        input_column: from_column_opt
         } )
 )));
 
@@ -151,20 +168,20 @@ named!(count<&str, AggregateFunction>, map!(tag!("count"), |_s|AggregateFunction
 
 named!(average<&str, AggregateFunction>, ws!(do_parse!(
     alt!(tag!("avg") | tag!("average")) >>
-    column: delimited!(tag!("("), ident ,tag!(")")) >>
-    (AggregateFunction::Average{column: column.to_string()})
+    column: delimited!(tag!("("), expr ,tag!(")")) >>
+    (AggregateFunction::Average{column})
 )));
 
 named!(count_distinct<&str, AggregateFunction>, ws!(do_parse!(
     tag!("count_distinct") >>
-    column: delimited!(tag!("("), ident ,tag!(")")) >>
-    (AggregateFunction::CountDistinct{column: column.to_string()})
+    column: delimited!(tag!("("), expr,tag!(")")) >>
+    (AggregateFunction::CountDistinct{column})
 )));
 
 named!(sum<&str, AggregateFunction>, ws!(do_parse!(
     tag!("sum") >>
-    column: delimited!(tag!("("), ident ,tag!(")")) >>
-    (AggregateFunction::Sum{column: column.to_string()})
+    column: delimited!(tag!("("), expr,tag!(")")) >>
+    (AggregateFunction::Sum{column})
 )));
 
 fn is_digit_char(digit: char) -> bool {
@@ -175,9 +192,9 @@ named!(p_nn<&str, AggregateFunction>, ws!(
     do_parse!(
         alt!(tag!("pct") | tag!("percentile") | tag!("p")) >>
         pct: take_while_m_n!(2, 2, is_digit_char) >>
-        column: delimited!(tag!("("), ident ,tag!(")")) >>
+        column: delimited!(tag!("("), expr,tag!(")")) >>
         (AggregateFunction::Percentile{
-            column: column.to_string(),
+            column,
             percentile: (".".to_owned() + pct).parse::<f64>().unwrap(),
             percentile_str: pct.to_string()
         })
@@ -269,10 +286,10 @@ pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
     terminated!(query_str, query, tag!("!"))
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn test_quoted_string() {
         assert_eq!(quoted_string(r#""hello""#), Ok(("", "hello")));
@@ -337,7 +354,7 @@ mod tests {
                 Operator::Inline(InlineOperator::Parse {
                     pattern: "[key=*]".to_string(),
                     fields: vec!["v".to_string()],
-                    input_column: Some("field".to_string()),
+                    input_column: Some(Expr::Column("field".to_string())),
                 },)
             ))
         );
@@ -366,7 +383,7 @@ mod tests {
                 (
                     "p50".to_string(),
                     AggregateFunction::Percentile {
-                        column: "x".to_string(),
+                        column: Expr::Column("x".to_string()),
                         percentile: 0.5,
                         percentile_str: "50".to_string(),
                     }
