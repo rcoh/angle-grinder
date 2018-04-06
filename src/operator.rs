@@ -167,16 +167,16 @@ impl AggregateFunction for CountDistinct {
 pub struct Average {
     total: f64,
     count: i64,
-    column: String,
+    column: Expr,
     warnings: Vec<String>,
 }
 
 impl Average {
-    pub fn empty(column: String) -> Average {
+    pub fn empty<T: Into<Expr>>(column: T) -> Average {
         Average {
             total: 0.0,
             count: 0,
-            column,
+            column: column.into(),
             warnings: Vec::new(),
         }
     }
@@ -184,10 +184,10 @@ impl Average {
 
 impl AggregateFunction for Average {
     fn process(&mut self, data: &Data) {
-        data.get(&self.column)
+        self.column.eval(data)
             .iter()
-            .for_each(|value| match *value {
-                &data::Value::Float(ref f) => {
+            .for_each(|value| match value {
+                &data::Value::Float(ref  f) => {
                     self.total += f.into_inner();
                     self.count += 1
                 }

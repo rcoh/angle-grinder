@@ -80,10 +80,10 @@ pub mod pipeline {
             match func {
                 AggregateFunction::Count => Box::new(operator::Count::new()),
                 AggregateFunction::Average { column } => {
-                    Box::new(operator::Average::empty(column.force()))
+                    Box::new(operator::Average::empty(column))
                 }
                 AggregateFunction::Sum { column } => {
-                    Box::new(operator::Sum::empty(operator::Expr::from(column)))
+                    Box::new(operator::Sum::empty(column))
                 }
                 AggregateFunction::Percentile {
                     column, percentile, ..
