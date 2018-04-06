@@ -1,4 +1,4 @@
-# angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder)[![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/angle-grinder/Lobby)
+# angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/angle-grinder/Lobby)
 Slice and dice log files on the command line. 
 
 Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
