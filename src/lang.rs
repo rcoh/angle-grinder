@@ -120,7 +120,6 @@ named!(ident<&str, String>, do_parse!(
     (start.to_owned() + rest)
 ));
 
-
 named!(e_ident<&str, Expr>,
     ws!(alt!(
       map!(ident, |col|Expr::Column(col.to_owned()))
@@ -367,7 +366,15 @@ mod tests {
     fn test_var_list() {
         assert_eq!(
             var_list("a, b, def, g_55!"),
-            Ok(("!", vec!["a".to_string(), "b".to_string(), "def".to_string(), "g_55".to_string()]))
+            Ok((
+                "!",
+                vec![
+                    "a".to_string(),
+                    "b".to_string(),
+                    "def".to_string(),
+                    "g_55".to_string(),
+                ]
+            ))
         );
     }
 

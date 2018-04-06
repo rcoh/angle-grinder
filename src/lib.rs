@@ -115,7 +115,7 @@ pub mod pipeline {
                 .map_err(|e| format!("Could not parse query: {:?}", e));
             let (extra, query) = parsed?;
             if extra != "" {
-                return Err("Leftovers after parsing. This is a bug.".to_string())
+                return Err("Leftovers after parsing. This is a bug.".to_string());
             }
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
