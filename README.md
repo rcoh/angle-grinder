@@ -20,14 +20,14 @@ brew install agrind-bin
 ### With Curl (Single binary)
 Linux:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.1/angle_grinder-v0.7.1-x86_64-unknown-linux-musl.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_grinder-v0.7.2-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.1/angle_grinder-v0.7.1-x86_64-apple-darwin.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_grinder-v0.7.2-x86_64-apple-darwin.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
