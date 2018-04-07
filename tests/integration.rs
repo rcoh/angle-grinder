@@ -1,6 +1,7 @@
 extern crate assert_cli;
 extern crate toml;
 extern crate pulldown_cmark;
+extern crate ag;
 
 #[macro_use]
 extern crate serde_derive;
@@ -20,7 +21,7 @@ mod integration {
     use super::*;
     use assert_cli;
     use toml;
-    use std::time::Instant;
+    use ag::pipeline::Pipeline;
 
     fn structured_test(s: &str) {
         let conf: TestDefinition = toml::from_str(s).unwrap();
@@ -149,15 +150,7 @@ $None$       1")
 
 
     fn ensure_parses(query: &str) {
-        let now = Instant::now();
-        assert_cli::Assert::main_binary()
-            .with_args(&[
-                query,
-                "--file",
-                "test_files/empty",
-            ])
-            .unwrap();
-        println!("processing took {}ms", now.elapsed().subsec_nanos())
+        Pipeline::new(query).expect(&format!("Query: `{}` from the README should have parsed", query));
     }
 
     #[test]
