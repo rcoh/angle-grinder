@@ -97,6 +97,20 @@ Drop only the `event` field
 ```agrind
 * | fields except event
 ```
+
+##### Where
+`where a == b`: Drop rows where the condition is not met. Note that `None == None`, so a row where both the left and right sides are missing will match. Current only `==` is supported. This operator is beta.
+
+*Examples*
+```agrind
+* | json | where status_code == 500
+```
+```agrind
+* | json | where user_id_a == user_id_b
+```
+```agrind
+* | json | where url == "/hostname"
+```
 #### Aggregate Operators
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
 The general syntax is:
@@ -203,6 +217,7 @@ tail -F my_json_logs | agrind '* | json | pct50(response_time) by url'
 ```bash
 tail -F  my_json_logs | agrind '* | json | count status_code by url'
 ```
+More example queries can be found in the [tests folder](tests/structured_tests)
 
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
