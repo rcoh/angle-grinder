@@ -195,7 +195,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_record_put_get() {
+    fn record_put_get() {
         let rec = Record::new("heres some data");
         let rec = rec.put("key1", Value::Int(9999));
         assert_eq!(rec.data.get("key1").unwrap(), &Value::Int(9999));
@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn test_agg() {
+    fn agg() {
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_panic_on_invalid_row() {
+    fn panic_on_invalid_row() {
         Aggregate::new(
             &["k1".to_string(), "k2".to_string()],
             "count".to_string(),
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_string() {
+    fn from_string() {
         assert_eq!(Value::from_string("949919"), Value::Int(949919));
         assert_eq!(Value::from_string("0.00001"), Value::from_float(0.00001));
         assert_eq!(
@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ordering() {
+    fn ordering() {
         let mut r1 = HashMap::<String, Value>::new();
         r1.insert("k1".to_string(), Value::Int(5));
         r1.insert("k3".to_string(), Value::from_float(0.1));

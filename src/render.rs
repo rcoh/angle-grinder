@@ -244,7 +244,7 @@ mod tests {
     use operator::*;
 
     #[test]
-    fn test_pretty_print_record() {
+    fn pretty_print_record() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap();
@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pretty_print_record_too_long() {
+    fn pretty_print_record_too_long() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap();
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pretty_print_aggregate() {
+    fn pretty_print_aggregate() {
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),

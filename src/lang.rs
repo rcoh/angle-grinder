@@ -320,7 +320,7 @@ pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
 mod tests {
     use super::*;
     #[test]
-    fn test_quoted_string() {
+    fn parse_quoted_string() {
         assert_eq!(quoted_string(r#""hello""#), Ok(("", "hello")));
         assert_eq!(
             quoted_string(r#""test = [*=*] * ""#),
@@ -329,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expr() {
+    fn parse_expr() {
         assert_eq!(
             expr("a == b!"),
             Ok((
@@ -343,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_value() {
+    fn parse_expr_value() {
         assert_eq!(
             expr("a == \"b\"!"),
             Ok((
@@ -357,13 +357,13 @@ mod tests {
     }
 
     #[test]
-    fn test_ident() {
+    fn parse_ident() {
         assert_eq!(ident("hello123!"), Ok(("!", "hello123".to_string())));
         assert_eq!(ident("x!"), Ok(("!", "x".to_string())));
     }
 
     #[test]
-    fn test_var_list() {
+    fn parse_var_list() {
         assert_eq!(
             var_list("a, b, def, g_55!"),
             Ok((
@@ -379,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parses() {
+    fn parse_parses() {
         assert_eq!(
             parse(r#"parse "[key=*]" as v!"#),
             Ok((
@@ -405,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn test_operator() {
+    fn parse_operator() {
         assert_eq!(
             operator("  json!"),
             Ok((
@@ -427,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn test_agg_operator() {
+    fn parse_agg_operator() {
         assert_eq!(
             multi_aggregate_operator("count as renamed by x, y !"),
             Ok((
@@ -441,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn test_percentile() {
+    fn parse_percentile() {
         assert_eq!(
             complete_agg_function("p50(x)!"),
             Ok((
@@ -459,7 +459,7 @@ mod tests {
     }
 
     #[test]
-    fn test_query_no_operators() {
+    fn query_no_operators() {
         let query_str = r#" "filter"!"#;
         assert_eq!(
             parse_query(query_str),
@@ -474,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn test_query_operators() {
+    fn query_operators() {
         let query_str =
             r#"* | json from col | parse "!123*" as foo | count by foo | sort by foo dsc !"#;
         assert_eq!(

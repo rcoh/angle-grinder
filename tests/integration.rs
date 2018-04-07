@@ -1,9 +1,11 @@
 extern crate assert_cli;
-
 extern crate toml;
+extern crate pulldown_cmark;
 
 #[macro_use]
 extern crate serde_derive;
+
+mod code_blocks;
 
 #[derive(Deserialize, Debug)]
 struct TestDefinition {
@@ -18,6 +20,7 @@ mod integration {
     use super::*;
     use assert_cli;
     use toml;
+    use std::time::Instant;
 
     fn structured_test(s: &str) {
         let conf: TestDefinition = toml::from_str(s).unwrap();
@@ -30,28 +33,28 @@ mod integration {
     }
 
     #[test]
-    fn test_count_distinct() {
+    fn count_distinct_operator() {
         structured_test(include_str!("structured_tests/count_distinct.toml"));
     }
 
     #[test]
-    fn test_sum() {
+    fn sum_operator() {
         structured_test(include_str!("structured_tests/sum.toml"));
     }
 
     #[test]
-    fn test_where() {
+    fn where_operator() {
         structured_test(include_str!("structured_tests/where-1.toml"));
         structured_test(include_str!("structured_tests/where-2.toml"));
     }
 
     #[test]
-    fn test_sort_order() {
+    fn sort_order() {
         structured_test(include_str!("structured_tests/sort_order.toml"));
     }
 
     #[test]
-    fn test_no_args() {
+    fn no_args() {
         assert_cli::Assert::main_binary()
             .fails()
             .and()
@@ -61,7 +64,7 @@ mod integration {
     }
 
     #[test]
-    fn test_parse_failure() {
+    fn parse_failure() {
         assert_cli::Assert::main_binary()
             .with_args(&["* | pasres"])
             .fails()
@@ -72,7 +75,7 @@ mod integration {
     }
 
     #[test]
-    fn test_basic_count() {
+    fn basic_count() {
         assert_cli::Assert::main_binary()
             .stdin("1\n2\n3\n")
             .with_args(&["* | count"])
@@ -82,7 +85,7 @@ mod integration {
     }
 
     #[test]
-    fn test_file_input() {
+    fn file_input() {
         assert_cli::Assert::main_binary()
             .with_args(&[
                 "* | json | count by level",
@@ -99,7 +102,7 @@ $None$       1")
     }
 
     #[test]
-    fn test_aggregate_of_aggregate() {
+    fn aggregate_of_aggregate() {
         assert_cli::Assert::main_binary()
             .with_args(&[
                 "* | json | count by level | count",
@@ -112,7 +115,7 @@ $None$       1")
     }
 
     #[test]
-    fn test_json_from() {
+    fn json_from() {
         assert_cli::Assert::main_binary()
             .with_args(&[
                 r#"* | parse "* *" as lev, js | json from js | count by level"#,
@@ -129,7 +132,7 @@ $None$       1")
     }
 
     #[test]
-    fn test_fields() {
+    fn fields() {
         assert_cli::Assert::main_binary()
             .with_args(&[
                 r#""error" | parse "* *" as lev, js 
@@ -142,5 +145,28 @@ $None$       1")
             .is("[level=error]        [message=Oh now an error!]
 [level=error]        [message=So many more errors!]")
             .unwrap();
+    }
+
+
+    fn ensure_parses(query: &str) {
+        let now = Instant::now();
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                query,
+                "--file",
+                "test_files/empty",
+            ])
+            .unwrap();
+        println!("processing took {}ms", now.elapsed().subsec_nanos())
+    }
+
+    #[test]
+    fn validate_readme_examples() {
+        let blocks = code_blocks::code_blocks(include_str!("../README.md"));
+        for code_block in blocks {
+            if code_block.flag == "agrind" {
+                ensure_parses(&code_block.code);
+            }
+        }
     }
 }

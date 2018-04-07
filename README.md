@@ -12,21 +12,21 @@ Binaries are available for Linux and OS X. Many more platforms (including Window
 
 ### With Brew (OS X)
 Brew releases might be bit behind the statically linked binaries.
-```
+```bash
 brew tap rcoh/angle-grinder https://github.com/rcoh/angle-grinder.git
 brew install agrind-bin
 ```
 
 ### With Curl (Single binary)
 Linux:
-```
+```bash
 curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.1/angle_grinder-v0.7.1-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
-```
+```bash
 curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.1/angle_grinder-v0.7.1-x86_64-apple-darwin.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
@@ -35,7 +35,7 @@ curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.1/angle_gri
 ### From Source
 
 If you have Cargo installed, you can compile & install from source: (Works with recent, `stable` Rust)
-```
+```bash
 cargo install ag
 ```
 
@@ -43,13 +43,13 @@ cargo install ag
 
 An angle grinder query is composed of a filter followed by a series of operators. Typically, the initial operators will transform the data in some way by parsing fields or JSON from the log line. 
 The subsequent operators can then aggregate or group the data via operators like `sum`, `average`, `percentile`, etc.
-```
+```bash
 agrind '<filter> | operator1 | operator2 | operator3 | ...'
 ```
 
 A simple query that operates on JSON logs and counts the number of logs per level could be:
-```
-agrind '* | json | count by log_level
+```bash
+agrind '* | json | count by log_level'
 ```
 
 ### Filters
@@ -67,10 +67,10 @@ These operators have a 1 to 1 correspondence between input data and output data.
 specified.
 
 *Examples*:
-```
+```agrind
 * | json
 ```
-```
+```agrind
 * | parse "INFO *" as js | json from js
 ```
 ![json.gif](/screen_shots/json.gif)
@@ -80,7 +80,7 @@ specified.
 By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.
 
 *Examples*:
-```
+```agrind
 * | parse "[status_code=*]" as status_code
 ```
 ![parse.gif](/screen_shots/parse.gif)
@@ -90,30 +90,30 @@ By default, `parse` operates on the raw text of the message. With `from field_na
 
 *Examples*:
 Drop all fields except `event` and `timestamp`
-```
+```agrind
 * | json | fields + event, timestamp
 ```
 Drop only the `event` field
-```
+```agrind
 * | fields except event
 ```
 #### Aggregate Operators
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
 The general syntax is:
-```
+```noformat
 operator [as renamed_column], operator [as renamed_column] [by key_col1, key_col2]
 ```
 *Examples*:
-```
+```agrind
 * | count
 ```
-```
+```agrind
 * | json | count by status_code
 ```
-```
+```agrind
 * | json | count, p50(response_ms), p90(response_ms) by status_code
 ```
-```
+```agrind
 * | json | count as num_requests, p50(response_ms), p90(response_ms) by status_code
 ```
 
@@ -125,18 +125,18 @@ There are several aggregate operators available.
 *Examples*:
 
 Count number of rows by `source_host`:
-```
+```agrind
 * | count by source_host
 ```
 Count number of source_hosts:
-```
+```agrind
 * | count by source_host | count
 ```
 
 ##### Sum
 `sum(column) [as sum_column]`: Sum values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 *Examples*:
-```
+```agrind
 * | json | sum(num_records) by action
 ```
 
@@ -144,42 +144,42 @@ Count number of source_hosts:
 `average(column) [as average_column] [by a, b] `: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 
 *Examples*:
-```
+```agrind
 * | json | average(response_time)
 ```
 
 ##### Percentile
 `pXX(column)`: calculate the XXth percentile of `column`
 *Examples*:
-```
+```agrind
 * | json | p50(response_time), p90(response_time) by endpoint_url, status_code
 ```
 
 ##### Sort
 `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
 *Examples*:
-```
+```agrind
 * | json | count by endpoint_url, status_code | sort by endpoint_url desc
 ```
 
 ##### Count Distinct
 `count_distinct(a)`: Count distinct values of column `a`. Warning: this is not fixed memory. Be careful about processing too many groups.
 *Examples*:
-```
+```agrind
 * | json | count_distinct(ip_address)
 ```
 
 ### Example Queries
 - Count the number of downloads of angle-grinder by release (with special guest jq)
-``` 
+```bash
 curl  https://api.github.com/repos/rcoh/angle-grinder/releases  | \
    jq '.[] | .assets | .[]' -c | \
-   ag '* | json 
+   agrind '* | json 
          | parse "download/*/" from browser_download_url as version 
          | sum(download_count) by version | sort by version desc'
 ```
 Output:
-```
+```noformat
 version       _sum
 -----------------------
 v0.6.2        0
@@ -196,24 +196,24 @@ v0.2.1        0
 v0.2.0        1
 ```
 - Take the 50th percentile of response time by host:
-```
+```bash
 tail -F my_json_logs | agrind '* | json | pct50(response_time) by url'
 ```
 - Count the number of status codes by url:
-```
+```bash
 tail -F  my_json_logs | agrind '* | json | count status_code by url'
 ```
 
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
-```
+```noformat
 tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" as length' 
 [dest=111.221.29.254.https]        [length=0]        [src=21:50:18.458331 IP 10.0.2.243.47152]
 [dest=111.221.29.254.https]        [length=310]      [src=21:50:18.458527 IP 10.0.2.243.47152]
 ```
 
 Aggregate data is written to the terminal and will live-update until the stream ends:
-```
+```noformat
 k2                  avg         
 --------------------------------
 test longer test    500.50      
@@ -228,7 +228,7 @@ it has a refresh rate of about 20hz.
 
 ### Contributing
 `angle-grinder` builds with stable rust:
-```
+```bash
 cargo build
 cargo test
 cargo install

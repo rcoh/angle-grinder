@@ -25,6 +25,7 @@ maplit = "1.0.1"
 toml = "0.4.6"
 serde = "^1.0"
 serde_derive = "^1.0"
+pulldown-cmark = "0.1"
 
 [package.metadata.deb]
 extended-description = """Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. \

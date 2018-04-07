@@ -561,7 +561,7 @@ mod tests {
     }
 
     #[test]
-    fn test_json() {
+    fn json() {
         let rec = Record::new(
             &(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n"),
         );
@@ -580,7 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fields_only() {
+    fn fields_only() {
         let rec = Record::new("");
         let rec = rec.put("k1", Value::Str("v1".to_string()));
         let rec = rec.put("k2", Value::Str("v2".to_string()));
@@ -597,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fields_except() {
+    fn fields_except() {
         let rec = Record::new("");
         let rec = rec.put("k1", Value::Str("v1".to_string()));
         let rec = rec.put("k2", Value::Str("v2".to_string()));
@@ -616,7 +616,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse() {
+    fn parse() {
         let rec = Record::new(
             "17:12:14.214111 IP 10.0.2.243.53938 > \"taotie.canonical.com.http\": \
              Flags [.], ack 56575, win 2375, options [nop,nop,TS val 13651369 ecr 169698010], \
@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_from_field() {
+    fn parse_from_field() {
         let rec = Record::new("");
         let rec = rec.put("from_col", data::Value::Str("[k1=v1]".to_string()));
         let parser = Parse::new(
@@ -665,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn test_count_no_groups() {
+    fn count_no_groups() {
         let ops: Vec<(String, Box<AggregateFunction>)> =
             vec![("_count".to_string(), Box::new(Count::new()))];
         let mut count_agg = MultiGrouper::new(&[], ops);
@@ -688,7 +688,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multi_grouper() {
+    fn multi_grouper() {
         let ops: Vec<(String, Box<AggregateFunction>)> = vec![
             ("_count".to_string(), Box::new(Count::new())),
             ("_sum".to_string(), Box::new(Sum::empty("v1".to_string()))),
@@ -753,7 +753,7 @@ mod tests {
     }
 
     #[test]
-    fn test_count_groups() {
+    fn count_groups() {
         let ops: Vec<(String, Box<AggregateFunction>)> =
             vec![("_count".to_string(), Box::new(Count::new()))];
         let mut count_agg = MultiGrouper::new(&["k1"], ops);
@@ -794,10 +794,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sort_raw() {}
+    fn sort_raw() {}
 
     #[test]
-    fn test_sort_aggregate() {
+    fn sort_aggregate() {
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
