@@ -19,9 +19,47 @@ pub mod pipeline {
     use lang::*;
     use operator;
     use render::{RenderConfig, Renderer};
+    use std::error;
+    use std::fmt;
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
+
+    #[derive(Debug)]
+    pub enum CompileError {
+        Parse(String),
+        NonAggregateAfterAggregate,
+        Unexpected(String),
+    }
+
+    impl fmt::Display for CompileError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match *self {
+                CompileError::Parse(ref s) => write!(f, "Parse error: {}", s),
+                CompileError::NonAggregateAfterAggregate => write!(
+                    f,
+                    "Non aggregate operators can't follow aggregate operators"
+                ),
+                CompileError::Unexpected(ref s) => write!(
+                    f,
+                    "This error isn't expected to happen. Please report a bug! {}",
+                    s
+                ),
+            }
+        }
+    }
+
+    impl error::Error for CompileError {
+        fn description(&self) -> &str {
+            match self {
+                &CompileError::Parse(ref s) => s,
+                &CompileError::Unexpected(ref s) => s,
+                &CompileError::NonAggregateAfterAggregate => {
+                    "Non-Aggregate operators (eg parse) cannot follow aggregate operataors"
+                }
+            }
+        }
+    }
 
     pub struct Pipeline {
         filter: lang::Search,
@@ -79,12 +117,8 @@ pub mod pipeline {
         fn convert_agg_function(func: lang::AggregateFunction) -> Box<operator::AggregateFunction> {
             match func {
                 AggregateFunction::Count => Box::new(operator::Count::new()),
-                AggregateFunction::Average { column } => {
-                    Box::new(operator::Average::empty(column))
-                }
-                AggregateFunction::Sum { column } => {
-                    Box::new(operator::Sum::empty(column))
-                }
+                AggregateFunction::Average { column } => Box::new(operator::Average::empty(column)),
+                AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(column)),
                 AggregateFunction::Percentile {
                     column, percentile, ..
                 } => Box::new(operator::Percentile::empty(column.force(), percentile)),
@@ -109,13 +143,15 @@ pub mod pipeline {
             ))
         }
 
-        pub fn new(pipeline: &str) -> Result<Self, String> {
+        pub fn new(pipeline: &str) -> Result<Self, CompileError> {
             let fixed_pipeline = format!("{}!", pipeline); // todo: fix hack
             let parsed = lang::parse_query(&fixed_pipeline)
-                .map_err(|e| format!("Could not parse query: {:?}", e));
+                .map_err(|e| CompileError::Parse(format!("{:?}", e)));
             let (extra, query) = parsed?;
             if extra != "" {
-                return Err("Leftovers after parsing. This is a bug.".to_string());
+                return Err(CompileError::Unexpected(
+                    "Leftovers after parsing. This is a bug.".to_string(),
+                ));
             }
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
@@ -142,7 +178,7 @@ pub mod pipeline {
                     Operator::Inline(inline_op) => if !in_agg {
                         pre_agg.push(Pipeline::convert_inline(inline_op));
                     } else {
-                        return Result::Err("non aggregate cannot follow aggregate".to_string());
+                        return Err(CompileError::NonAggregateAfterAggregate);
                     },
                     Operator::MultiAggregate(agg_op) => {
                         in_agg = true;
