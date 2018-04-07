@@ -67,7 +67,7 @@ mod integration {
             .fails()
             .and()
             .stderr()
-            .contains("Could not parse")
+            .contains("Parse error:")
             .unwrap();
     }
 

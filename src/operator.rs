@@ -184,20 +184,18 @@ impl Average {
 
 impl AggregateFunction for Average {
     fn process(&mut self, data: &Data) {
-        self.column.eval(data)
-            .iter()
-            .for_each(|value| match value {
-                &data::Value::Float(ref  f) => {
-                    self.total += f.into_inner();
-                    self.count += 1
-                }
-                &data::Value::Int(ref i) => {
-                    self.total += *i as f64;
-                    self.count += 1
-                }
-                _other => self.warnings
-                    .push("Got string. Can only average into or float".to_string()),
-            });
+        self.column.eval(data).iter().for_each(|value| match value {
+            &data::Value::Float(ref f) => {
+                self.total += f.into_inner();
+                self.count += 1
+            }
+            &data::Value::Int(ref i) => {
+                self.total += *i as f64;
+                self.count += 1
+            }
+            _other => self.warnings
+                .push("Got string. Can only average into or float".to_string()),
+        });
     }
 
     fn emit(&self) -> data::Value {
