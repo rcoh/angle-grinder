@@ -9,10 +9,10 @@ use std::io;
 use std::io::BufReader;
 
 #[derive(Debug, StructOpt)]
+#[structopt(after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder")]
 struct Cli {
-    /// Query
+    /// The query
     query: String,
-    // Add a positional argument that the user has to supply:
     /// Optionally reads from a file instead of Stdin
     #[structopt(long = "file", short = "f")]
     file: Option<String>,
