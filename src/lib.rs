@@ -1,9 +1,11 @@
-#[macro_use]
-extern crate nom;
+#[macro_use] extern crate nom;
 
 #[macro_use]
 #[cfg(test)]
 extern crate maplit;
+
+
+#[macro_use] extern crate failure;
 
 extern crate crossbeam_channel;
 
@@ -72,10 +74,11 @@ pub mod pipeline {
         fn from(inp: lang::Expr) -> Self {
             match inp {
                 lang::Expr::Column(s) => operator::Expr::Column(s),
-                lang::Expr::Equal { left, right } => operator::Expr::Equal {
+                lang::Expr::Equal { left, right } => operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
                     left: Box::new((*left).into()),
                     right: Box::new((*right).into()),
-                },
+                    operator: operator::BoolExpr::Eq
+                }),
                 lang::Expr::Value(value) => operator::Expr::Value(value),
             }
         }

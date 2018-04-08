@@ -15,8 +15,16 @@ use std::iter::FromIterator;
 
 type Data = HashMap<String, data::Value>;
 
+#[derive(Debug, Fail)]
+pub enum EvalError {
+    #[fail(display = "No value for key {}", key)]
+    NoValueForKey {
+        key: String
+    }
+}
+
 pub trait Evaluatable<T> {
-    fn eval(&self, record: &Data) -> Option<T>;
+    fn eval(&self, record: &Data) -> Result<T, EvalError>;
 }
 
 pub trait UnaryPreAggOperator {
@@ -42,24 +50,43 @@ pub trait AggregateFunction: Send + Sync {
 #[derive(Clone)]
 pub enum Expr {
     Column(String),
-    Equal { left: Box<Expr>, right: Box<Expr> },
+    Comparison(BinaryExpr<BoolExpr>),
     Value(data::Value),
 }
 
+#[derive(Clone)]
+pub struct BinaryExpr<T> {
+    pub operator: T,
+    pub left: Box<Expr>,
+    pub right: Box<Expr>
+}
+
+#[derive(Clone)]
+pub enum BoolExpr {
+    Eq,
+    /*Neq,
+    Ge,
+    Le*/
+}
+
+impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
+        let l = self.left.eval(record)?;
+        let r = self.right.eval(record)?;
+        Ok(l == r)
+    }
+}
+
 impl Evaluatable<data::Value> for Expr {
-    fn eval(&self, record: &HashMap<String, data::Value>) -> Option<data::Value> {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<data::Value, EvalError> {
         match *self {
-            Expr::Column(ref str) => record.get(str).cloned(),
-            Expr::Equal {
-                ref left,
-                ref right,
-            } => {
-                let l = (*left).eval(record);
-                let r = (*right).eval(record);
-                let value = data::Value::Bool(l == r);
-                Some(value)
-            }
-            Expr::Value(ref v) => Some(v.clone()),
+            Expr::Column(ref col) => record.get(col).cloned().ok_or_else(||EvalError::NoValueForKey { key: col.clone() }),
+            Expr::Comparison(ref binary_expr) => {
+                let bool_res = binary_expr.eval(record)?;
+                Ok(data::Value::Bool(bool_res))
+
+            },
+            Expr::Value(ref v) => Ok(v.clone()),
         }
     }
 }
@@ -464,7 +491,7 @@ impl UnaryPreAggOperator for Where {
     fn process(&self, rec: Record) -> Option<Record> {
         let res = self.expr.eval(&rec.data);
         match res {
-            Some(data::Value::Bool(true)) => Some(rec),
+            Ok(data::Value::Bool(true)) => Some(rec),
             _other => None,
         }
     }
