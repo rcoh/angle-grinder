@@ -12,6 +12,7 @@ extern crate crossbeam_channel;
 mod data;
 mod lang;
 mod operator;
+mod typecheck;
 mod render;
 
 pub mod pipeline {
@@ -20,27 +21,34 @@ pub mod pipeline {
     use lang;
     use lang::*;
     use operator;
+    use typecheck;
     use render::{RenderConfig, Renderer};
-    use std::error;
-    use std::fmt;
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
+    use failure::Error;
 
-    #[derive(Debug)]
+    #[derive(Debug, Fail)]
     pub enum CompileError {
-        Parse(String),
+        #[fail(display = "Failure parsing query. Parse failed at: {}", message)]
+        Parse { message: String } ,
+
+        #[fail(display = "Non aggregate operators can't follow aggregate operators")]
         NonAggregateAfterAggregate,
-        Unexpected(String),
+
+        #[fail(display = "Unexpected failure: {}", message)]
+        Unexpected {message: String },
+
     }
 
+    /*
     impl fmt::Display for CompileError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match *self {
                 CompileError::Parse(ref s) => write!(f, "Parse error: {}", s),
                 CompileError::NonAggregateAfterAggregate => write!(
                     f,
-                    "Non aggregate operators can't follow aggregate operators"
+                    ""
                 ),
                 CompileError::Unexpected(ref s) => write!(
                     f,
@@ -49,19 +57,7 @@ pub mod pipeline {
                 ),
             }
         }
-    }
-
-    impl error::Error for CompileError {
-        fn description(&self) -> &str {
-            match self {
-                &CompileError::Parse(ref s) => s,
-                &CompileError::Unexpected(ref s) => s,
-                &CompileError::NonAggregateAfterAggregate => {
-                    "Non-Aggregate operators (eg parse) cannot follow aggregate operataors"
-                }
-            }
-        }
-    }
+    }*/
 
     pub struct Pipeline {
         filter: lang::Search,
@@ -85,27 +81,30 @@ pub mod pipeline {
     }
 
     impl Pipeline {
-        fn convert_inline(op: lang::InlineOperator) -> Box<operator::UnaryPreAggOperator> {
+        fn convert_inline(op: lang::InlineOperator) -> Result<Box<operator::UnaryPreAggOperator>, operator::TypeError> {
             match op {
                 InlineOperator::Json { input_column } => {
-                    Box::new(operator::ParseJson::new(input_column))
+                    Ok(Box::new(operator::ParseJson::new(input_column)))
                 }
                 InlineOperator::Parse {
                     pattern,
                     fields,
                     input_column,
-                } => Box::new(
-                    operator::Parse::new(&pattern, fields, input_column.map(|c| c.force()))
-                        .unwrap(),
+                } => Ok(Box::new(
+                    operator::Parse::new(&pattern, fields, input_column.map(|c| c.force()))?)
+,
                 ),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
                         FieldMode::Except => operator::FieldMode::Except,
                         FieldMode::Only => operator::FieldMode::Only,
                     };
-                    Box::new(operator::Fields::new(&fields, omode))
+                    Ok(Box::new(operator::Fields::new(&fields, omode)))
+                },
+                InlineOperator:: Where { expr } => {
+                    let expr: operator::Expr = expr.into();
+                    typecheck::create_where(expr)
                 }
-                InlineOperator::Where { expr } => Box::new(operator::Where::new(expr)),
             }
         }
 
@@ -146,15 +145,15 @@ pub mod pipeline {
             ))
         }
 
-        pub fn new(pipeline: &str) -> Result<Self, CompileError> {
+        pub fn new(pipeline: &str) -> Result<Self, Error> {
             let fixed_pipeline = format!("{}!", pipeline); // todo: fix hack
             let parsed = lang::parse_query(&fixed_pipeline)
-                .map_err(|e| CompileError::Parse(format!("{:?}", e)));
+                .map_err(|e| CompileError::Parse{message: format!("{:?}", e)});
             let (extra, query) = parsed?;
             if extra != "" {
-                return Err(CompileError::Unexpected(
-                    "Leftovers after parsing. This is a bug.".to_string(),
-                ));
+                Err(CompileError::Unexpected{
+                    message: "Leftovers after parsing. This is a bug.".to_string(),
+                })?;
             }
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
@@ -179,9 +178,9 @@ pub mod pipeline {
             for op in query.operators {
                 match op {
                     Operator::Inline(inline_op) => if !in_agg {
-                        pre_agg.push(Pipeline::convert_inline(inline_op));
+                        pre_agg.push(Pipeline::convert_inline(inline_op)?);
                     } else {
-                        return Err(CompileError::NonAggregateAfterAggregate);
+                        Err(CompileError::NonAggregateAfterAggregate)?;
                     },
                     Operator::MultiAggregate(agg_op) => {
                         in_agg = true;

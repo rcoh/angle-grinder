@@ -71,7 +71,18 @@ mod integration {
             .fails()
             .and()
             .stderr()
-            .contains("Parse error:")
+            .contains("Failure parsing")
+            .unwrap();
+    }
+
+    #[test]
+    fn test_where_typecheck() {
+        assert_cli::Assert::main_binary()
+            .with_args(&["* | where 5"])
+            .fails()
+            .and()
+            .stderr()
+            .contains("Expected boolean expression, found")
             .unwrap();
     }
 

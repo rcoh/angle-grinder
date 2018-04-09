@@ -23,6 +23,20 @@ pub enum EvalError {
     }
 }
 
+#[derive(Debug, Fail)]
+pub enum TypeError {
+    #[fail(display = "Expected boolean expression, found {}", found)]
+    ExpectedBool {
+        found: String
+    },
+
+    #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted", pattern, extracted)]
+    ParseNumPatterns {
+        pattern: usize,
+        extracted: usize
+    }
+}
+
 pub trait Evaluatable<T> {
     fn eval(&self, record: &Data) -> Result<T, EvalError>;
 }
@@ -47,21 +61,21 @@ pub trait AggregateFunction: Send + Sync {
     fn empty_box(&self) -> Box<AggregateFunction>;
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Column(String),
     Comparison(BinaryExpr<BoolExpr>),
     Value(data::Value),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BinaryExpr<T> {
     pub operator: T,
     pub left: Box<Expr>,
     pub right: Box<Expr>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum BoolExpr {
     Eq,
     /*Neq,
@@ -424,15 +438,16 @@ impl Parse {
         pattern: &str,
         fields: Vec<String>,
         input_column: Option<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, TypeError> {
         let regex_str = regex_syntax::quote(pattern);
         let mut regex_str = regex_str.replace("\\*", "(.*?)");
         // If it ends with a star, we need to ensure we read until the end.
         if pattern.ends_with('*') {
             regex_str = format!("{}$", regex_str);
         }
-        if pattern.matches('*').count() != fields.len() {
-            Result::Err("Wrong number of extractions".to_string())
+        let pattern_matches =pattern.matches('*').count();
+        if  pattern_matches != fields.len() {
+            Result::Err(TypeError::ParseNumPatterns { pattern: pattern_matches, extracted: fields.len() })
         } else {
             Result::Ok(Parse {
                 regex: regex::Regex::new(&regex_str).unwrap(),
@@ -477,22 +492,22 @@ impl UnaryPreAggOperator for Parse {
     }
 }
 
-pub struct Where {
-    expr: Expr,
+pub struct Where<T: Evaluatable<bool>> {
+    expr: T,
 }
 
-impl Where {
-    pub fn new<T: Into<Expr>>(expr: T) -> Self {
-        Where { expr: expr.into() }
+impl<T: Evaluatable<bool>> Where<T> {
+    pub fn new(expr: T) -> Self {
+        Where { expr }
     }
 }
 
-impl UnaryPreAggOperator for Where {
+impl<T: Evaluatable<bool>> UnaryPreAggOperator for Where<T> {
     fn process(&self, rec: Record) -> Option<Record> {
-        let res = self.expr.eval(&rec.data);
-        match res {
-            Ok(data::Value::Bool(true)) => Some(rec),
-            _other => None,
+        if self.expr.eval(&rec.data).unwrap_or(false) {
+            Some(rec)
+        } else {
+            None
         }
     }
 }
