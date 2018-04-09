@@ -18,23 +18,17 @@ type Data = HashMap<String, data::Value>;
 #[derive(Debug, Fail)]
 pub enum EvalError {
     #[fail(display = "No value for key {}", key)]
-    NoValueForKey {
-        key: String
-    }
+    NoValueForKey { key: String },
 }
 
 #[derive(Debug, Fail)]
 pub enum TypeError {
     #[fail(display = "Expected boolean expression, found {}", found)]
-    ExpectedBool {
-        found: String
-    },
+    ExpectedBool { found: String },
 
-    #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted", pattern, extracted)]
-    ParseNumPatterns {
-        pattern: usize,
-        extracted: usize
-    }
+    #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
+           pattern, extracted)]
+    ParseNumPatterns { pattern: usize, extracted: usize },
 }
 
 pub trait Evaluatable<T> {
@@ -72,7 +66,7 @@ pub enum Expr {
 pub struct BinaryExpr<T> {
     pub operator: T,
     pub left: Box<Expr>,
-    pub right: Box<Expr>
+    pub right: Box<Expr>,
 }
 
 #[derive(Clone, Debug)]
@@ -94,12 +88,14 @@ impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
 impl Evaluatable<data::Value> for Expr {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<data::Value, EvalError> {
         match *self {
-            Expr::Column(ref col) => record.get(col).cloned().ok_or_else(||EvalError::NoValueForKey { key: col.clone() }),
+            Expr::Column(ref col) => record
+                .get(col)
+                .cloned()
+                .ok_or_else(|| EvalError::NoValueForKey { key: col.clone() }),
             Expr::Comparison(ref binary_expr) => {
                 let bool_res = binary_expr.eval(record)?;
                 Ok(data::Value::Bool(bool_res))
-
-            },
+            }
             Expr::Value(ref v) => Ok(v.clone()),
         }
     }
@@ -445,9 +441,12 @@ impl Parse {
         if pattern.ends_with('*') {
             regex_str = format!("{}$", regex_str);
         }
-        let pattern_matches =pattern.matches('*').count();
-        if  pattern_matches != fields.len() {
-            Result::Err(TypeError::ParseNumPatterns { pattern: pattern_matches, extracted: fields.len() })
+        let pattern_matches = pattern.matches('*').count();
+        if pattern_matches != fields.len() {
+            Result::Err(TypeError::ParseNumPatterns {
+                pattern: pattern_matches,
+                extracted: fields.len(),
+            })
         } else {
             Result::Ok(Parse {
                 regex: regex::Regex::new(&regex_str).unwrap(),

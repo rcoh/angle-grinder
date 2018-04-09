@@ -1,6 +1,6 @@
 use data;
 use nom::IResult;
-use nom::{is_alphanumeric, is_alphabetic, is_digit, digit1};
+use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -103,11 +103,12 @@ pub struct Query {
 fn is_ident(c: char) -> bool {
     is_alphanumeric(c as u8) || c == '_'
 }
-fn starts_ident(c: char) -> bool {is_alphabetic(c as u8) || c == '_' }
+fn starts_ident(c: char) -> bool {
+    is_alphabetic(c as u8) || c == '_'
+}
 fn not_escape(c: char) -> bool {
     c != '\\' && c != '\"'
 }
-
 
 named!(value<&str, data::Value>, ws!(
     alt!(

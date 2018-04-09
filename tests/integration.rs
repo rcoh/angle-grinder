@@ -1,7 +1,7 @@
-extern crate assert_cli;
-extern crate toml;
-extern crate pulldown_cmark;
 extern crate ag;
+extern crate assert_cli;
+extern crate pulldown_cmark;
+extern crate toml;
 
 #[macro_use]
 extern crate serde_derive;
@@ -19,9 +19,9 @@ struct TestDefinition {
 #[cfg(test)]
 mod integration {
     use super::*;
+    use ag::pipeline::Pipeline;
     use assert_cli;
     use toml;
-    use ag::pipeline::Pipeline;
 
     fn structured_test(s: &str) {
         let conf: TestDefinition = toml::from_str(s).unwrap();
@@ -159,9 +159,11 @@ $None$       1")
             .unwrap();
     }
 
-
     fn ensure_parses(query: &str) {
-        Pipeline::new(query).expect(&format!("Query: `{}` from the README should have parsed", query));
+        Pipeline::new(query).expect(&format!(
+            "Query: `{}` from the README should have parsed",
+            query
+        ));
     }
 
     #[test]

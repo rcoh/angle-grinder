@@ -1,44 +1,44 @@
-#[macro_use] extern crate nom;
+#[macro_use]
+extern crate nom;
 
 #[macro_use]
 #[cfg(test)]
 extern crate maplit;
 
-
-#[macro_use] extern crate failure;
+#[macro_use]
+extern crate failure;
 
 extern crate crossbeam_channel;
 
 mod data;
 mod lang;
 mod operator;
-mod typecheck;
 mod render;
+mod typecheck;
 
 pub mod pipeline {
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
     use data::{Record, Row};
+    use failure::Error;
     use lang;
     use lang::*;
     use operator;
-    use typecheck;
     use render::{RenderConfig, Renderer};
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
-    use failure::Error;
+    use typecheck;
 
     #[derive(Debug, Fail)]
     pub enum CompileError {
         #[fail(display = "Failure parsing query. Parse failed at: {}", message)]
-        Parse { message: String } ,
+        Parse { message: String },
 
         #[fail(display = "Non aggregate operators can't follow aggregate operators")]
         NonAggregateAfterAggregate,
 
         #[fail(display = "Unexpected failure: {}", message)]
-        Unexpected {message: String },
-
+        Unexpected { message: String },
     }
 
     /*
@@ -70,18 +70,22 @@ pub mod pipeline {
         fn from(inp: lang::Expr) -> Self {
             match inp {
                 lang::Expr::Column(s) => operator::Expr::Column(s),
-                lang::Expr::Equal { left, right } => operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
-                    left: Box::new((*left).into()),
-                    right: Box::new((*right).into()),
-                    operator: operator::BoolExpr::Eq
-                }),
+                lang::Expr::Equal { left, right } => {
+                    operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
+                        left: Box::new((*left).into()),
+                        right: Box::new((*right).into()),
+                        operator: operator::BoolExpr::Eq,
+                    })
+                }
                 lang::Expr::Value(value) => operator::Expr::Value(value),
             }
         }
     }
 
     impl Pipeline {
-        fn convert_inline(op: lang::InlineOperator) -> Result<Box<operator::UnaryPreAggOperator>, operator::TypeError> {
+        fn convert_inline(
+            op: lang::InlineOperator,
+        ) -> Result<Box<operator::UnaryPreAggOperator>, operator::TypeError> {
             match op {
                 InlineOperator::Json { input_column } => {
                     Ok(Box::new(operator::ParseJson::new(input_column)))
@@ -90,18 +94,19 @@ pub mod pipeline {
                     pattern,
                     fields,
                     input_column,
-                } => Ok(Box::new(
-                    operator::Parse::new(&pattern, fields, input_column.map(|c| c.force()))?)
-,
-                ),
+                } => Ok(Box::new(operator::Parse::new(
+                    &pattern,
+                    fields,
+                    input_column.map(|c| c.force()),
+                )?)),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
                         FieldMode::Except => operator::FieldMode::Except,
                         FieldMode::Only => operator::FieldMode::Only,
                     };
                     Ok(Box::new(operator::Fields::new(&fields, omode)))
-                },
-                InlineOperator:: Where { expr } => {
+                }
+                InlineOperator::Where { expr } => {
                     let expr: operator::Expr = expr.into();
                     typecheck::create_where(expr)
                 }
@@ -147,11 +152,12 @@ pub mod pipeline {
 
         pub fn new(pipeline: &str) -> Result<Self, Error> {
             let fixed_pipeline = format!("{}!", pipeline); // todo: fix hack
-            let parsed = lang::parse_query(&fixed_pipeline)
-                .map_err(|e| CompileError::Parse{message: format!("{:?}", e)});
+            let parsed = lang::parse_query(&fixed_pipeline).map_err(|e| CompileError::Parse {
+                message: format!("{:?}", e),
+            });
             let (extra, query) = parsed?;
             if extra != "" {
-                Err(CompileError::Unexpected{
+                Err(CompileError::Unexpected {
                     message: "Leftovers after parsing. This is a bug.".to_string(),
                 })?;
             }
