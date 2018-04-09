@@ -115,8 +115,10 @@ Drop only the `event` field
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
 The general syntax is:
 ```noformat
-operator [as renamed_column], operator [as renamed_column] [by key_col1, key_col2]
+(operator [as renamed_column])+ [by key_col1, key_col2]
 ```
+
+In the simplest form, key fields refer to columns, but they can also be generalized expressions (see examples)
 *Examples*:
 ```agrind
 * | count
@@ -129,6 +131,9 @@ operator [as renamed_column], operator [as renamed_column] [by key_col1, key_col
 ```
 ```agrind
 * | json | count as num_requests, p50(response_ms), p90(response_ms) by status_code
+```
+```agrind
+* | json | count, p50(response_ms), p90(response_ms), count by status_code >= 400, url
 ```
 
 There are several aggregate operators available.
