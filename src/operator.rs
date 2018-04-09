@@ -76,7 +76,7 @@ pub enum BoolExpr {
     Gt,
     Lt,
     Gte,
-    Lte
+    Lte,
 }
 
 impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
@@ -89,7 +89,7 @@ impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
             BoolExpr::Gt => l > r,
             BoolExpr::Lt => l < r,
             BoolExpr::Gte => l >= r,
-            BoolExpr::Lte => l <= r
+            BoolExpr::Lte => l <= r,
         };
         Ok(result)
     }
@@ -366,24 +366,30 @@ impl AggregateOperator for Sorter {
 }
 
 pub struct MultiGrouper {
-    key_cols: Vec<String>,
+    key_cols: Vec<Expr>,
+    key_col_headers: Vec<String>,
     agg_col: Vec<(String, Box<AggregateFunction>)>,
     // key-column values -> (agg_columns -> builders)
     state: HashMap<Vec<data::Value>, HashMap<String, Box<AggregateFunction>>>,
 }
 
 impl MultiGrouper {
-    pub fn new(key_cols: &[&str], aggregators: Vec<(String, Box<AggregateFunction>)>) -> Self {
+    pub fn new(
+        key_cols: &[Expr],
+        key_col_headers: Vec<String>,
+        aggregators: Vec<(String, Box<AggregateFunction>)>,
+    ) -> Self {
         MultiGrouper {
-            key_cols: key_cols.to_vec().iter().map(|s| s.to_string()).collect(),
+            key_cols: key_cols.to_vec(),
+            key_col_headers,
             agg_col: aggregators,
             state: HashMap::new(),
         }
     }
     fn process_map(&mut self, data: &Data) {
-        let key_values = self.key_cols.iter().map(|column| data.get(column));
+        let key_values = self.key_cols.iter().map(|expr| expr.eval(data));
         let key_columns: Vec<data::Value> = key_values
-            .map(|value_opt| value_opt.cloned().unwrap_or_else(|| data::Value::None))
+            .map(|value_res| value_res.unwrap_or_else(|_| data::Value::None))
             .collect();
         let agg_col = &self.agg_col;
         let row = self.state.entry(key_columns).or_insert_with(|| {
@@ -400,11 +406,11 @@ impl MultiGrouper {
 
 impl AggregateOperator for MultiGrouper {
     fn emit(&self) -> Aggregate {
-        let mut columns = self.key_cols.to_vec();
+        let mut columns = self.key_col_headers.to_vec();
         columns.extend(self.agg_col.iter().map(|&(ref k, ..)| k.to_string()));
         let data = self.state.iter().map(|(key_values, agg_map)| {
             let key_values = key_values.iter().cloned();
-            let key_cols = self.key_cols.iter().map(|s| s.to_owned());
+            let key_cols = self.key_col_headers.iter().map(|s| s.to_owned());
             let mut res_map: data::VMap =
                 HashMap::from_iter(itertools::zip_eq(key_cols, key_values));
             for (k, v) in agg_map {
@@ -717,7 +723,7 @@ mod tests {
     fn count_no_groups() {
         let ops: Vec<(String, Box<AggregateFunction>)> =
             vec![("_count".to_string(), Box::new(Count::new()))];
-        let mut count_agg = MultiGrouper::new(&[], ops);
+        let mut count_agg = MultiGrouper::new(&[], vec![], ops);
         (0..10)
             .map(|n| Record::new(&n.to_string()))
             .foreach(|rec| count_agg.process(Row::Record(rec)));
@@ -747,7 +753,11 @@ mod tests {
             ),
         ];
 
-        let mut grouper = MultiGrouper::new(&["k1"], ops);
+        let mut grouper = MultiGrouper::new(
+            &[Expr::Column("k1".to_string())],
+            vec!["k1".to_string()],
+            ops,
+        );
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
@@ -805,7 +815,11 @@ mod tests {
     fn count_groups() {
         let ops: Vec<(String, Box<AggregateFunction>)> =
             vec![("_count".to_string(), Box::new(Count::new()))];
-        let mut count_agg = MultiGrouper::new(&["k1"], ops);
+        let mut count_agg = MultiGrouper::new(
+            &[Expr::Column("k1".to_string())],
+            vec!["k1".to_string()],
+            ops,
+        );
         (0..10).foreach(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));

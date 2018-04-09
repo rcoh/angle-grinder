@@ -3,25 +3,29 @@ use nom::IResult;
 use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1};
 use std::str;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ComparisonOp {
     Eq,
     Neq,
     Gt,
     Lt,
     Gte,
-    Lte
+    Lte,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum BinaryOp {
-    Comparison(ComparisonOp)
+    Comparison(ComparisonOp),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     Column(String),
-    Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
+    Binary {
+        op: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
     Value(data::Value),
 }
 
@@ -99,7 +103,8 @@ pub enum AggregateFunction {
 
 #[derive(Debug, PartialEq)]
 pub struct MultiAggregateOperator {
-    pub key_cols: Vec<String>,
+    pub key_cols: Vec<Expr>,
+    pub key_col_headers: Vec<String>,
     pub aggregate_functions: Vec<(String, AggregateFunction)>,
 }
 
@@ -118,9 +123,11 @@ pub struct Query {
 fn is_ident(c: char) -> bool {
     is_alphanumeric(c as u8) || c == '_'
 }
+
 fn starts_ident(c: char) -> bool {
     is_alphabetic(c as u8) || c == '_'
 }
+
 fn not_escape(c: char) -> bool {
     c != '\\' && c != '\"'
 }
@@ -184,6 +191,18 @@ named!(quoted_string <&str, &str>, delimited!(
 
 named!(var_list<&str, Vec<String> >, ws!(separated_nonempty_list!(
     tag!(","), ws!(ident)
+)));
+
+named!(sourced_expr_list<&str, Vec<(String, Expr)> >, ws!(separated_nonempty_list!(
+    tag!(","), ws!(sourced_expr)
+)));
+
+named!(sourced_expr<&str, (String, Expr)>, ws!(
+    do_parse!(
+        ex: recognize!(expr) >>
+        (
+            ex.trim().to_string(), expr(&format!("{} ~", ex)).unwrap_or(("", Expr::Column(ex.to_string()))).1
+        )
 )));
 
 // parse "blah * ... *" [from other_field] as x, y
@@ -299,9 +318,14 @@ named!(complete_agg_function<&str, (String, AggregateFunction)>, ws!(do_parse!(
 
 named!(multi_aggregate_operator<&str, Operator>, ws!(do_parse!(
     agg_functions: ws!(separated_nonempty_list!(tag!(","), complete_agg_function)) >>
-    key_cols_opt: opt!(preceded!(tag!("by"), var_list)) >>
-    (Operator::MultiAggregate(MultiAggregateOperator{
-        key_cols: key_cols_opt.unwrap_or_default(),
+    key_cols_opt: opt!(preceded!(tag!("by"), sourced_expr_list)) >>
+    (Operator::MultiAggregate(MultiAggregateOperator {
+        key_col_headers: key_cols_opt.clone()
+            .unwrap_or_default()
+            .iter().cloned().map(|col|col.0).collect(),
+        key_cols: key_cols_opt.clone()
+            .unwrap_or_default()
+            .iter().cloned().map(|col|col.1).collect(),
         aggregate_functions: agg_functions,
      })))
 ));
@@ -342,6 +366,7 @@ named!(query<&str, Query>, ws!(do_parse!(
 )));
 
 pub const QUERY_TERMINATOR: &str = "~";
+
 pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
     terminated!(query_str, query, tag!(QUERY_TERMINATOR))
 }
@@ -349,6 +374,7 @@ pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn parse_quoted_string() {
         assert_eq!(quoted_string(r#""hello""#), Ok(("", "hello")));
@@ -385,6 +411,14 @@ mod tests {
                     right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
                 }
             ))
+        );
+    }
+
+    #[test]
+    fn parse_expr_ident() {
+        assert_eq!(
+            expr("foo ~"),
+            Ok((QUERY_TERMINATOR, Expr::Column("foo".to_string())))
         );
     }
 
@@ -461,11 +495,12 @@ mod tests {
     #[test]
     fn parse_agg_operator() {
         assert_eq!(
-            multi_aggregate_operator("count as renamed by x, y !"),
+            multi_aggregate_operator("count as renamed by x, y ~"),
             Ok((
-                "!",
+                "~",
                 Operator::MultiAggregate(MultiAggregateOperator {
-                    key_cols: vec!["x".to_string(), "y".to_string()],
+                    key_cols: vec![Expr::Column("x".to_string()), Expr::Column("y".to_string())],
+                    key_col_headers: vec!["x".to_string(), "y".to_string()],
                     aggregate_functions: vec![("renamed".to_string(), AggregateFunction::Count)],
                 },)
             ))
@@ -508,7 +543,7 @@ mod tests {
     #[test]
     fn query_operators() {
         let query_str =
-            r#"* | json from col | parse "!123*" as foo | count by foo | sort by foo dsc ~"#;
+            r#"* | json from col | parse "!123*" as foo | count by foo, foo == 123 | sort by foo dsc ~"#;
         assert_eq!(
             parse_query(query_str),
             Ok((
@@ -525,7 +560,15 @@ mod tests {
                             input_column: None,
                         }),
                         Operator::MultiAggregate(MultiAggregateOperator {
-                            key_cols: vec!["foo".to_string()],
+                            key_col_headers: vec!["foo".to_string(), "foo == 123".to_string()],
+                            key_cols: vec![
+                                Expr::Column("foo".to_string()),
+                                Expr::Binary {
+                                    op: BinaryOp::Comparison(ComparisonOp::Eq),
+                                    left: Box::new(Expr::Column("foo".to_string())),
+                                    right: Box::new(Expr::Value(data::Value::Int(123))),
+                                },
+                            ],
                             aggregate_functions: vec![
                                 ("_count".to_string(), AggregateFunction::Count {}),
                             ],

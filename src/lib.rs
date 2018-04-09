@@ -66,12 +66,14 @@ pub mod pipeline {
             match inp {
                 lang::Expr::Column(s) => operator::Expr::Column(s),
                 lang::Expr::Binary { op, left, right } => match op {
-                    BinaryOp::Comparison(com_op) => operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
-                        left: Box::new((*left).into()),
-                        right: Box::new((*right).into()),
-                        operator: com_op.into()
-                    })
-                }
+                    BinaryOp::Comparison(com_op) => {
+                        operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
+                            left: Box::new((*left).into()),
+                            right: Box::new((*right).into()),
+                            operator: com_op.into(),
+                        })
+                    }
+                },
                 lang::Expr::Value(value) => operator::Expr::Value(value),
             }
         }
@@ -134,9 +136,11 @@ pub mod pipeline {
             let agg_functions = op.aggregate_functions
                 .into_iter()
                 .map(|(k, func)| (k, Pipeline::convert_agg_function(func)));
-            let key_cols: Vec<&str> = op.key_cols.iter().map(AsRef::as_ref).collect();
+            let key_cols: Vec<operator::Expr> =
+                op.key_cols.into_iter().map(|expr| expr.into()).collect();
             Box::new(operator::MultiGrouper::new(
                 &key_cols[..],
+                op.key_col_headers,
                 agg_functions.collect(),
             ))
         }
