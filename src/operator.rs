@@ -72,16 +72,26 @@ pub struct BinaryExpr<T> {
 #[derive(Clone, Debug)]
 pub enum BoolExpr {
     Eq,
-    /*Neq,
-    Ge,
-    Le*/
+    Neq,
+    Gt,
+    Lt,
+    Gte,
+    Lte
 }
 
 impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
         let l = self.left.eval(record)?;
         let r = self.right.eval(record)?;
-        Ok(l == r)
+        let result = match self.operator {
+            BoolExpr::Eq => l == r,
+            BoolExpr::Neq => l != r,
+            BoolExpr::Gt => l > r,
+            BoolExpr::Lt => l < r,
+            BoolExpr::Gte => l >= r,
+            BoolExpr::Lte => l <= r
+        };
+        Ok(result)
     }
 }
 

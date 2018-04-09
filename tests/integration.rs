@@ -47,6 +47,7 @@ mod integration {
     fn where_operator() {
         structured_test(include_str!("structured_tests/where-1.toml"));
         structured_test(include_str!("structured_tests/where-2.toml"));
+        structured_test(include_str!("structured_tests/where-3.toml"));
     }
 
     #[test]

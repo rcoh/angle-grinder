@@ -1,0 +1,17 @@
+query = """* | json | where thing_a > thing_b"""
+input = """
+{"thing_a": 5, "thing_b": 5}
+{"thing_a": 6, "thing_b": 5}
+{"thing_a": 0, "thing_b": 0.1}
+{"thing_a": 1.0, "thing_b": 0.1}
+{"thing_a": "hello", "thing_b": "goodbye"}
+{"thing_a": "goodbye", "thing_b": "hello"}
+{"thing_a": true, "thing_b": false}
+{"thing_a": false, "thing_b": true}
+"""
+output = """
+[thing_a=6]              [thing_b=5]
+[thing_a=1.00]           [thing_b=0.10]
+[thing_a=hello]          [thing_b=goodbye]
+[thing_a=true]           [thing_b=false]
+"""

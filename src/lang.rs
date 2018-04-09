@@ -4,9 +4,24 @@ use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum ComparisonOp {
+    Eq,
+    Neq,
+    Gt,
+    Lt,
+    Gte,
+    Lte
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinaryOp {
+    Comparison(ComparisonOp)
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Column(String),
-    Equal { left: Box<Expr>, right: Box<Expr> },
+    Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
     Value(data::Value),
 }
 
@@ -130,9 +145,21 @@ named!(e_ident<&str, Expr>,
     |  ws!(delimited!( tag_s!("("), expr, tag_s!(")") ))
 )));
 
+named!(comp_op<&str, ComparisonOp>, ws!(alt!(
+    map!(tag!("=="), |_|ComparisonOp::Eq)
+    | map!(tag!(">"), |_|ComparisonOp::Gt)
+    | map!(tag!("<"), |_|ComparisonOp::Lt)
+    | map!(tag!("<="), |_|ComparisonOp::Lte)
+    | map!(tag!(">="), |_|ComparisonOp::Gte)
+    | map!(tag!("!="), |_|ComparisonOp::Neq)
+)));
+
 named!(expr<&str, Expr>, ws!(alt!(
-    map!(
-        ws!(separated_pair!(e_ident, tag!("=="), e_ident)), |(l, r)| Expr::Equal { left: Box::new(l), right: Box::new(r)}
+    do_parse!(
+        l: e_ident >>
+        comp: comp_op >>
+        r: e_ident >>
+        ( Expr::Binary { op: BinaryOp::Comparison(comp), left: Box::new(l), right: Box::new(r)} )
     )
     | e_ident
 )));
@@ -314,8 +341,9 @@ named!(query<&str, Query>, ws!(do_parse!(
     })
 )));
 
+pub const QUERY_TERMINATOR: &str = "~";
 pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
-    terminated!(query_str, query, tag!("!"))
+    terminated!(query_str, query, tag!(QUERY_TERMINATOR))
 }
 
 #[cfg(test)]
@@ -336,7 +364,8 @@ mod tests {
             expr("a == b!"),
             Ok((
                 "!",
-                Expr::Equal {
+                Expr::Binary {
+                    op: BinaryOp::Comparison(ComparisonOp::Eq),
                     left: Box::new(Expr::Column("a".to_string())),
                     right: Box::new(Expr::Column("b".to_string())),
                 }
@@ -350,7 +379,8 @@ mod tests {
             expr("a == \"b\"!"),
             Ok((
                 "!",
-                Expr::Equal {
+                Expr::Binary {
+                    op: BinaryOp::Comparison(ComparisonOp::Eq),
                     left: Box::new(Expr::Column("a".to_string())),
                     right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
                 }
@@ -462,7 +492,7 @@ mod tests {
 
     #[test]
     fn query_no_operators() {
-        let query_str = r#" "filter"!"#;
+        let query_str = r#" "filter" ~"#;
         assert_eq!(
             parse_query(query_str),
             Ok((
@@ -478,7 +508,7 @@ mod tests {
     #[test]
     fn query_operators() {
         let query_str =
-            r#"* | json from col | parse "!123*" as foo | count by foo | sort by foo dsc !"#;
+            r#"* | json from col | parse "!123*" as foo | count by foo | sort by foo dsc ~"#;
         assert_eq!(
             parse_query(query_str),
             Ok((

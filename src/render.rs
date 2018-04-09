@@ -225,7 +225,7 @@ impl Renderer {
             }
             data::Row::Record(ref record) => {
                 let output = self.pretty_printer.format_record(record);
-                write!(self.stdout, "{}\n", output).unwrap();
+                writeln!(self.stdout, "{}", output).unwrap();
             }
         }
     }

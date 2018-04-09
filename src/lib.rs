@@ -41,24 +41,6 @@ pub mod pipeline {
         Unexpected { message: String },
     }
 
-    /*
-    impl fmt::Display for CompileError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match *self {
-                CompileError::Parse(ref s) => write!(f, "Parse error: {}", s),
-                CompileError::NonAggregateAfterAggregate => write!(
-                    f,
-                    ""
-                ),
-                CompileError::Unexpected(ref s) => write!(
-                    f,
-                    "This error isn't expected to happen. Please report a bug! {}",
-                    s
-                ),
-            }
-        }
-    }*/
-
     pub struct Pipeline {
         filter: lang::Search,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
@@ -66,15 +48,28 @@ pub mod pipeline {
         renderer: Renderer,
     }
 
+    impl From<lang::ComparisonOp> for operator::BoolExpr {
+        fn from(op: ComparisonOp) -> Self {
+            match op {
+                ComparisonOp::Eq => operator::BoolExpr::Eq,
+                ComparisonOp::Neq => operator::BoolExpr::Neq,
+                ComparisonOp::Gt => operator::BoolExpr::Gt,
+                ComparisonOp::Lt => operator::BoolExpr::Lt,
+                ComparisonOp::Gte => operator::BoolExpr::Gte,
+                ComparisonOp::Lte => operator::BoolExpr::Lte,
+            }
+        }
+    }
+
     impl From<lang::Expr> for operator::Expr {
         fn from(inp: lang::Expr) -> Self {
             match inp {
                 lang::Expr::Column(s) => operator::Expr::Column(s),
-                lang::Expr::Equal { left, right } => {
-                    operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
+                lang::Expr::Binary { op, left, right } => match op {
+                    BinaryOp::Comparison(com_op) => operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
                         left: Box::new((*left).into()),
                         right: Box::new((*right).into()),
-                        operator: operator::BoolExpr::Eq,
+                        operator: com_op.into()
                     })
                 }
                 lang::Expr::Value(value) => operator::Expr::Value(value),
@@ -136,10 +131,6 @@ pub mod pipeline {
         }
 
         fn convert_multi_agg(op: lang::MultiAggregateOperator) -> Box<operator::AggregateOperator> {
-            /*let mut agg_map = HashMap::new();
-            for (output_column, func) in op.aggregate_functions {
-                agg_map.insert(output_column, Pipeline::convert_agg_function(func));
-            }*/
             let agg_functions = op.aggregate_functions
                 .into_iter()
                 .map(|(k, func)| (k, Pipeline::convert_agg_function(func)));
@@ -151,7 +142,7 @@ pub mod pipeline {
         }
 
         pub fn new(pipeline: &str) -> Result<Self, Error> {
-            let fixed_pipeline = format!("{}!", pipeline); // todo: fix hack
+            let fixed_pipeline = format!("{}~", pipeline); // todo: fix hack
             let parsed = lang::parse_query(&fixed_pipeline).map_err(|e| CompileError::Parse {
                 message: format!("{:?}", e),
             });
