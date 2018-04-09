@@ -147,11 +147,11 @@ named!(e_ident<&str, Expr>,
 
 named!(comp_op<&str, ComparisonOp>, ws!(alt!(
     map!(tag!("=="), |_|ComparisonOp::Eq)
-    | map!(tag!(">"), |_|ComparisonOp::Gt)
-    | map!(tag!("<"), |_|ComparisonOp::Lt)
     | map!(tag!("<="), |_|ComparisonOp::Lte)
     | map!(tag!(">="), |_|ComparisonOp::Gte)
     | map!(tag!("!="), |_|ComparisonOp::Neq)
+    | map!(tag!(">"), |_|ComparisonOp::Gt)
+    | map!(tag!("<"), |_|ComparisonOp::Lt)
 )));
 
 named!(expr<&str, Expr>, ws!(alt!(
@@ -376,11 +376,11 @@ mod tests {
     #[test]
     fn parse_expr_value() {
         assert_eq!(
-            expr("a == \"b\"!"),
+            expr("a <= \"b\"~"),
             Ok((
-                "!",
+                QUERY_TERMINATOR,
                 Expr::Binary {
-                    op: BinaryOp::Comparison(ComparisonOp::Eq),
+                    op: BinaryOp::Comparison(ComparisonOp::Lte),
                     left: Box::new(Expr::Column("a".to_string())),
                     right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
                 }

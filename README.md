@@ -99,17 +99,17 @@ Drop only the `event` field
 ```
 
 ##### Where
-`where a == b`: Drop rows where the condition is not met. Note that `None == None`, so a row where both the left and right sides are missing will match. Current only `==` is supported. This operator is beta.
+`where a == b`: Drop rows where the condition is not met. Note that `None == None`, so a row where both the left and right sides match a non-existent key will match.
 
 *Examples*
 ```agrind
-* | json | where status_code == 500
+* | json | where status_code >= 400
 ```
 ```agrind
 * | json | where user_id_a == user_id_b
 ```
 ```agrind
-* | json | where url == "/hostname"
+* | json | where url != "/hostname"
 ```
 #### Aggregate Operators
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
