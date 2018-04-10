@@ -293,8 +293,9 @@ pub mod pipeline {
                 let mut rec = Record::new(s);
                 for pre_agg in pre_aggs {
                     match (*pre_agg).process(rec) {
-                        Some(next_rec) => rec = next_rec,
-                        None => return None,
+                        Ok(Some(next_rec)) => rec = next_rec,
+                        Ok(None) => return None,
+                        Err(_) => return None,
                     }
                 }
                 Some(Row::Record(rec))

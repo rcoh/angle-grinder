@@ -153,20 +153,6 @@ impl Record {
         self
     }
 
-    pub fn get_str(&self, column: Option<&str>) -> Option<&str> {
-        match column {
-            None => Some(&self.raw),
-            Some(col) => {
-                let value_opt = self.data.get(col);
-                match value_opt {
-                    None => None,
-                    Some(&Value::Str(ref s)) => Some(s),
-                    _ => None,
-                }
-            }
-        }
-    }
-
     pub fn new(raw: &str) -> Record {
         Record {
             data: HashMap::new(),

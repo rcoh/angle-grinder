@@ -4,10 +4,10 @@ extern crate regex;
 extern crate regex_syntax;
 extern crate serde_json;
 
-use self::quantiles::ckms::CKMS;
-use self::serde_json::Value as JsonValue;
 use data;
 use data::{Aggregate, Record, Row};
+use self::quantiles::ckms::CKMS;
+use self::serde_json::Value as JsonValue;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -19,6 +19,13 @@ type Data = HashMap<String, data::Value>;
 pub enum EvalError {
     #[fail(display = "No value for key {}", key)]
     NoValueForKey { key: String },
+
+    #[fail(display = "Found None, expected {}", tpe)]
+    UnexpectedNone { tpe: String },
+
+    #[fail(display = "Expected JSON")]
+    ExpectedJson
+
 }
 
 #[derive(Debug, Fail)]
@@ -27,7 +34,7 @@ pub enum TypeError {
     ExpectedBool { found: String },
 
     #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
-           pattern, extracted)]
+    pattern, extracted)]
     ParseNumPatterns { pattern: usize, extracted: usize },
 }
 
@@ -35,13 +42,13 @@ pub trait Evaluatable<T> {
     fn eval(&self, record: &Data) -> Result<T, EvalError>;
 }
 
+pub trait EvaluatableStr {
+    fn eval_borrow<'a>(&self, record: &'a Data) -> Result<&'a str, EvalError>;
+
+}
+
 pub trait UnaryPreAggOperator {
-    fn process(&self, rec: Record) -> Option<Record>;
-    fn get_input<'a>(&self, input_column: &Option<String>, rec: &'a Record) -> Option<&'a str> {
-        //inp_
-        let inp_col = input_column.as_ref().map(|s| &**s);
-        rec.get_str(inp_col)
-    }
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError>;
 }
 
 pub trait AggregateOperator: Send + Sync {
@@ -81,8 +88,8 @@ pub enum BoolExpr {
 
 impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
-        let l = self.left.eval(record)?;
-        let r = self.right.eval(record)?;
+        let l: data::Value = self.left.eval(record)?;
+        let r: data::Value = self.right.eval(record)?;
         let result = match self.operator {
             BoolExpr::Eq => l == r,
             BoolExpr::Neq => l != r,
@@ -108,6 +115,22 @@ impl Evaluatable<data::Value> for Expr {
             }
             Expr::Value(ref v) => Ok(v.clone()),
         }
+    }
+}
+
+impl Evaluatable<String> for Expr {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<String, EvalError> {
+        let as_value: data::Value = self.eval(record)?;
+        match as_value {
+            data::Value::None => Err(EvalError::UnexpectedNone { tpe: "String".to_string() }),
+            other => Ok(other.to_string())
+        }
+    }
+}
+
+impl EvaluatableStr for Expr {
+    fn eval_borrow<'a>(&self, record: &'a HashMap<String, data::Value>) -> Result<&'a str, EvalError> {
+        unimplemented!()
     }
 }
 
@@ -442,7 +465,7 @@ impl AggregateOperator for MultiGrouper {
 pub struct Parse {
     regex: regex::Regex,
     fields: Vec<String>,
-    input_column: Option<String>,
+    input_column: Option<Expr>,
 }
 
 impl Parse {
@@ -467,41 +490,42 @@ impl Parse {
             Result::Ok(Parse {
                 regex: regex::Regex::new(&regex_str).unwrap(),
                 fields,
-                input_column,
+                input_column: input_column.map(Expr::Column),
             })
         }
     }
 
-    fn matches(&self, rec: &Record) -> Option<Vec<data::Value>> {
-        let inp_opt: Option<&str> = self.get_input(&self.input_column, rec);
-        inp_opt.and_then(|inp| {
-            let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
-            if matches.is_empty() {
-                None
-            } else {
-                let capture = &matches[0];
-                let mut values: Vec<data::Value> = Vec::new();
-                for i in 0..self.fields.len() {
-                    // the first capture is the entire string
-                    values.push(data::Value::from_string(&capture[i + 1]));
-                }
-                Some(values)
+    fn matches(&self, rec: &Record) -> Result<Option<Vec<data::Value>>, EvalError> {
+        let inp: String = match self.input_column {
+            Some(ref col) => col.eval(&rec.data)?,
+            None => rec.raw.clone()
+        };
+        let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
+        if matches.is_empty() {
+            Ok(None)
+        } else {
+            let capture = &matches[0];
+            let mut values: Vec<data::Value> = Vec::new();
+            for i in 0..self.fields.len() {
+                // the first capture is the entire string
+                values.push(data::Value::from_string(&capture[i + 1]));
             }
-        })
+            Ok(Some(values))
+        }
     }
 }
 
 impl UnaryPreAggOperator for Parse {
-    fn process(&self, rec: Record) -> Option<Record> {
-        let matches = self.matches(&rec);
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        let matches = self.matches(&rec)?;
         match matches {
-            None => None,
+            None => Ok(None),
             Some(matches) => {
                 let mut rec = rec;
                 for (i, field) in self.fields.iter().enumerate() {
                     rec = rec.put(field, matches[i].clone());
                 }
-                Some(rec)
+                Ok(Some(rec))
             }
         }
     }
@@ -518,11 +542,11 @@ impl<T: Evaluatable<bool>> Where<T> {
 }
 
 impl<T: Evaluatable<bool>> UnaryPreAggOperator for Where<T> {
-    fn process(&self, rec: Record) -> Option<Record> {
-        if self.expr.eval(&rec.data).unwrap_or(false) {
-            Some(rec)
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        if self.expr.eval(&rec.data)? {
+            Ok(Some(rec))
         } else {
-            None
+            Ok(None)
         }
     }
 }
@@ -545,7 +569,7 @@ impl Fields {
 }
 
 impl UnaryPreAggOperator for Fields {
-    fn process(&self, rec: Record) -> Option<Record> {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let mut rec = rec;
         match self.mode {
             FieldMode::Only => {
@@ -555,60 +579,59 @@ impl UnaryPreAggOperator for Fields {
                 rec.data.retain(|k, _| !self.columns.contains(k));
             }
         }
-        Some(rec)
-    }
-}
-
-pub struct ParseJson {
-    input_column: Option<String>,
-}
-
-impl ParseJson {
-    pub fn new(input_column: Option<String>) -> ParseJson {
-        ParseJson { input_column }
-    }
-}
-
-impl UnaryPreAggOperator for ParseJson {
-    fn process(&self, rec: Record) -> Option<Record> {
-        let json_opt = {
-            let inp_str_opt = self.get_input(&self.input_column, &rec);
-            inp_str_opt.map(|inp_str| serde_json::from_str(inp_str))
-        };
-        match json_opt {
-            Some(Ok(v)) => {
-                let v: JsonValue = v;
-                match v {
-                    JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
-                        record_opt.and_then(|record| match v {
-                            &JsonValue::Number(ref num) => if num.is_i64() {
-                                Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
-                            } else {
-                                Some(record.put(k, data::Value::from_float(num.as_f64().unwrap())))
-                            },
-                            &JsonValue::String(ref s) => {
-                                Some(record.put(k, data::Value::Str(s.to_string())))
-                            }
-                            &JsonValue::Null => Some(record.put(k, data::Value::None)),
-                            &JsonValue::Bool(b) => Some(record.put(k, data::Value::Bool(b))),
-                            _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
-                        })
-                    }),
-                    _other => None,
-                }
-            }
-            _e => None,
+        if rec.data.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(rec))
         }
     }
 }
 
+pub struct ParseJson {
+    input_column: Option<Expr>,
+}
+
+impl ParseJson {
+    pub fn new(input_column: Option<String>) -> ParseJson {
+        ParseJson { input_column: input_column.map(Expr::Column) }
+    }
+}
+
+impl UnaryPreAggOperator for ParseJson {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        let inp: String = match self.input_column {
+            Some(ref col) => col.eval(&rec.data)?,
+            None => rec.raw.clone()
+        };
+        let json: JsonValue = serde_json::from_str(&inp).map_err(|_|EvalError::ExpectedJson)?;
+        let res = match json {
+            JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
+                record_opt.and_then(|record| match v {
+                    &JsonValue::Number(ref num) => if num.is_i64() {
+                        Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
+                    } else {
+                        Some(record.put(k, data::Value::from_float(num.as_f64().unwrap())))
+                    },
+                    &JsonValue::String(ref s) => {
+                        Some(record.put(k, data::Value::Str(s.to_string())))
+                    }
+                    &JsonValue::Null => Some(record.put(k, data::Value::None)),
+                    &JsonValue::Bool(b) => Some(record.put(k, data::Value::Bool(b))),
+                    _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
+                })
+            }),
+            _other => Some(rec)
+        };
+        Ok(res)
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use data::Record;
     use data::Value;
     use operator::itertools::Itertools;
-
+    use super::*;
     impl From<String> for Expr {
         fn from(inp: String) -> Self {
             Expr::Column(inp)
@@ -621,7 +644,7 @@ mod tests {
             &(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n"),
         );
         let parser = ParseJson::new(None);
-        let rec = parser.process(rec).unwrap();
+        let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data,
             hashmap! {
@@ -642,7 +665,7 @@ mod tests {
         let rec = rec.put("k3", Value::Str("v3".to_string()));
         let rec = rec.put("k4", Value::Str("v4".to_string()));
         let fields = Fields::new(&["k1".to_string()], FieldMode::Only);
-        let rec = fields.process(rec).unwrap();
+        let rec = fields.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data,
             hashmap! {
@@ -659,7 +682,7 @@ mod tests {
         let rec = rec.put("k3", Value::Str("v3".to_string()));
         let rec = rec.put("k4", Value::Str("v4".to_string()));
         let fields = Fields::new(&["k1".to_string()], FieldMode::Except);
-        let rec = fields.process(rec).unwrap();
+        let rec = fields.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data,
             hashmap! {
@@ -687,7 +710,7 @@ mod tests {
             ],
             None,
         ).unwrap();
-        let rec = parser.process(rec).unwrap();
+        let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("sender").unwrap(),
             &Value::Str("10.0.2.243.53938".to_string())
@@ -708,7 +731,7 @@ mod tests {
             vec!["key".to_string(), "value".to_string()],
             Some("from_col".to_string()),
         ).unwrap();
-        let rec = parser.process(rec).unwrap();
+        let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("key").unwrap(),
             &data::Value::Str("k1".to_string())

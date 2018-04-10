@@ -1,6 +1,6 @@
 class AgrindBin < Formula
   version 'v0.7.3'
-  desc "Slice and dice log files on the command line"
+  desc "Slice and dice log files on the command-line"
   homepage "https://github.com/rcoh/angle-grinder"
 
   if OS.mac?
