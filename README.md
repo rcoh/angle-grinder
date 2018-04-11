@@ -247,7 +247,7 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 it has a refresh rate of about 20hz.
 
 ### Contributing
-`angle-grinder` builds with stable rust:
+`angle-grinder` builds with nighty rust _only_ until `Box::leak` stablizes:
 ```bash
 cargo build
 cargo test

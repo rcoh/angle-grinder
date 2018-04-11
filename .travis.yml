@@ -18,14 +18,16 @@ matrix:
   include:
     # Linux
     - env: TARGET=x86_64-unknown-linux-musl
+      rust: nightly
 
     # OSX
     - env: TARGET=x86_64-apple-darwin
       os: osx
+      rust: nightly
 
     # Testing other channels
-    - env: TARGET=x86_64-unknown-linux-musl
-      rust: nightly
+    # - env: TARGET=x86_64-unknown-linux-musl
+    #  rust: nightly
 
 before_install:
   - set -e
@@ -57,7 +59,7 @@ deploy:
     # In this example, there are some targets that are tested using the stable
     # and nightly channels. This condition makes sure there is only one release
     # for such targets and that's generated using the stable channel
-    condition: $TRAVIS_RUST_VERSION = stable
+    # condition: $TRAVIS_RUST_VERSION = stable
     tags: true
   provider: releases
   skip_cleanup: true
