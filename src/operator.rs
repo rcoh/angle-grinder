@@ -24,7 +24,10 @@ pub enum EvalError {
     UnexpectedNone { tpe: String },
 
     #[fail(display = "Expected JSON")]
-    ExpectedJson
+    ExpectedJson,
+
+    #[fail(display = "Expected string, found {}", found)]
+    ExpectedString { found: String },
 
 }
 
@@ -32,6 +35,7 @@ pub enum EvalError {
 pub enum TypeError {
     #[fail(display = "Expected boolean expression, found {}", found)]
     ExpectedBool { found: String },
+
 
     #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
     pattern, extracted)]
@@ -48,6 +52,15 @@ pub trait EvaluatableBorrowed<T> {
 
 pub trait UnaryPreAggOperator {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError>;
+    fn get_input<'a>(&self, rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
+        match col {
+            Some(expr) => {
+                let res: &String = expr.eval_borrowed(&rec.data)?;
+                Ok(res)
+            }
+            None => Ok(&rec.raw)
+        }
+    }
 }
 
 pub trait AggregateOperator: Send + Sync {
@@ -116,12 +129,14 @@ impl EvaluatableBorrowed<data::Value> for Expr {
     }
 }
 
-impl Evaluatable<String> for Expr {
-    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<String, EvalError> {
+
+impl EvaluatableBorrowed<String> for Expr {
+    fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a String, EvalError> {
         let as_value: &data::Value = self.eval_borrowed(record)?;
         match as_value {
             data::Value::None => Err(EvalError::UnexpectedNone { tpe: "String".to_string() }),
-            other => Ok(other.to_string())
+            data::Value::Str(ref s) => Ok(s),
+            _ => Err(EvalError::ExpectedString { found: "other".to_string() })
         }
     }
 }
@@ -489,10 +504,7 @@ impl Parse {
     }
 
     fn matches(&self, rec: &Record) -> Result<Option<Vec<data::Value>>, EvalError> {
-        let inp: String = match self.input_column {
-            Some(ref col) => col.eval(&rec.data)?,
-            None => rec.raw.clone()
-        };
+        let inp = self.get_input(rec, &self.input_column)?;
         let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
         if matches.is_empty() {
             Ok(None)
@@ -592,11 +604,10 @@ impl ParseJson {
 
 impl UnaryPreAggOperator for ParseJson {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
-        let inp: String = match self.input_column {
-            Some(ref col) => col.eval(&rec.data)?,
-            None => rec.raw.clone()
+        let json: JsonValue = {
+            let inp = self.get_input(&rec, &self.input_column)?;
+            serde_json::from_str(&inp).map_err(|_|EvalError::ExpectedJson)?
         };
-        let json: JsonValue = serde_json::from_str(&inp).map_err(|_|EvalError::ExpectedJson)?;
         let res = match json {
             JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
                 record_opt.and_then(|record| match v {
