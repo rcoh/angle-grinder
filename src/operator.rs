@@ -42,9 +42,8 @@ pub trait Evaluatable<T> {
     fn eval(&self, record: &Data) -> Result<T, EvalError>;
 }
 
-pub trait EvaluatableStr {
-    fn eval_borrow<'a>(&self, record: &'a Data) -> Result<&'a str, EvalError>;
-
+pub trait EvaluatableBorrowed<T> {
+    fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a T, EvalError>;
 }
 
 pub trait UnaryPreAggOperator {
@@ -66,7 +65,7 @@ pub trait AggregateFunction: Send + Sync {
 pub enum Expr {
     Column(String),
     Comparison(BinaryExpr<BoolExpr>),
-    Value(data::Value),
+    Value(&'static data::Value),
 }
 
 #[derive(Debug, Clone)]
@@ -88,8 +87,8 @@ pub enum BoolExpr {
 
 impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
-        let l: data::Value = self.left.eval(record)?;
-        let r: data::Value = self.right.eval(record)?;
+        let l: &data::Value = self.left.eval_borrowed(record)?;
+        let r: &data::Value = self.right.eval_borrowed(record)?;
         let result = match self.operator {
             BoolExpr::Eq => l == r,
             BoolExpr::Neq => l != r,
@@ -102,35 +101,28 @@ impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     }
 }
 
-impl Evaluatable<data::Value> for Expr {
-    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<data::Value, EvalError> {
+impl EvaluatableBorrowed<data::Value> for Expr {
+    fn eval_borrowed<'a>(&self, record: &'a HashMap<String, data::Value>) -> Result<&'a data::Value, EvalError> {
         match *self {
             Expr::Column(ref col) => record
                 .get(col)
-                .cloned()
                 .ok_or_else(|| EvalError::NoValueForKey { key: col.clone() }),
             Expr::Comparison(ref binary_expr) => {
                 let bool_res = binary_expr.eval(record)?;
-                Ok(data::Value::Bool(bool_res))
+                Ok(data::Value::from_bool(bool_res))
             }
-            Expr::Value(ref v) => Ok(v.clone()),
+            Expr::Value(ref v) => Ok(v),
         }
     }
 }
 
 impl Evaluatable<String> for Expr {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<String, EvalError> {
-        let as_value: data::Value = self.eval(record)?;
+        let as_value: &data::Value = self.eval_borrowed(record)?;
         match as_value {
             data::Value::None => Err(EvalError::UnexpectedNone { tpe: "String".to_string() }),
             other => Ok(other.to_string())
         }
-    }
-}
-
-impl EvaluatableStr for Expr {
-    fn eval_borrow<'a>(&self, record: &'a HashMap<String, data::Value>) -> Result<&'a str, EvalError> {
-        unimplemented!()
     }
 }
 
@@ -178,7 +170,7 @@ impl Sum {
 
 impl AggregateFunction for Sum {
     fn process(&mut self, rec: &Data) {
-        self.column.eval(rec).iter().for_each(|value| match value {
+        self.column.eval_borrowed(rec).iter().for_each(|value| match value {
             &data::Value::Float(ref f) => {
                 self.is_float = true;
                 self.total += f.into_inner();
@@ -254,7 +246,7 @@ impl Average {
 
 impl AggregateFunction for Average {
     fn process(&mut self, data: &Data) {
-        self.column.eval(data).iter().for_each(|value| match value {
+        self.column.eval_borrowed(data).iter().for_each(|value| match value {
             &data::Value::Float(ref f) => {
                 self.total += f.into_inner();
                 self.count += 1
@@ -410,9 +402,10 @@ impl MultiGrouper {
         }
     }
     fn process_map(&mut self, data: &Data) {
-        let key_values = self.key_cols.iter().map(|expr| expr.eval(data));
+        let key_values = self.key_cols.iter().map(|expr| expr.eval_borrowed(data));
         let key_columns: Vec<data::Value> = key_values
-            .map(|value_res| value_res.unwrap_or_else(|_| data::Value::None))
+            .map(|value_res| value_res.unwrap_or_else(|_| data::NONE))
+            .cloned()
             .collect();
         let agg_col = &self.agg_col;
         let row = self.state.entry(key_columns).or_insert_with(|| {

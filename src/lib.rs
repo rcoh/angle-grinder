@@ -1,3 +1,5 @@
+#![feature(box_leak)]
+
 #[macro_use]
 extern crate nom;
 
@@ -18,7 +20,7 @@ mod typecheck;
 
 pub mod pipeline {
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
-    use data::{Record, Row};
+    use data::{Record, Row, Value};
     use failure::Error;
     use lang;
     use lang::*;
@@ -74,7 +76,11 @@ pub mod pipeline {
                         })
                     }
                 },
-                lang::Expr::Value(value) => operator::Expr::Value(value),
+                lang::Expr::Value(value) => {
+                    let boxed = Box::new(value);
+                    let static_value: &'static mut Value  = Box::leak(boxed);
+                    operator::Expr::Value(static_value)
+                },
             }
         }
     }

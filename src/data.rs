@@ -36,6 +36,11 @@ pub enum Value {
     None,
 }
 
+pub static FALSE_VALUE: &'static Value = &Value::Bool(false);
+pub static TRUE_VALUE: &'static Value = &Value::Bool(true);
+pub static NONE: &'static Value = &Value::None;
+
+
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
@@ -92,6 +97,13 @@ impl Value {
             Value::None => "$None$".to_string(),
             Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
             Value::Bool(ref s) => format!("{}", s),
+        }
+    }
+
+    pub fn from_bool(b: bool) -> &'static Value {
+        match b {
+            true => TRUE_VALUE,
+            false => FALSE_VALUE
         }
     }
 
