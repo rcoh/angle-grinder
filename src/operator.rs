@@ -12,6 +12,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::iter::FromIterator;
+use operator::itertools::Itertools;
 
 type Data = HashMap<String, data::Value>;
 
@@ -36,7 +37,6 @@ pub enum TypeError {
     #[fail(display = "Expected boolean expression, found {}", found)]
     ExpectedBool { found: String },
 
-
     #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
     pattern, extracted)]
     ParseNumPatterns { pattern: usize, extracted: usize },
@@ -50,7 +50,7 @@ pub trait EvaluatableBorrowed<T> {
     fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a T, EvalError>;
 }
 
-pub trait UnaryPreAggOperator {
+pub trait UnaryPreAggOperator: Send + Sync {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError>;
     fn get_input<'a>(&self, rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
         match col {
@@ -59,6 +59,63 @@ pub trait UnaryPreAggOperator {
                 Ok(res)
             }
             None => Ok(&rec.raw)
+        }
+    }
+}
+
+impl<'a, T: UnaryPreAggOperator + Send + Sync+ 'a> From<T> for Box<AggregateOperator+ 'a> {
+    fn from(op: T) -> Self {
+        Box::new(PreAggAdapter::new(op))
+    }
+}
+
+pub struct PreAggAdapter<T: UnaryPreAggOperator + Send + Sync> {
+    op: T,
+    state: Aggregate,
+}
+
+impl<T: UnaryPreAggOperator + Send + Sync> PreAggAdapter<T> {
+    pub fn new(op: T) -> Self {
+        PreAggAdapter { op, state: Aggregate { columns: Vec::new(), data: Vec::new() }}
+    }
+}
+
+impl<T: UnaryPreAggOperator + Send + Sync> UnaryPreAggOperator for PreAggAdapter<T> {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        self.op.process(rec)
+    }
+
+    fn get_input<'a>(&self, rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
+        self.op.get_input(rec, col)
+    }
+}
+
+impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T> {
+    fn emit(&self) -> Aggregate {
+        self.state.clone()
+    }
+
+    fn process(&mut self, row: Row) {
+        match row {
+            Row::Record(_) => panic!("PreAgg adaptor should only be used after aggregataes"),
+            Row::Aggregate(agg) => {
+                let columns = agg.columns;
+                let processed_records: Vec<data::VMap> = {
+                    let records = agg.data.into_iter()
+                        .map(|vmap| data::Record { data: vmap, raw: "".to_string() })
+                        .flat_map(|rec| self.op.process(rec).unwrap_or(None))
+                        .map(|rec| rec.data);
+                     records.collect()
+                };
+                let new_keys: Vec<String> = {
+                    processed_records.iter().flat_map(|vmap|vmap.keys()).filter(|col|columns.contains(col)).unique().cloned()
+                }.collect();
+                let mut columns = columns;
+                columns.extend(new_keys);
+                self.state = Aggregate { data: processed_records, columns };
+
+                //self.state = Aggregate { }
+            }
         }
     }
 }
@@ -536,17 +593,17 @@ impl UnaryPreAggOperator for Parse {
     }
 }
 
-pub struct Where<T: Evaluatable<bool>> {
+pub struct Where<T: Evaluatable<bool>+ Send + Sync> {
     expr: T,
 }
 
-impl<T: Evaluatable<bool>> Where<T> {
+impl<T: Evaluatable<bool> + Send + Sync> Where<T> {
     pub fn new(expr: T) -> Self {
         Where { expr }
     }
 }
 
-impl<T: Evaluatable<bool>> UnaryPreAggOperator for Where<T> {
+impl<T: Evaluatable<bool> + Send + Sync> UnaryPreAggOperator for Where<T> {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         if self.expr.eval(&rec.data)? {
             Ok(Some(rec))
@@ -606,7 +663,7 @@ impl UnaryPreAggOperator for ParseJson {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let json: JsonValue = {
             let inp = self.get_input(&rec, &self.input_column)?;
-            serde_json::from_str(&inp).map_err(|_|EvalError::ExpectedJson)?
+            serde_json::from_str(&inp).map_err(|_| EvalError::ExpectedJson)?
         };
         let res = match json {
             JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
@@ -636,6 +693,7 @@ mod tests {
     use data::Value;
     use operator::itertools::Itertools;
     use super::*;
+
     impl From<String> for Expr {
         fn from(inp: String) -> Self {
             Expr::Column(inp)

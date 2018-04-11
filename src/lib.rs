@@ -116,6 +116,36 @@ pub mod pipeline {
             }
         }
 
+        fn convert_inline_adapted(
+            op: lang::InlineOperator,
+        ) -> Result<Box<operator::AggregateOperator>, operator::TypeError> {
+            match op {
+                InlineOperator::Json { input_column } => {
+                    Ok(operator::ParseJson::new(input_column).into())
+                },
+                InlineOperator::Parse {
+                    pattern,
+                    fields,
+                    input_column,
+                } => Ok(operator::Parse::new(
+                    &pattern,
+                    fields,
+                    input_column.map(|c| c.force()),
+                )?.into()),
+                InlineOperator::Fields { fields, mode } => {
+                    let omode = match mode {
+                        FieldMode::Except => operator::FieldMode::Except,
+                        FieldMode::Only => operator::FieldMode::Only,
+                    };
+                    Ok(operator::Fields::new(&fields, omode).into())
+                }
+                InlineOperator::Where { expr } => {
+                    let expr: operator::Expr = expr.into();
+                    typecheck::create_where_adapt(expr)
+                }
+            }
+        }
+
         fn convert_sort(op: lang::SortOperator) -> Box<operator::AggregateOperator> {
             let mode = match op.direction {
                 SortMode::Ascending => operator::SortDirection::Ascending,
@@ -187,7 +217,7 @@ pub mod pipeline {
                     Operator::Inline(inline_op) => if !in_agg {
                         pre_agg.push(Pipeline::convert_inline(inline_op)?);
                     } else {
-                        Err(CompileError::NonAggregateAfterAggregate)?;
+                        post_agg.push(Pipeline::convert_inline_adapted(inline_op)?)
                     },
                     Operator::MultiAggregate(agg_op) => {
                         in_agg = true;
