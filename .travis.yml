@@ -9,12 +9,9 @@ sudo: required
 
 env:
   global:
-    # TODO Update this to match the name of your project.
     - CRATE_NAME=angle_grinder
 
 matrix:
-  # TODO These are all the build jobs. Adjust as necessary. Comment out what you
-  # don't need
   include:
     # Linux
     - env: TARGET=x86_64-unknown-linux-musl
