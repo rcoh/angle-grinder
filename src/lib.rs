@@ -78,9 +78,9 @@ pub mod pipeline {
                 },
                 lang::Expr::Value(value) => {
                     let boxed = Box::new(value);
-                    let static_value: &'static mut Value  = Box::leak(boxed);
+                    let static_value: &'static mut Value = Box::leak(boxed);
                     operator::Expr::Value(static_value)
-                },
+                }
             }
         }
     }
@@ -122,16 +122,14 @@ pub mod pipeline {
             match op {
                 InlineOperator::Json { input_column } => {
                     Ok(operator::ParseJson::new(input_column).into())
-                },
+                }
                 InlineOperator::Parse {
                     pattern,
                     fields,
                     input_column,
-                } => Ok(operator::Parse::new(
-                    &pattern,
-                    fields,
-                    input_column.map(|c| c.force()),
-                )?.into()),
+                } => Ok(
+                    operator::Parse::new(&pattern, fields, input_column.map(|c| c.force()))?.into(),
+                ),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
                         FieldMode::Except => operator::FieldMode::Except,

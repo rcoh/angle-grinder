@@ -40,7 +40,6 @@ pub static FALSE_VALUE: &'static Value = &Value::Bool(false);
 pub static TRUE_VALUE: &'static Value = &Value::Bool(true);
 pub static NONE: &'static Value = &Value::None;
 
-
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
@@ -103,7 +102,7 @@ impl Value {
     pub fn from_bool(b: bool) -> &'static Value {
         match b {
             true => TRUE_VALUE,
-            false => FALSE_VALUE
+            false => FALSE_VALUE,
         }
     }
 

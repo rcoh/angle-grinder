@@ -4,15 +4,15 @@ extern crate regex;
 extern crate regex_syntax;
 extern crate serde_json;
 
-use data;
-use data::{Aggregate, Record, Row};
 use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
+use data;
+use data::{Aggregate, Record, Row};
+use operator::itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::iter::FromIterator;
-use operator::itertools::Itertools;
 
 type Data = HashMap<String, data::Value>;
 
@@ -29,7 +29,6 @@ pub enum EvalError {
 
     #[fail(display = "Expected string, found {}", found)]
     ExpectedString { found: String },
-
 }
 
 #[derive(Debug, Fail)]
@@ -38,7 +37,7 @@ pub enum TypeError {
     ExpectedBool { found: String },
 
     #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
-    pattern, extracted)]
+           pattern, extracted)]
     ParseNumPatterns { pattern: usize, extracted: usize },
 }
 
@@ -58,12 +57,12 @@ pub trait UnaryPreAggOperator: Send + Sync {
                 let res: &String = expr.eval_borrowed(&rec.data)?;
                 Ok(res)
             }
-            None => Ok(&rec.raw)
+            None => Ok(&rec.raw),
         }
     }
 }
 
-impl<'a, T: UnaryPreAggOperator + Send + Sync+ 'a> From<T> for Box<AggregateOperator+ 'a> {
+impl<'a, T: UnaryPreAggOperator + Send + Sync + 'a> From<T> for Box<AggregateOperator + 'a> {
     fn from(op: T) -> Self {
         Box::new(PreAggAdapter::new(op))
     }
@@ -76,7 +75,13 @@ pub struct PreAggAdapter<T: UnaryPreAggOperator + Send + Sync> {
 
 impl<T: UnaryPreAggOperator + Send + Sync> PreAggAdapter<T> {
     pub fn new(op: T) -> Self {
-        PreAggAdapter { op, state: Aggregate { columns: Vec::new(), data: Vec::new() }}
+        PreAggAdapter {
+            op,
+            state: Aggregate {
+                columns: Vec::new(),
+                data: Vec::new(),
+            },
+        }
     }
 }
 
@@ -101,18 +106,30 @@ impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T
             Row::Aggregate(agg) => {
                 let columns = agg.columns;
                 let processed_records: Vec<data::VMap> = {
-                    let records = agg.data.into_iter()
-                        .map(|vmap| data::Record { data: vmap, raw: "".to_string() })
+                    let records = agg.data
+                        .into_iter()
+                        .map(|vmap| data::Record {
+                            data: vmap,
+                            raw: "".to_string(),
+                        })
                         .flat_map(|rec| self.op.process(rec).unwrap_or(None))
                         .map(|rec| rec.data);
-                     records.collect()
+                    records.collect()
                 };
                 let new_keys: Vec<String> = {
-                    processed_records.iter().flat_map(|vmap|vmap.keys()).filter(|col|columns.contains(col)).unique().cloned()
+                    processed_records
+                        .iter()
+                        .flat_map(|vmap| vmap.keys())
+                        .filter(|col| !columns.contains(col))
+                        .unique()
+                        .cloned()
                 }.collect();
                 let mut columns = columns;
                 columns.extend(new_keys);
-                self.state = Aggregate { data: processed_records, columns };
+                self.state = Aggregate {
+                    data: processed_records,
+                    columns,
+                };
 
                 //self.state = Aggregate { }
             }
@@ -155,6 +172,12 @@ pub enum BoolExpr {
     Lte,
 }
 
+impl<T: Copy> Evaluatable<T> for T {
+    fn eval(&self, _record: &HashMap<String, data::Value>) -> Result<T, EvalError> {
+        Ok(*self);
+    }
+}
+
 impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
         let l: &data::Value = self.left.eval_borrowed(record)?;
@@ -172,7 +195,10 @@ impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
 }
 
 impl EvaluatableBorrowed<data::Value> for Expr {
-    fn eval_borrowed<'a>(&self, record: &'a HashMap<String, data::Value>) -> Result<&'a data::Value, EvalError> {
+    fn eval_borrowed<'a>(
+        &self,
+        record: &'a HashMap<String, data::Value>,
+    ) -> Result<&'a data::Value, EvalError> {
         match *self {
             Expr::Column(ref col) => record
                 .get(col)
@@ -186,14 +212,17 @@ impl EvaluatableBorrowed<data::Value> for Expr {
     }
 }
 
-
 impl EvaluatableBorrowed<String> for Expr {
     fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a String, EvalError> {
         let as_value: &data::Value = self.eval_borrowed(record)?;
         match as_value {
-            data::Value::None => Err(EvalError::UnexpectedNone { tpe: "String".to_string() }),
+            data::Value::None => Err(EvalError::UnexpectedNone {
+                tpe: "String".to_string(),
+            }),
             data::Value::Str(ref s) => Ok(s),
-            _ => Err(EvalError::ExpectedString { found: "other".to_string() })
+            _ => Err(EvalError::ExpectedString {
+                found: "other".to_string(),
+            }),
         }
     }
 }
@@ -242,17 +271,20 @@ impl Sum {
 
 impl AggregateFunction for Sum {
     fn process(&mut self, rec: &Data) {
-        self.column.eval_borrowed(rec).iter().for_each(|value| match value {
-            &data::Value::Float(ref f) => {
-                self.is_float = true;
-                self.total += f.into_inner();
-            }
-            &data::Value::Int(ref i) => {
-                self.total += *i as f64;
-            }
-            _other => self.warnings
-                .push("Got string. Can only average into or float".to_string()),
-        });
+        self.column
+            .eval_borrowed(rec)
+            .iter()
+            .for_each(|value| match value {
+                &data::Value::Float(ref f) => {
+                    self.is_float = true;
+                    self.total += f.into_inner();
+                }
+                &data::Value::Int(ref i) => {
+                    self.total += *i as f64;
+                }
+                _other => self.warnings
+                    .push("Got string. Can only average into or float".to_string()),
+            });
     }
 
     fn emit(&self) -> data::Value {
@@ -318,18 +350,21 @@ impl Average {
 
 impl AggregateFunction for Average {
     fn process(&mut self, data: &Data) {
-        self.column.eval_borrowed(data).iter().for_each(|value| match value {
-            &data::Value::Float(ref f) => {
-                self.total += f.into_inner();
-                self.count += 1
-            }
-            &data::Value::Int(ref i) => {
-                self.total += *i as f64;
-                self.count += 1
-            }
-            _other => self.warnings
-                .push("Got string. Can only average into or float".to_string()),
-        });
+        self.column
+            .eval_borrowed(data)
+            .iter()
+            .for_each(|value| match value {
+                &data::Value::Float(ref f) => {
+                    self.total += f.into_inner();
+                    self.count += 1
+                }
+                &data::Value::Int(ref i) => {
+                    self.total += *i as f64;
+                    self.count += 1
+                }
+                _other => self.warnings
+                    .push("Got string. Can only average into or float".to_string()),
+            });
     }
 
     fn emit(&self) -> data::Value {
@@ -593,7 +628,7 @@ impl UnaryPreAggOperator for Parse {
     }
 }
 
-pub struct Where<T: Evaluatable<bool>+ Send + Sync> {
+pub struct Where<T: Evaluatable<bool> + Send + Sync> {
     expr: T,
 }
 
@@ -655,7 +690,9 @@ pub struct ParseJson {
 
 impl ParseJson {
     pub fn new(input_column: Option<String>) -> ParseJson {
-        ParseJson { input_column: input_column.map(Expr::Column) }
+        ParseJson {
+            input_column: input_column.map(Expr::Column),
+        }
     }
 }
 
@@ -681,18 +718,17 @@ impl UnaryPreAggOperator for ParseJson {
                     _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
                 })
             }),
-            _other => Some(rec)
+            _other => Some(rec),
         };
         Ok(res)
     }
 }
 
-
 #[cfg(test)]
 mod tests {
+    use super::*;
     use data::Value;
     use operator::itertools::Itertools;
-    use super::*;
 
     impl From<String> for Expr {
         fn from(inp: String) -> Self {
@@ -976,5 +1012,34 @@ mod tests {
         let mut revagg = agg.clone();
         revagg.data.reverse();
         assert_eq!(sorter.emit(), revagg);
+    }
+
+    #[test]
+    fn test_agg_adapter() {
+        let where_op = Where::new(true);
+        let adapted = PreAggAdapter::new(where_op);
+        let mut adapted: Box<AggregateOperator> = Box::new(adapted);
+        let agg = Aggregate::new(
+            &["kc1".to_string(), "kc2".to_string()],
+            "count".to_string(),
+            &[
+                (
+                    hashmap! {
+                        "kc1".to_string() => "k1".to_string(),
+                        "kc2".to_string() => "k2".to_string()
+                    },
+                    Value::Int(100),
+                ),
+                (
+                    hashmap! {
+                        "kc1".to_string() => "k300".to_string(),
+                        "kc2".to_string() => "k40000".to_string()
+                    },
+                    Value::Int(500),
+                ),
+            ],
+        );
+        let _: () = adapted.process(Row::Aggregate(agg.clone()));
+        assert_eq!(adapted.emit(), agg.clone());
     }
 }
