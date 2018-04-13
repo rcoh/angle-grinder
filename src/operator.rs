@@ -174,7 +174,7 @@ pub enum BoolExpr {
 
 impl<T: Copy> Evaluatable<T> for T {
     fn eval(&self, _record: &HashMap<String, data::Value>) -> Result<T, EvalError> {
-        Ok(*self);
+        Ok(*self)
     }
 }
 
