@@ -34,7 +34,7 @@ curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_gri
 
 ### From Source
 
-If you have Cargo installed, you can compile & install from source: (Works with recent, `stable` Rust)
+If you have Cargo installed, you can compile & install from source: (Works with recent, `nightly` Rust, requires unstable `Box::leak`)
 ```bash
 cargo install ag
 ```
