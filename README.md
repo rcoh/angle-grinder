@@ -258,4 +258,6 @@ agrind --help
 See the open issues for potential improvements/issues.
 
 ### Related Work 
-Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
+* Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
+* [lnav](http://lnav.org/) is a similar tool. It's more full-featured but much much more complex (100k lines of C++ vs. 1k lines of Rust)
+* [visidata](http://visidata.org/) is a spreadsheets in your terminal
