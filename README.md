@@ -11,7 +11,12 @@ Angle grinder can process about a million rows per second, so it's usable for fa
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`.
 
 ### With Brew (OS X)
-Brew releases might be bit behind the statically linked binaries.
+Angle grinder is in hombrew-core. I only push updates to homebrew core about once a month.
+```bash
+brew install angle-grinder
+```
+
+For a newer version, you can install from the tap:
 ```bash
 brew tap rcoh/angle-grinder https://github.com/rcoh/angle-grinder.git
 brew install agrind-bin
