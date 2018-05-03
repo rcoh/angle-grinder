@@ -1,5 +1,6 @@
 use data;
-use nom::IResult;
+use nom;
+use nom::types::CompleteStr;
 use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1};
 use std::str;
 
@@ -132,19 +133,19 @@ fn not_escape(c: char) -> bool {
     c != '\\' && c != '\"'
 }
 
-named!(value<&str, data::Value>, ws!(
+named!(value<CompleteStr, data::Value>, ws!(
     alt!(
         map!(quoted_string, |s|data::Value::Str(s.to_string()))
-        | map!(digit1, |s|data::Value::from_string(s))
+        | map!(digit1, |s|data::Value::from_string(s.0))
     )
 ));
-named!(ident<&str, String>, do_parse!(
+named!(ident<CompleteStr, String>, do_parse!(
     start: take_while1!(starts_ident) >>
     rest: take_while!(is_ident) >>
-    (start.to_owned() + rest)
+    (start.0.to_owned() + rest.0)
 ));
 
-named!(e_ident<&str, Expr>,
+named!(e_ident<CompleteStr, Expr>,
     ws!(alt!(
       map!(ident, |col|Expr::Column(col.to_owned()))
     | map!(value, Expr::Value)
@@ -152,7 +153,7 @@ named!(e_ident<&str, Expr>,
     |  ws!(delimited!( tag_s!("("), expr, tag_s!(")") ))
 )));
 
-named!(comp_op<&str, ComparisonOp>, ws!(alt!(
+named!(comp_op<CompleteStr, ComparisonOp>, ws!(alt!(
     map!(tag!("=="), |_|ComparisonOp::Eq)
     | map!(tag!("<="), |_|ComparisonOp::Lte)
     | map!(tag!(">="), |_|ComparisonOp::Gte)
@@ -161,7 +162,7 @@ named!(comp_op<&str, ComparisonOp>, ws!(alt!(
     | map!(tag!("<"), |_|ComparisonOp::Lt)
 )));
 
-named!(expr<&str, Expr>, ws!(alt!(
+named!(expr<CompleteStr, Expr>, ws!(alt!(
     do_parse!(
         l: e_ident >>
         comp: comp_op >>
@@ -171,42 +172,42 @@ named!(expr<&str, Expr>, ws!(alt!(
     | e_ident
 )));
 
-named!(json<&str, InlineOperator>, ws!(do_parse!(
+named!(json<CompleteStr, InlineOperator>, ws!(do_parse!(
     tag!("json") >>
     from_column_opt: opt!(ws!(preceded!(tag!("from"), ident))) >>
     (InlineOperator::Json { input_column: from_column_opt.map(|s|s.to_string()) })
 )));
 
-named!(whre<&str, InlineOperator>, ws!(do_parse!(
+named!(whre<CompleteStr, InlineOperator>, ws!(do_parse!(
     tag!("where") >>
     ex: expr >>
     (InlineOperator::Where { expr: ex })
 )));
 
-named!(quoted_string <&str, &str>, delimited!(
+named!(quoted_string <CompleteStr, &str>, delimited!(
     tag!("\""), 
-    escaped!(take_while1!(not_escape), '\\', one_of!("\"n\\")),  
+    map!(escaped!(take_while1!(not_escape), '\\', one_of!("\"n\\")), |ref s|s.0),
     tag!("\"") 
 ));
 
-named!(var_list<&str, Vec<String> >, ws!(separated_nonempty_list!(
+named!(var_list<CompleteStr, Vec<String> >, ws!(separated_nonempty_list!(
     tag!(","), ws!(ident)
 )));
 
-named!(sourced_expr_list<&str, Vec<(String, Expr)> >, ws!(separated_nonempty_list!(
+named!(sourced_expr_list<CompleteStr, Vec<(String, Expr)> >, ws!(separated_nonempty_list!(
     tag!(","), ws!(sourced_expr)
 )));
 
-named!(sourced_expr<&str, (String, Expr)>, ws!(
+named!(sourced_expr<CompleteStr, (String, Expr)>, ws!(
     do_parse!(
         ex: recognize!(expr) >>
         (
-            ex.trim().to_string(), expr(&format!("{} ~", ex)).unwrap_or(("", Expr::Column(ex.to_string()))).1
+            (ex.0.trim().to_string(), expr(ex).unwrap().1)
         )
 )));
 
 // parse "blah * ... *" [from other_field] as x, y
-named!(parse<&str, InlineOperator>, ws!(do_parse!(
+named!(parse<CompleteStr, InlineOperator>, ws!(do_parse!(
     tag!("parse") >>
     pattern: quoted_string >>
     from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
@@ -219,7 +220,7 @@ named!(parse<&str, InlineOperator>, ws!(do_parse!(
         } )
 )));
 
-named!(fields_mode<&str, FieldMode>, alt!(
+named!(fields_mode<CompleteStr, FieldMode>, alt!(
     map!(
         alt!(tag!("+") | tag!("only") | tag!("include")),
         |_|FieldMode::Only
@@ -230,7 +231,7 @@ named!(fields_mode<&str, FieldMode>, alt!(
     )
 ));
 
-named!(fields<&str, InlineOperator>, ws!(do_parse!(
+named!(fields<CompleteStr, InlineOperator>, ws!(do_parse!(
     tag!("fields") >>
     mode: opt!(fields_mode) >>
     fields: var_list >>
@@ -242,21 +243,21 @@ named!(fields<&str, InlineOperator>, ws!(do_parse!(
     )
 )));
 
-named!(count<&str, AggregateFunction>, map!(tag!("count"), |_s|AggregateFunction::Count{}));
+named!(count<CompleteStr, AggregateFunction>, map!(tag!("count"), |_s|AggregateFunction::Count{}));
 
-named!(average<&str, AggregateFunction>, ws!(do_parse!(
+named!(average<CompleteStr, AggregateFunction>, ws!(do_parse!(
     alt!(tag!("avg") | tag!("average")) >>
     column: delimited!(tag!("("), expr ,tag!(")")) >>
     (AggregateFunction::Average{column})
 )));
 
-named!(count_distinct<&str, AggregateFunction>, ws!(do_parse!(
+named!(count_distinct<CompleteStr, AggregateFunction>, ws!(do_parse!(
     tag!("count_distinct") >>
     column: delimited!(tag!("("), expr,tag!(")")) >>
     (AggregateFunction::CountDistinct{column})
 )));
 
-named!(sum<&str, AggregateFunction>, ws!(do_parse!(
+named!(sum<CompleteStr, AggregateFunction>, ws!(do_parse!(
     tag!("sum") >>
     column: delimited!(tag!("("), expr,tag!(")")) >>
     (AggregateFunction::Sum{column})
@@ -266,30 +267,30 @@ fn is_digit_char(digit: char) -> bool {
     is_digit(digit as u8)
 }
 
-named!(p_nn<&str, AggregateFunction>, ws!(
+named!(p_nn<CompleteStr, AggregateFunction>, ws!(
     do_parse!(
         alt!(tag!("pct") | tag!("percentile") | tag!("p")) >>
         pct: take_while_m_n!(2, 2, is_digit_char) >>
         column: delimited!(tag!("("), expr,tag!(")")) >>
         (AggregateFunction::Percentile{
             column,
-            percentile: (".".to_owned() + pct).parse::<f64>().unwrap(),
-            percentile_str: pct.to_string()
+            percentile: (".".to_owned() + pct.0).parse::<f64>().unwrap(),
+            percentile_str: pct.0.to_string()
         })
     )
 ));
 
-named!(inline_operator<&str, Operator>,
+named!(inline_operator<CompleteStr, Operator>,
    map!(alt!(parse | json | fields | whre), Operator::Inline)
 );
-named!(aggregate_function<&str, AggregateFunction>, alt!(
+named!(aggregate_function<CompleteStr, AggregateFunction>, alt!(
     count_distinct |
     count |
     average |
     sum |
     p_nn));
 
-named!(operator<&str, Operator>, alt!(inline_operator | sort | multi_aggregate_operator));
+named!(operator<CompleteStr, Operator>, alt!(inline_operator | sort | multi_aggregate_operator));
 
 // count by x,y
 // avg(foo) by x
@@ -306,7 +307,7 @@ fn default_output(func: &AggregateFunction) -> String {
     }
 }
 
-named!(complete_agg_function<&str, (String, AggregateFunction)>, ws!(do_parse!(
+named!(complete_agg_function<CompleteStr, (String, AggregateFunction)>, ws!(do_parse!(
         agg_function: aggregate_function >>
         rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
         (
@@ -316,7 +317,7 @@ named!(complete_agg_function<&str, (String, AggregateFunction)>, ws!(do_parse!(
     ))
 );
 
-named!(multi_aggregate_operator<&str, Operator>, ws!(do_parse!(
+named!(multi_aggregate_operator<CompleteStr, Operator>, ws!(do_parse!(
     agg_functions: ws!(separated_nonempty_list!(tag!(","), complete_agg_function)) >>
     key_cols_opt: opt!(preceded!(tag!("by"), sourced_expr_list)) >>
     (Operator::MultiAggregate(MultiAggregateOperator {
@@ -330,7 +331,7 @@ named!(multi_aggregate_operator<&str, Operator>, ws!(do_parse!(
      })))
 ));
 
-named!(sort_mode<&str, SortMode>, alt!(
+named!(sort_mode<CompleteStr, SortMode>, alt!(
     map!(
         alt!(tag!("asc") | tag!("ascending")),
         |_|SortMode::Ascending
@@ -341,7 +342,7 @@ named!(sort_mode<&str, SortMode>, alt!(
     )
 ));
 
-named!(sort<&str, Operator>, ws!(do_parse!(
+named!(sort<CompleteStr, Operator>, ws!(do_parse!(
     tag!("sort") >>
     key_cols_opt: opt!(preceded!(opt!(tag!("by")), var_list)) >>
     dir: opt!(sort_mode) >>
@@ -351,235 +352,223 @@ named!(sort<&str, Operator>, ws!(do_parse!(
      })))
 ));
 
-named!(filter<&str, Search>, alt!(
+named!(filter<CompleteStr, Search>, alt!(
     map!(quoted_string, |s|Search::MatchFilter(s.to_string())) |
     map!(tag!("*"), |_s|Search::MatchAll)
 ));
 
-named!(query<&str, Query>, ws!(do_parse!(
+named!(query<CompleteStr, Query>, ws!(do_parse!(
     filter: dbg!(filter) >>
     operators: dbg!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
+    eof!() >>
     (Query{
         search: filter,
         operators: operators.unwrap_or_default()
     })
 )));
 
-pub const QUERY_TERMINATOR: &str = "~";
-
-pub fn parse_query(query_str: &str) -> IResult<&str, Query> {
-    terminated!(query_str, query, tag!(QUERY_TERMINATOR))
+pub fn parse_query(query_str: &str) -> Result<Query, nom::Err<CompleteStr, u32>> {
+    let parse_result = query(CompleteStr(query_str));
+    //Err(CompleteStr("ok"))
+    parse_result.map(|x| x.1)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    macro_rules! expect {
+        ($f:expr, $inp:expr, $res:expr) => {{
+            let parse_result = $f(CompleteStr($inp));
+            let actual_result = parse_result.map(|res| res.1);
+            assert_eq!(actual_result, $res);
+            let parse_result = $f(CompleteStr($inp));
+            let _ = parse_result.map(|(leftover, _res)| {
+                assert_eq!(leftover, CompleteStr(""));
+            });
+        }};
+    }
+
     #[test]
     fn parse_quoted_string() {
-        assert_eq!(quoted_string(r#""hello""#), Ok(("", "hello")));
-        assert_eq!(
-            quoted_string(r#""test = [*=*] * ""#),
-            Ok(("", "test = [*=*] * "))
-        );
+        expect!(quoted_string, "\"hello\"", Ok("hello"));
+        expect!(quoted_string, r#""test = [*=*] * ""#, Ok("test = [*=*] * "))
     }
 
     #[test]
     fn parse_expr() {
-        assert_eq!(
-            expr("a == b!"),
-            Ok((
-                "!",
-                Expr::Binary {
-                    op: BinaryOp::Comparison(ComparisonOp::Eq),
-                    left: Box::new(Expr::Column("a".to_string())),
-                    right: Box::new(Expr::Column("b".to_string())),
-                }
-            ))
+        expect!(
+            expr,
+            "a == b",
+            Ok(Expr::Binary {
+                op: BinaryOp::Comparison(ComparisonOp::Eq),
+                left: Box::new(Expr::Column("a".to_string())),
+                right: Box::new(Expr::Column("b".to_string())),
+            })
         );
     }
 
     #[test]
     fn parse_expr_value() {
-        assert_eq!(
-            expr("a <= \"b\"~"),
-            Ok((
-                QUERY_TERMINATOR,
-                Expr::Binary {
-                    op: BinaryOp::Comparison(ComparisonOp::Lte),
-                    left: Box::new(Expr::Column("a".to_string())),
-                    right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
-                }
-            ))
+        expect!(
+            expr,
+            "a <= \"b\"",
+            Ok(Expr::Binary {
+                op: BinaryOp::Comparison(ComparisonOp::Lte),
+                left: Box::new(Expr::Column("a".to_string())),
+                right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
+            })
         );
     }
 
     #[test]
     fn parse_expr_ident() {
-        assert_eq!(
-            expr("foo ~"),
-            Ok((QUERY_TERMINATOR, Expr::Column("foo".to_string())))
-        );
+        expect!(expr, "foo", Ok(Expr::Column("foo".to_string())));
     }
 
     #[test]
     fn parse_ident() {
-        assert_eq!(ident("hello123!"), Ok(("!", "hello123".to_string())));
-        assert_eq!(ident("x!"), Ok(("!", "x".to_string())));
+        expect!(ident, "hello123", Ok("hello123".to_string()));
+        expect!(ident, "x", Ok("x".to_string()));
+        expect!(ident, "_x", Ok("_x".to_string()));
+        // TODO: improve ergonomics of failure testing
+        // expect!(ident,"5x", Ok("_x".to_string()));
     }
 
     #[test]
     fn parse_var_list() {
-        assert_eq!(
-            var_list("a, b, def, g_55!"),
-            Ok((
-                "!",
-                vec![
-                    "a".to_string(),
-                    "b".to_string(),
-                    "def".to_string(),
-                    "g_55".to_string(),
-                ]
-            ))
+        expect!(
+            var_list,
+            "a, b, def, g_55",
+            Ok(vec![
+                "a".to_string(),
+                "b".to_string(),
+                "def".to_string(),
+                "g_55".to_string(),
+            ])
         );
     }
 
     #[test]
     fn parse_parses() {
-        assert_eq!(
-            parse(r#"parse "[key=*]" as v!"#),
-            Ok((
-                "!",
-                InlineOperator::Parse {
-                    pattern: "[key=*]".to_string(),
-                    fields: vec!["v".to_string()],
-                    input_column: None,
-                },
-            ))
+        expect!(
+            parse,
+            r#"parse "[key=*]" as v"#,
+            Ok(InlineOperator::Parse {
+                pattern: "[key=*]".to_string(),
+                fields: vec!["v".to_string()],
+                input_column: None,
+            },)
         );
-        assert_eq!(
-            parse(r#"parse "[key=*]" as v!"#),
-            Ok((
-                "!",
-                InlineOperator::Parse {
-                    pattern: "[key=*]".to_string(),
-                    fields: vec!["v".to_string()],
-                    input_column: None,
-                },
-            ))
+        expect!(
+            parse,
+            r#"parse "[key=*]" as v"#,
+            Ok(InlineOperator::Parse {
+                pattern: "[key=*]".to_string(),
+                fields: vec!["v".to_string()],
+                input_column: None,
+            },)
         );
     }
 
     #[test]
     fn parse_operator() {
-        assert_eq!(
-            operator("  json!"),
-            Ok((
-                "!",
-                Operator::Inline(InlineOperator::Json { input_column: None })
-            ))
+        expect!(
+            operator,
+            "  json",
+            Ok(Operator::Inline(InlineOperator::Json {
+                input_column: None
+            }))
         );
-        assert_eq!(
-            operator(r#" parse "[key=*]" from field as v !"#),
-            Ok((
-                "!",
-                Operator::Inline(InlineOperator::Parse {
-                    pattern: "[key=*]".to_string(),
-                    fields: vec!["v".to_string()],
-                    input_column: Some(Expr::Column("field".to_string())),
-                },)
-            ))
+        expect!(
+            operator,
+            r#" parse "[key=*]" from field as v "#,
+            Ok(Operator::Inline(InlineOperator::Parse {
+                pattern: "[key=*]".to_string(),
+                fields: vec!["v".to_string()],
+                input_column: Some(Expr::Column("field".to_string())),
+            },))
         );
     }
 
     #[test]
     fn parse_agg_operator() {
-        assert_eq!(
-            multi_aggregate_operator("count as renamed by x, y ~"),
-            Ok((
-                "~",
-                Operator::MultiAggregate(MultiAggregateOperator {
-                    key_cols: vec![Expr::Column("x".to_string()), Expr::Column("y".to_string())],
-                    key_col_headers: vec!["x".to_string(), "y".to_string()],
-                    aggregate_functions: vec![("renamed".to_string(), AggregateFunction::Count)],
-                },)
-            ))
+        expect!(
+            multi_aggregate_operator,
+            "count as renamed by x, y",
+            Ok(Operator::MultiAggregate(MultiAggregateOperator {
+                key_cols: vec![Expr::Column("x".to_string()), Expr::Column("y".to_string())],
+                key_col_headers: vec!["x".to_string(), "y".to_string()],
+                aggregate_functions: vec![("renamed".to_string(), AggregateFunction::Count)],
+            },))
         );
     }
 
     #[test]
     fn parse_percentile() {
-        assert_eq!(
-            complete_agg_function("p50(x)!"),
+        expect!(
+            complete_agg_function,
+            "p50(x)",
             Ok((
-                "!",
-                (
-                    "p50".to_string(),
-                    AggregateFunction::Percentile {
-                        column: Expr::Column("x".to_string()),
-                        percentile: 0.5,
-                        percentile_str: "50".to_string(),
-                    }
-                ),
-            ))
+                "p50".to_string(),
+                AggregateFunction::Percentile {
+                    column: Expr::Column("x".to_string()),
+                    percentile: 0.5,
+                    percentile_str: "50".to_string(),
+                }
+            ),)
         );
     }
 
     #[test]
     fn query_no_operators() {
-        let query_str = r#" "filter" ~"#;
+        let query_str = r#" "filter" "#;
         assert_eq!(
             parse_query(query_str),
-            Ok((
-                "",
-                Query {
-                    search: Search::MatchFilter("filter".to_string()),
-                    operators: vec![],
-                },
-            ))
+            Ok(Query {
+                search: Search::MatchFilter("filter".to_string()),
+                operators: vec![],
+            },)
         );
     }
 
     #[test]
     fn query_operators() {
         let query_str =
-            r#"* | json from col | parse "!123*" as foo | count by foo, foo == 123 | sort by foo dsc ~"#;
+            r#"* | json from col | parse "!123*" as foo | count by foo, foo == 123 | sort by foo dsc "#;
         assert_eq!(
             parse_query(query_str),
-            Ok((
-                "",
-                Query {
-                    search: Search::MatchAll,
-                    operators: vec![
-                        Operator::Inline(InlineOperator::Json {
-                            input_column: Some("col".to_string()),
-                        }),
-                        Operator::Inline(InlineOperator::Parse {
-                            pattern: "!123*".to_string(),
-                            fields: vec!["foo".to_string()],
-                            input_column: None,
-                        }),
-                        Operator::MultiAggregate(MultiAggregateOperator {
-                            key_col_headers: vec!["foo".to_string(), "foo == 123".to_string()],
-                            key_cols: vec![
-                                Expr::Column("foo".to_string()),
-                                Expr::Binary {
-                                    op: BinaryOp::Comparison(ComparisonOp::Eq),
-                                    left: Box::new(Expr::Column("foo".to_string())),
-                                    right: Box::new(Expr::Value(data::Value::Int(123))),
-                                },
-                            ],
-                            aggregate_functions: vec![
-                                ("_count".to_string(), AggregateFunction::Count {}),
-                            ],
-                        }),
-                        Operator::Sort(SortOperator {
-                            sort_cols: vec!["foo".to_string()],
-                            direction: SortMode::Descending,
-                        }),
-                    ],
-                },
-            ))
+            Ok(Query {
+                search: Search::MatchAll,
+                operators: vec![
+                    Operator::Inline(InlineOperator::Json {
+                        input_column: Some("col".to_string()),
+                    }),
+                    Operator::Inline(InlineOperator::Parse {
+                        pattern: "!123*".to_string(),
+                        fields: vec!["foo".to_string()],
+                        input_column: None,
+                    }),
+                    Operator::MultiAggregate(MultiAggregateOperator {
+                        key_col_headers: vec!["foo".to_string(), "foo == 123".to_string()],
+                        key_cols: vec![
+                            Expr::Column("foo".to_string()),
+                            Expr::Binary {
+                                op: BinaryOp::Comparison(ComparisonOp::Eq),
+                                left: Box::new(Expr::Column("foo".to_string())),
+                                right: Box::new(Expr::Value(data::Value::Int(123))),
+                            },
+                        ],
+                        aggregate_functions: vec![
+                            ("_count".to_string(), AggregateFunction::Count {}),
+                        ],
+                    }),
+                    Operator::Sort(SortOperator {
+                        sort_cols: vec!["foo".to_string()],
+                        direction: SortMode::Descending,
+                    }),
+                ],
+            },)
         );
     }
 }

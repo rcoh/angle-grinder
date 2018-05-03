@@ -180,16 +180,10 @@ pub mod pipeline {
         }
 
         pub fn new(pipeline: &str) -> Result<Self, Error> {
-            let fixed_pipeline = format!("{}~", pipeline); // todo: fix hack
-            let parsed = lang::parse_query(&fixed_pipeline).map_err(|e| CompileError::Parse {
+            let parsed = lang::parse_query(pipeline).map_err(|e| CompileError::Parse {
                 message: format!("{:?}", e),
             });
-            let (extra, query) = parsed?;
-            if extra != "" {
-                Err(CompileError::Unexpected {
-                    message: "Leftovers after parsing. This is a bug.".to_string(),
-                })?;
-            }
+            let query = parsed?;
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
