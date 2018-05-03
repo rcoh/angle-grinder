@@ -11,7 +11,12 @@ Angle grinder can process about a million rows per second, so it's usable for fa
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`.
 
 ### With Brew (OS X)
-Brew releases might be bit behind the statically linked binaries.
+Angle grinder is in hombrew-core. I only push updates to homebrew core about once a month.
+```bash
+brew install angle-grinder
+```
+
+For a newer version, you can install from the tap:
 ```bash
 brew tap rcoh/angle-grinder https://github.com/rcoh/angle-grinder.git
 brew install agrind-bin
@@ -34,7 +39,7 @@ curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_gri
 
 ### From Source
 
-If you have Cargo installed, you can compile & install from source: (Works with recent, `stable` Rust)
+If you have Cargo installed, you can compile & install from source: (Works with recent, `nightly` Rust, requires unstable `Box::leak`)
 ```bash
 cargo install ag
 ```
@@ -258,4 +263,6 @@ agrind --help
 See the open issues for potential improvements/issues.
 
 ### Related Work 
-Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
+* Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
+* [lnav](http://lnav.org/) is a similar tool. It's more full-featured but much much more complex (100k lines of C++ vs. 1k lines of Rust)
+* [visidata](http://visidata.org/) is a spreadsheets in your terminal
