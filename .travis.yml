@@ -15,16 +15,16 @@ matrix:
   include:
     # Linux
     - env: TARGET=x86_64-unknown-linux-musl
-      rust: nightly
+      rust: stable
 
     # OSX
     - env: TARGET=x86_64-apple-darwin
       os: osx
-      rust: nightly
+      rust: stable
 
     # Testing other channels
-    # - env: TARGET=x86_64-unknown-linux-musl
-    #  rust: nightly
+    - env: TARGET=x86_64-unknown-linux-musl
+      rust: nightly
 
 before_install:
   - set -e

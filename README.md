@@ -39,7 +39,7 @@ curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_gri
 
 ### From Source
 
-If you have Cargo installed, you can compile & install from source: (Works with recent, `nightly` Rust, requires unstable `Box::leak`)
+If you have Cargo installed, you can compile & install from source: (Works with Stable Rust >=1.26)
 ```bash
 cargo install ag
 ```
@@ -252,7 +252,7 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 it has a refresh rate of about 20hz.
 
 ### Contributing
-`angle-grinder` builds with nighty rust _only_ until `Box::leak` stabilizes:
+`angle-grinder` builds with Rust >= 1.26
 ```bash
 cargo build
 cargo test

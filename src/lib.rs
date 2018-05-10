@@ -1,5 +1,3 @@
-#![feature(box_leak)]
-
 #[macro_use]
 extern crate nom;
 
