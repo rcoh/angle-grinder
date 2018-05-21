@@ -443,7 +443,7 @@ impl Sorter {
             state: Vec::new(),
             columns: Vec::new(),
             direction,
-            ordering: Record::ordering(columns),
+            ordering: Box::new(Record::ordering(columns)),
         }
     }
 
