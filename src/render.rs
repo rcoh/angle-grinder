@@ -231,6 +231,9 @@ impl Renderer {
     }
 
     pub fn should_print(&self) -> bool {
+        if !self.is_tty {
+            return false;
+        }
         self.last_print
             .map(|instant| instant.elapsed() > self.update_interval)
             .unwrap_or(true)
