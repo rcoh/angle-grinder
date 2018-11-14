@@ -11,28 +11,21 @@ Angle grinder can process about a million rows per second, so it's usable for fa
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`.
 
 ### With Brew (OS X)
-Angle grinder is in hombrew-core. I only push updates to homebrew core about once a month.
 ```bash
 brew install angle-grinder
-```
-
-For a newer version, you can install from the tap:
-```bash
-brew tap rcoh/angle-grinder https://github.com/rcoh/angle-grinder.git
-brew install agrind-bin
 ```
 
 ### With Curl (Single binary)
 Linux:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_grinder-v0.7.2-x86_64-unknown-linux-musl.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.5/angle_grinder-v0.7.5-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_grinder-v0.7.2-x86_64-apple-darwin.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.5/angle_grinder-v0.7.5-x86_64-apple-darwin.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
