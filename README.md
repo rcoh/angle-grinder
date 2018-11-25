@@ -245,7 +245,11 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 it has a refresh rate of about 20hz.
 
 ### Contributing
-`angle-grinder` builds with Rust >= 1.26
+`angle-grinder` builds with Rust >= 1.26. There are a number of ways you can contribute:
+- Adding new special purpose operators
+- Improve documentation of existing operators + providing more usage examples
+- Provide more test cases of real queries on real world data
+- Tell more people about angle grinder!
 ```bash
 cargo build
 cargo test
@@ -253,9 +257,9 @@ cargo install
 agrind --help
 ```
 
-See the open issues for potential improvements/issues.
+See the open issues for specific potential improvements/bugs.
 
 ### Related Work 
 * Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
 * [lnav](http://lnav.org/) is a similar tool. It's more full-featured but much much more complex (100k lines of C++ vs. 1k lines of Rust)
-* [visidata](http://visidata.org/) is a spreadsheets in your terminal
+* [visidata](http://visidata.org/) is a spreadsheets app in your terminal
