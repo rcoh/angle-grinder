@@ -261,5 +261,5 @@ See the open issues for specific potential improvements/bugs.
 
 ### Related Work 
 * Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
-* [lnav](http://lnav.org/) is a similar tool. It's more full-featured but much much more complex (100k lines of C++ vs. 1k lines of Rust)
+* [lnav](http://lnav.org/) is a full featured log file navigator in your terminal. It also includes support for common log file formats out-of-the-box, generalized SQL queries on your logs, and auto-coloring.
 * [visidata](http://visidata.org/) is a spreadsheets app in your terminal
