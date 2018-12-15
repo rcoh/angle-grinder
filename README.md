@@ -11,28 +11,21 @@ Angle grinder can process about a million rows per second, so it's usable for fa
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`.
 
 ### With Brew (OS X)
-Angle grinder is in hombrew-core. I only push updates to homebrew core about once a month.
 ```bash
 brew install angle-grinder
-```
-
-For a newer version, you can install from the tap:
-```bash
-brew tap rcoh/angle-grinder https://github.com/rcoh/angle-grinder.git
-brew install agrind-bin
 ```
 
 ### With Curl (Single binary)
 Linux:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_grinder-v0.7.2-x86_64-unknown-linux-musl.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.5/angle_grinder-v0.7.5-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.2/angle_grinder-v0.7.2-x86_64-apple-darwin.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.7.5/angle_grinder-v0.7.5-x86_64-apple-darwin.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
@@ -252,7 +245,11 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 it has a refresh rate of about 20hz.
 
 ### Contributing
-`angle-grinder` builds with Rust >= 1.26
+`angle-grinder` builds with Rust >= 1.26. There are a number of ways you can contribute:
+- Adding new special purpose operators
+- Improve documentation of existing operators + providing more usage examples
+- Provide more test cases of real queries on real world data
+- Tell more people about angle grinder!
 ```bash
 cargo build
 cargo test
@@ -260,9 +257,9 @@ cargo install
 agrind --help
 ```
 
-See the open issues for potential improvements/issues.
+See the open issues for specific potential improvements/bugs.
 
-### Related Work 
+### Similar Projects
 * Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.
-* [lnav](http://lnav.org/) is a similar tool. It's more full-featured but much much more complex (100k lines of C++ vs. 1k lines of Rust)
-* [visidata](http://visidata.org/) is a spreadsheets in your terminal
+* [lnav](http://lnav.org/) is a full featured log analysis platform in your terminal (with many more features than angle-grinder). It includes support for common log file formats out-of-the-box, generalized SQL queries on your logs, auto-coloring and a whole host of other features.
+* [visidata](http://visidata.org/) is a spreadsheets app in your terminal

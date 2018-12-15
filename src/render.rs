@@ -88,7 +88,7 @@ impl PrettyPrinter {
         let new_columns = self.new_columns(&(record.data));
         self.column_order.extend(new_columns);
         if self.column_order.is_empty() {
-            return record.raw.to_string();
+            return record.raw.trim_end().to_string();
         }
 
         let no_padding = if self.overflows_term() {
@@ -245,6 +245,20 @@ mod tests {
     use super::*;
     use data::*;
     use operator::*;
+
+    #[test]
+    fn print_raw() {
+        let rec = Record::new("Hello, World!\n");
+        let mut pp = PrettyPrinter::new(
+            RenderConfig {
+                floating_points: 2,
+                min_buffer: 1,
+                max_buffer: 4,
+            },
+            None,
+        );
+        assert_eq!(pp.format_record(&rec), "Hello, World!");
+    }
 
     #[test]
     fn pretty_print_record() {
