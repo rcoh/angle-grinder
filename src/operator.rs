@@ -8,6 +8,7 @@ use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
 use data;
 use data::{Aggregate, Record, Row};
+use lang;
 use operator::itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -563,7 +564,7 @@ impl AggregateOperator for MultiGrouper {
 }
 
 pub struct Parse {
-    regex: regex::Regex,
+    regex: lang::Keyword,
     fields: Vec<String>,
     input_column: Option<Expr>,
 }
@@ -574,12 +575,6 @@ impl Parse {
         fields: Vec<String>,
         input_column: Option<String>,
     ) -> Result<Self, TypeError> {
-        let regex_str = regex_syntax::quote(pattern);
-        let mut regex_str = regex_str.replace("\\*", "(.*?)");
-        // If it ends with a star, we need to ensure we read until the end.
-        if pattern.ends_with('*') {
-            regex_str = format!("{}$", regex_str);
-        }
         let pattern_matches = pattern.matches('*').count();
         if pattern_matches != fields.len() {
             Result::Err(TypeError::ParseNumPatterns {
@@ -588,7 +583,7 @@ impl Parse {
             })
         } else {
             Result::Ok(Parse {
-                regex: regex::Regex::new(&regex_str).unwrap(),
+                regex: lang::Keyword::new_with_wildcard(pattern.to_string()),
                 fields,
                 input_column: input_column.map(Expr::Column),
             })
@@ -597,7 +592,8 @@ impl Parse {
 
     fn matches(&self, rec: &Record) -> Result<Option<Vec<data::Value>>, EvalError> {
         let inp = self.get_input(rec, &self.input_column)?;
-        let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
+        let matches: Vec<regex::Captures> = self.regex.to_regex().captures_iter(inp.trim())
+            .collect();
         if matches.is_empty() {
             Ok(None)
         } else {

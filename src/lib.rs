@@ -237,7 +237,7 @@ pub mod pipeline {
         fn matches(pattern: &lang::Search, raw: &str) -> bool {
             match *pattern {
                 lang::Search::MatchAll => true,
-                lang::Search::MatchFilter(ref filter) => raw.contains(filter),
+                lang::Search::MatchFilter(ref keyword) => keyword.to_regex().is_match(raw)
             }
         }
         fn render_noagg(mut renderer: Renderer, rx: &Receiver<Row>) {

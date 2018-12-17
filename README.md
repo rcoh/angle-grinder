@@ -52,7 +52,7 @@ agrind '* | json | count by log_level'
 
 ### Filters
 
-Filters may be `*` or `"filter!"` (must be enclosed in double quotes). Only lines containing `filter!` will be passed to the subsequent operators. `*` matches all lines.
+Filters may be `*`, `filter-me`, or `"filter me!"`. Only lines that match the filter will be passed to the subsequent operators. `*` matches all lines.
 ![filter.gif](/screen_shots/filter.gif)
 
 ### Operators

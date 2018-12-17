@@ -39,9 +39,59 @@ impl Expr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+/// Represents a `keyword` search string.  The contained `regex::Regex` is the regular expression
+/// that can be used to match the given keyword.
+#[derive(Debug)]
+pub struct Keyword(String, regex::Regex);
+
+impl Keyword {
+    fn new_with_transform<F>(pattern: String, tr: F) -> Keyword
+        where F: Fn(String) -> String {
+        let mut regex_str = regex::escape(&pattern);
+
+        regex_str.insert_str(0, "(?i)");
+        regex_str = tr(regex_str);
+
+        Keyword(pattern, regex::Regex::new(&regex_str).unwrap())
+    }
+
+    /// Construct a Keyword from the given search string, without matching wildcards
+    pub fn new(pattern: String) -> Keyword {
+        Keyword::new_with_transform(pattern, |x| x)
+    }
+
+    /// Construct a Keyword from the given search string and match wildcards
+    pub fn new_with_wildcard(pattern: String) -> Keyword {
+        let ends_with_star = pattern.ends_with('*');
+
+        Keyword::new_with_transform(pattern, |mut x| {
+            x = x.replace("\\*", "(.*?)");
+            // If it ends with a star, we need to ensure we read until the end.
+            if ends_with_star {
+                x.push('$');
+            }
+
+            x
+        })
+    }
+
+    /// Get the `regex::Regex` that can be used to match this keyword.
+    pub fn to_regex(&self) -> &regex::Regex {
+        &self.1
+    }
+}
+
+/// The `regex::Regex` struct doesn't support equality, so we save the original string and use
+/// that to test for equality.
+impl PartialEq for Keyword {
+    fn eq(&self, other: &Keyword) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Search {
-    MatchFilter(String),
+    MatchFilter(Keyword),
     MatchAll,
 }
 
@@ -129,6 +179,19 @@ fn starts_ident(c: char) -> bool {
     is_alphabetic(c as u8) || c == '_'
 }
 
+/// Tests if the input character can be part of a search keyword.
+///
+/// Based on the SumoLogic keyword syntax:
+///
+/// https://help.sumologic.com/05Search/Get-Started-with-Search/How-to-Build-a-Search/Keyword-Search-Expressions
+fn is_keyword(c: char) -> bool {
+    match c {
+        '-' | '_' | ':' | '/' | '.' | '+' | '@' | '#' | '$' | '%' | '^' | '*' => true,
+        alpha if is_alphanumeric(alpha as u8) => true,
+        _ => false
+    }
+}
+
 fn not_escape(c: char) -> bool {
     c != '\\' && c != '\"'
 }
@@ -152,6 +215,12 @@ named!(e_ident<CompleteStr, Expr>,
       //expr
     |  ws!(delimited!( tag_s!("("), expr, tag_s!(")") ))
 )));
+
+named!(keyword<CompleteStr, String>, do_parse!(
+    start: take_while1!(is_keyword) >>
+    rest: take_while!(is_keyword) >>
+    (start.0.to_owned() + rest.0)
+));
 
 named!(comp_op<CompleteStr, ComparisonOp>, ws!(alt!(
     map!(tag!("=="), |_|ComparisonOp::Eq)
@@ -353,8 +422,11 @@ named!(sort<CompleteStr, Operator>, ws!(do_parse!(
 ));
 
 named!(filter<CompleteStr, Search>, alt!(
-    map!(quoted_string, |s|Search::MatchFilter(s.to_string())) |
-    map!(tag!("*"), |_s|Search::MatchAll)
+    map!(quoted_string, |s| Search::MatchFilter(Keyword::new(s.to_string()))) |
+    map!(keyword, |s| match s.as_ref() {
+            "*" => Search::MatchAll,
+            _ => Search::MatchFilter(Keyword::new_with_wildcard(s.trim_matches('*').to_string()))
+        })
 ));
 
 named!(query<CompleteStr, Query>, ws!(do_parse!(
@@ -387,6 +459,12 @@ mod tests {
                 assert_eq!(leftover, CompleteStr(""));
             });
         }};
+    }
+
+    #[test]
+    fn parse_keyword_string() {
+        expect!(keyword, "abc", Ok("abc".to_string()));
+        expect!(keyword, "one-two-three", Ok("one-two-three".to_string()));
     }
 
     #[test]
@@ -522,11 +600,11 @@ mod tests {
 
     #[test]
     fn query_no_operators() {
-        let query_str = r#" "filter" "#;
+        let query_str = r#" filter "#;
         assert_eq!(
             parse_query(query_str),
             Ok(Query {
-                search: Search::MatchFilter("filter".to_string()),
+                search: Search::MatchFilter(Keyword::new("filter".to_string())),
                 operators: vec![],
             },)
         );

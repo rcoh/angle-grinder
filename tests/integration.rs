@@ -160,6 +160,49 @@ $None$       1")
             .unwrap();
     }
 
+    #[test]
+    fn parse_plain_text() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"db-1 | parse "response in *ms" as duration"#,
+                "--file",
+                "test_files/test_parse.log",
+            ])
+            .stdout()
+            .is("[duration=500]
+[duration=100]
+[duration=102]
+[duration=102]
+[duration=100]
+[duration=100]
+[duration=100]
+[duration=122]")
+            .unwrap();
+    }
+
+    #[test]
+    fn filter_wildcard() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#""*STAR*""#,
+                "--file",
+                "test_files/filter_test.log",
+            ])
+            .stdout()
+            .is("[INFO] Match a *STAR*!")
+            .unwrap();
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"*STAR*"#,
+                "--file",
+                "test_files/filter_test.log",
+            ])
+            .stdout()
+            .is("[INFO] Match a *STAR*!
+[INFO] Not a STAR!")
+            .unwrap();
+    }
+
     fn ensure_parses(query: &str) {
         Pipeline::new(query).expect(&format!(
             "Query: `{}` from the README should have parsed",
