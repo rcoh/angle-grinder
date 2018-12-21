@@ -148,7 +148,7 @@ $None$       1")
     fn fields() {
         assert_cli::Assert::main_binary()
             .with_args(&[
-                r#""error" | parse "* *" as lev, js 
+                r#"* "error" | parse "* *" as lev, js
                      | json from js 
                      | fields except js, lev"#,
                 "--file",
@@ -164,7 +164,7 @@ $None$       1")
     fn parse_plain_text() {
         assert_cli::Assert::main_binary()
             .with_args(&[
-                r#"db-1 | parse "response in *ms" as duration"#,
+                r#"db-1 response | parse "in *ms" as duration"#,
                 "--file",
                 "test_files/test_parse.log",
             ])
