@@ -39,10 +39,12 @@ cargo install ag
 
 ## Query Synax
 
-An angle grinder query is composed of a filter followed by a series of operators. Typically, the initial operators will transform the data in some way by parsing fields or JSON from the log line. 
+An angle grinder query is composed of filters followed by a series of operators.
+The filters select the lines from the input stream to be transformed by the operators.
+Typically, the initial operators will transform the data in some way by parsing fields or JSON from the log line. 
 The subsequent operators can then aggregate or group the data via operators like `sum`, `average`, `percentile`, etc.
 ```bash
-agrind '<filter> | operator1 | operator2 | operator3 | ...'
+agrind '<filter1> [... <filterN>] | operator1 | operator2 | operator3 | ...'
 ```
 
 A simple query that operates on JSON logs and counts the number of logs per level could be:
@@ -52,7 +54,7 @@ agrind '* | json | count by log_level'
 
 ### Filters
 
-Filters may be `*`, `filter-me`, or `"filter me!"`. Only lines that match the filter will be passed to the subsequent operators. `*` matches all lines.
+Filters may be `*`, `filter-me`, or `"filter me!"`. Only lines that match all filters will be passed to the subsequent operators. `*` matches all lines.
 ![filter.gif](/screen_shots/filter.gif)
 
 ### Operators
