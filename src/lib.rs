@@ -42,7 +42,7 @@ pub mod pipeline {
     }
 
     pub struct Pipeline {
-        filter: lang::Search,
+        filter: Vec<regex::Regex>,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
         aggregators: Vec<Box<operator::AggregateOperator>>,
         renderer: Renderer,
@@ -96,7 +96,7 @@ pub mod pipeline {
                     fields,
                     input_column,
                 } => Ok(Box::new(operator::Parse::new(
-                    &pattern,
+                    pattern.to_regex(),
                     fields,
                     input_column.map(|c| c.force()),
                 )?)),
@@ -126,7 +126,10 @@ pub mod pipeline {
                     fields,
                     input_column,
                 } => Ok(
-                    operator::Parse::new(&pattern, fields, input_column.map(|c| c.force()))?.into(),
+                    operator::Parse::new(
+                        pattern.to_regex(),
+                        fields,
+                        input_column.map(|c| c.force()))?.into(),
                 ),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
@@ -182,6 +185,9 @@ pub mod pipeline {
                 message: format!("{:?}", e),
             });
             let query = parsed?;
+            let filters = query.search.iter()
+                .map(lang::Keyword::to_regex)
+                .collect();
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
@@ -220,7 +226,7 @@ pub mod pipeline {
                 post_agg.push(op)
             };
             Result::Ok(Pipeline {
-                filter: query.search,
+                filter: filters,
                 pre_aggregates: pre_agg,
                 aggregators: post_agg,
                 renderer: Renderer::new(
@@ -234,12 +240,6 @@ pub mod pipeline {
             })
         }
 
-        fn matches(pattern: &lang::Search, raw: &str) -> bool {
-            match *pattern {
-                lang::Search::MatchAll => true,
-                lang::Search::MatchFilter(ref filter) => raw.contains(filter),
-            }
-        }
         fn render_noagg(mut renderer: Renderer, rx: &Receiver<Row>) {
             loop {
                 let next = rx.recv_timeout(Duration::from_millis(50));
@@ -283,7 +283,6 @@ pub mod pipeline {
             let (tx, rx) = bounded(1000);
             let mut aggregators = self.aggregators;
             let preaggs = self.pre_aggregates;
-            let search = self.filter;
             let renderer = self.renderer;
             let t = if !aggregators.is_empty() {
                 if aggregators.len() == 1 {
@@ -300,7 +299,7 @@ pub mod pipeline {
             // after we match (staying as Vec<u8> until then)
             let mut line = String::with_capacity(1024);
             while buf.read_line(&mut line).unwrap() > 0 {
-                if let Some(row) = Pipeline::proc_preagg(&line, &search, &preaggs) {
+                if let Some(row) = Pipeline::proc_preagg(&line, &self.filter, &preaggs) {
                     tx.send(row).unwrap();
                 }
                 line.clear();
@@ -312,10 +311,10 @@ pub mod pipeline {
 
         fn proc_preagg(
             s: &str,
-            pattern: &lang::Search,
+            filters: &Vec<regex::Regex>,
             pre_aggs: &[Box<operator::UnaryPreAggOperator>],
         ) -> Option<Row> {
-            if Pipeline::matches(pattern, s) {
+            if filters.iter().all(|re| re.is_match(s)) {
                 let mut rec = Record::new(s);
                 for pre_agg in pre_aggs {
                     match (*pre_agg).process(rec) {
@@ -328,6 +327,7 @@ pub mod pipeline {
             } else {
                 None
             }
+
         }
 
         pub fn run_agg_pipeline(

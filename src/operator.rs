@@ -570,25 +570,18 @@ pub struct Parse {
 
 impl Parse {
     pub fn new(
-        pattern: &str,
+        pattern: regex::Regex,
         fields: Vec<String>,
         input_column: Option<String>,
     ) -> Result<Self, TypeError> {
-        let regex_str = regex_syntax::quote(pattern);
-        let mut regex_str = regex_str.replace("\\*", "(.*?)");
-        // If it ends with a star, we need to ensure we read until the end.
-        if pattern.ends_with('*') {
-            regex_str = format!("{}$", regex_str);
-        }
-        let pattern_matches = pattern.matches('*').count();
-        if pattern_matches != fields.len() {
+        if (pattern.captures_len() - 1) != fields.len() {
             Result::Err(TypeError::ParseNumPatterns {
-                pattern: pattern_matches,
+                pattern: pattern.captures_len() - 1,
                 extracted: fields.len(),
             })
         } else {
             Result::Ok(Parse {
-                regex: regex::Regex::new(&regex_str).unwrap(),
+                regex: pattern,
                 fields,
                 input_column: input_column.map(Expr::Column),
             })
@@ -597,7 +590,8 @@ impl Parse {
 
     fn matches(&self, rec: &Record) -> Result<Option<Vec<data::Value>>, EvalError> {
         let inp = self.get_input(rec, &self.input_column)?;
-        let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
+        let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim())
+            .collect();
         if matches.is_empty() {
             Ok(None)
         } else {
@@ -727,6 +721,7 @@ impl UnaryPreAggOperator for ParseJson {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lang;
     use data::Value;
     use operator::itertools::Itertools;
 
@@ -799,7 +794,7 @@ mod tests {
              length 99",
         );
         let parser = Parse::new(
-            "IP * > \"*\": * length *",
+            lang::Keyword::new_wildcard("IP * > \"*\": * length *".to_string()).to_regex(),
             vec![
                 "sender".to_string(),
                 "recip".to_string(),
@@ -825,7 +820,7 @@ mod tests {
         let rec = Record::new("");
         let rec = rec.put("from_col", data::Value::Str("[k1=v1]".to_string()));
         let parser = Parse::new(
-            "[*=*]",
+            lang::Keyword::new_wildcard("[*=*]".to_string()).to_regex(),
             vec!["key".to_string(), "value".to_string()],
             Some("from_col".to_string()),
         ).unwrap();

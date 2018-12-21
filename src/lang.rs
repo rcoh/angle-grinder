@@ -1,7 +1,7 @@
 use data;
 use nom;
 use nom::types::CompleteStr;
-use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1};
+use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1, multispace};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -39,10 +39,50 @@ impl Expr {
     }
 }
 
+/// The KeywordType determines how a keyword string should be interpreted.
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum KeywordType {
+    /// The keyword string should exactly match the input.
+    EXACT,
+    /// The keyword string can contain wildcards.
+    WILDCARD
+}
+
+/// Represents a `keyword` search string.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Search {
-    MatchFilter(String),
-    MatchAll,
+pub struct Keyword(String, KeywordType);
+
+impl Keyword {
+    /// Create a Keyword that will exactly match an input string.
+    pub fn new_exact(str: String) -> Keyword {
+        Keyword(str, KeywordType::EXACT)
+    }
+
+    /// Create a Keyword that can contain wildcards
+    pub fn new_wildcard(str: String) -> Keyword {
+        Keyword(str, KeywordType::WILDCARD)
+    }
+
+    /// Test if this is an empty keyword string
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Convert this keyword to a `regex::Regex` object.
+    pub fn to_regex(&self) -> regex::Regex {
+        let mut regex_str = regex::escape(&self.0.replace("\\\"", "\""));
+
+        regex_str.insert_str(0, "(?i)");
+        if self.1 == KeywordType::WILDCARD {
+            regex_str = regex_str.replace("\\*", "(.*?)");
+            // If it ends with a star, we need to ensure we read until the end.
+            if self.0.ends_with('*') {
+                regex_str.push('$');
+            }
+        }
+
+        regex::Regex::new(&regex_str).unwrap()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -58,7 +98,7 @@ pub enum InlineOperator {
         input_column: Option<String>,
     },
     Parse {
-        pattern: String,
+        pattern: Keyword,
         fields: Vec<String>,
         input_column: Option<Expr>,
     },
@@ -117,7 +157,7 @@ pub struct SortOperator {
 
 #[derive(Debug, PartialEq)]
 pub struct Query {
-    pub search: Search,
+    pub search: Vec<Keyword>,
     pub operators: Vec<Operator>,
 }
 
@@ -127,6 +167,19 @@ fn is_ident(c: char) -> bool {
 
 fn starts_ident(c: char) -> bool {
     is_alphabetic(c as u8) || c == '_'
+}
+
+/// Tests if the input character can be part of a search keyword.
+///
+/// Based on the SumoLogic keyword syntax:
+///
+/// https://help.sumologic.com/05Search/Get-Started-with-Search/How-to-Build-a-Search/Keyword-Search-Expressions
+fn is_keyword(c: char) -> bool {
+    match c {
+        '-' | '_' | ':' | '/' | '.' | '+' | '@' | '#' | '$' | '%' | '^' | '*' => true,
+        alpha if is_alphanumeric(alpha as u8) => true,
+        _ => false
+    }
 }
 
 fn not_escape(c: char) -> bool {
@@ -152,6 +205,12 @@ named!(e_ident<CompleteStr, Expr>,
       //expr
     |  ws!(delimited!( tag_s!("("), expr, tag_s!(")") ))
 )));
+
+named!(keyword<CompleteStr, String>, do_parse!(
+    start: take_while1!(is_keyword) >>
+    rest: take_while!(is_keyword) >>
+    (start.0.to_owned() + rest.0)
+));
 
 named!(comp_op<CompleteStr, ComparisonOp>, ws!(alt!(
     map!(tag!("=="), |_|ComparisonOp::Eq)
@@ -214,7 +273,7 @@ named!(parse<CompleteStr, InlineOperator>, ws!(do_parse!(
     tag!("as") >>
     vars: var_list >>
     ( InlineOperator::Parse{
-        pattern: pattern.replace("\\\"", "\""),
+        pattern: Keyword::new_wildcard(pattern.to_string()),
         fields: vars,
         input_column: from_column_opt
         } )
@@ -352,9 +411,18 @@ named!(sort<CompleteStr, Operator>, ws!(do_parse!(
      })))
 ));
 
-named!(filter<CompleteStr, Search>, alt!(
-    map!(quoted_string, |s|Search::MatchFilter(s.to_string())) |
-    map!(tag!("*"), |_s|Search::MatchAll)
+named!(filter_cond<CompleteStr, Keyword>, alt!(
+    map!(quoted_string, |s| Keyword::new_exact(s.to_string())) |
+    map!(keyword, |s| Keyword::new_wildcard(s.trim_matches('*').to_string()))
+));
+
+named!(filter<CompleteStr, Vec<Keyword>>, map!(
+    separated_nonempty_list!(multispace, filter_cond),
+    // An empty keyword would match everything, so there's no reason to
+    |mut v| {
+        v.retain(|k| !k.is_empty());
+        v
+    }
 ));
 
 named!(query<CompleteStr, Query>, ws!(do_parse!(
@@ -387,6 +455,12 @@ mod tests {
                 assert_eq!(leftover, CompleteStr(""));
             });
         }};
+    }
+
+    #[test]
+    fn parse_keyword_string() {
+        expect!(keyword, "abc", Ok("abc".to_string()));
+        expect!(keyword, "one-two-three", Ok("one-two-three".to_string()));
     }
 
     #[test]
@@ -455,7 +529,7 @@ mod tests {
             parse,
             r#"parse "[key=*]" as v"#,
             Ok(InlineOperator::Parse {
-                pattern: "[key=*]".to_string(),
+                pattern: Keyword::new_wildcard("[key=*]".to_string()),
                 fields: vec!["v".to_string()],
                 input_column: None,
             },)
@@ -464,7 +538,7 @@ mod tests {
             parse,
             r#"parse "[key=*]" as v"#,
             Ok(InlineOperator::Parse {
-                pattern: "[key=*]".to_string(),
+                pattern: Keyword::new_wildcard("[key=*]".to_string()),
                 fields: vec!["v".to_string()],
                 input_column: None,
             },)
@@ -484,7 +558,7 @@ mod tests {
             operator,
             r#" parse "[key=*]" from field as v "#,
             Ok(Operator::Inline(InlineOperator::Parse {
-                pattern: "[key=*]".to_string(),
+                pattern: Keyword::new_wildcard("[key=*]".to_string()),
                 fields: vec!["v".to_string()],
                 input_column: Some(Expr::Column("field".to_string())),
             },))
@@ -522,11 +596,35 @@ mod tests {
 
     #[test]
     fn query_no_operators() {
-        let query_str = r#" "filter" "#;
         assert_eq!(
-            parse_query(query_str),
+            parse_query(" * "),
             Ok(Query {
-                search: Search::MatchFilter("filter".to_string()),
+                search: vec![],
+                operators: vec![],
+            },)
+        );
+        assert_eq!(
+            parse_query(" filter "),
+            Ok(Query {
+                search: vec![Keyword::new_wildcard("filter".to_string())],
+                operators: vec![],
+            },)
+        );
+        assert_eq!(
+            parse_query(" *abc* "),
+            Ok(Query {
+                search: vec![Keyword::new_wildcard("abc".to_string())],
+                operators: vec![],
+            },)
+        );
+        assert_eq!(
+            parse_query(" abc def \"*ghi*\" "),
+            Ok(Query {
+                search: vec![
+                    Keyword::new_wildcard("abc".to_string()),
+                    Keyword::new_wildcard("def".to_string()),
+                    Keyword::new_exact("*ghi*".to_string()),
+                ],
                 operators: vec![],
             },)
         );
@@ -539,13 +637,13 @@ mod tests {
         assert_eq!(
             parse_query(query_str),
             Ok(Query {
-                search: Search::MatchAll,
+                search: vec![],
                 operators: vec![
                     Operator::Inline(InlineOperator::Json {
                         input_column: Some("col".to_string()),
                     }),
                     Operator::Inline(InlineOperator::Parse {
-                        pattern: "!123*".to_string(),
+                        pattern: Keyword::new_wildcard("!123*".to_string()),
                         fields: vec!["foo".to_string()],
                         input_column: None,
                     }),

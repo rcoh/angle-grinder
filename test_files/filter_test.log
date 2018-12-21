@@ -1,4 +1,6 @@
 [INFO] I am a log!
-[WARN] Uh oh, danger ahead! 
+[WARN] Uh oh, danger ahead!
 [ERROR] Oh no!
 [INFO] more logs!
+[INFO] Match a *STAR*!
+[INFO] Not a STAR!

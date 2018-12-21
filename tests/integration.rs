@@ -148,7 +148,7 @@ $None$       1")
     fn fields() {
         assert_cli::Assert::main_binary()
             .with_args(&[
-                r#""error" | parse "* *" as lev, js 
+                r#"* "error" | parse "* *" as lev, js
                      | json from js 
                      | fields except js, lev"#,
                 "--file",
@@ -157,6 +157,49 @@ $None$       1")
             .stdout()
             .is("[level=error]        [message=Oh now an error!]
 [level=error]        [message=So many more errors!]")
+            .unwrap();
+    }
+
+    #[test]
+    fn parse_plain_text() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"db-1 response | parse "in *ms" as duration"#,
+                "--file",
+                "test_files/test_parse.log",
+            ])
+            .stdout()
+            .is("[duration=500]
+[duration=100]
+[duration=102]
+[duration=102]
+[duration=100]
+[duration=100]
+[duration=100]
+[duration=122]")
+            .unwrap();
+    }
+
+    #[test]
+    fn filter_wildcard() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#""*STAR*""#,
+                "--file",
+                "test_files/filter_test.log",
+            ])
+            .stdout()
+            .is("[INFO] Match a *STAR*!")
+            .unwrap();
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"*STAR*"#,
+                "--file",
+                "test_files/filter_test.log",
+            ])
+            .stdout()
+            .is("[INFO] Match a *STAR*!
+[INFO] Not a STAR!")
             .unwrap();
     }
 

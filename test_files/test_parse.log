@@ -1,5 +1,6 @@
 INFO Server db-1 loaded response in 500ms
 INFO Server db-2 loaded response in 394ms
+INFO Server db-1 loaded request in 394ms
 WARN Server failed to load response
 INFO Server db-1 loaded response in 100ms
 INFO Server db-1 loaded response in 102ms
