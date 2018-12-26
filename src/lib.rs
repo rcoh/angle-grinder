@@ -314,7 +314,7 @@ pub mod pipeline {
 
         fn proc_preagg(
             s: &str,
-            filters: &Vec<regex::Regex>,
+            filters: &[regex::Regex],
             pre_aggs: &[Box<operator::UnaryPreAggOperator>],
         ) -> Option<Row> {
             if filters.iter().all(|re| re.is_match(s)) {

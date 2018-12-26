@@ -91,7 +91,7 @@ impl Display for Value {
 impl Value {
     pub fn render(&self, render_config: &render::RenderConfig) -> String {
         match *self {
-            Value::Str(ref s) => format!("{}", s),
+            Value::Str(ref s) => s.to_string(),
             Value::Int(ref s) => format!("{}", s),
             Value::None => "$None$".to_string(),
             Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
@@ -100,15 +100,16 @@ impl Value {
     }
 
     pub fn from_bool(b: bool) -> &'static Value {
-        match b {
-            true => TRUE_VALUE,
-            false => FALSE_VALUE,
+        if b {
+            TRUE_VALUE
+        } else {
+            FALSE_VALUE
         }
     }
 
     pub fn from_float(f: f64) -> Value {
         let rounded = f as i64;
-        if f == f.floor() {
+        if (f - f.floor()).abs() < std::f64::EPSILON {
             Value::Int(rounded)
         } else {
             Value::Float(OrderedFloat(f))

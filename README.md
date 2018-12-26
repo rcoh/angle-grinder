@@ -3,7 +3,7 @@ Slice and dice log files on the command line.
 
 Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
 
-Angle grinder can process about a million rows per second, so it's usable for fairly meaty aggregation. The results will live update in your terminal as data is processed. Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI.
+Angle grinder can process well above 1M rows per second (simple pipelines as high as 5M), so it's usable for fairly meaty aggregation. The results will live update in your terminal as data is processed. Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI.
 
 ![overview gif](/screen_shots/overview.gif)
 
@@ -184,7 +184,7 @@ Count number of source_hosts:
 ```
 
 ##### Total
-`total(a) [as renamed_total]`: Compute the running total of a given field
+`total(a) [as renamed_total]`: Compute the running total of a given field. Total does not currently support grouping!
 
 *Examples*:
 ```agrind
