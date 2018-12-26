@@ -22,14 +22,16 @@ mod integration {
     use ag::pipeline::Pipeline;
     use assert_cli;
     use toml;
+    use std::borrow::Borrow;
 
     fn structured_test(s: &str) {
         let conf: TestDefinition = toml::from_str(s).unwrap();
+        let out: &str = conf.output.borrow();
         assert_cli::Assert::main_binary()
-            .stdin(&conf.input)
+            .stdin(conf.input)
             .with_args(&[&conf.query])
             .stdout()
-            .is(conf.output)
+            .is(out)
             .unwrap();
     }
 

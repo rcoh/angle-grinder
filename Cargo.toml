@@ -6,28 +6,7 @@ description = "CLI App to slice and dice logfiles"
 license = "MIT"
 repository = "https://github.com/rcoh/angle-grinder"
 readme = "README.md"
-
-[dependencies]
-serde_json = "1.0"
-itertools = "0.7.6"
-nom = "4.0.0-beta3"
-quicli = "0.2.0"
-regex = "1.1"
-regex-syntax = "0.6"
-terminal_size = "0.1.7"
-quantiles = "0.7.1"
-crossbeam-channel = "0.1"
-ordered-float = "0.5.0"
-failure = "0.1.1"
-
-[dev-dependencies]
-assert_cli = "0.5"
-maplit = "1.0.1"
-toml = "0.4.6"
-serde = "^1.0"
-serde_derive = "^1.0"
-pulldown-cmark = "0.1"
-
+edition = "2018"
 [package.metadata.deb]
 extended-description = """Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. \
                         You can see it, live-updating, in your terminal. Angle grinder is designed for when, for \
@@ -36,3 +15,24 @@ extended-description = """Angle-grinder allows you to parse, aggregate, sum, ave
                         Angle grinder can process about a million rows per second, so it's usable for fairly meaty \
                         aggregation. The results will live update in your terminal as data is processed. \
                         Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI."""
+
+[dependencies]
+serde_json = "1.0.33"
+itertools = "0.8.0"
+nom = "4.1.1"
+quicli = "0.4.0"
+regex = "1.1.0"
+terminal_size = "0.1.8"
+quantiles = "0.7.1"
+crossbeam-channel = "0.3.4"
+ordered-float = "1.0.1"
+failure = "0.1.3"
+structopt = "0.2"
+
+[dev-dependencies]
+assert_cli = "0.6.3"
+maplit = "1.0.1"
+toml = "0.4.10"
+serde = "1.0.82"
+serde_derive = "1.0.82"
+pulldown-cmark = "0.2.0"

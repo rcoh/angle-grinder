@@ -1,12 +1,10 @@
 extern crate ag;
-#[macro_use]
-extern crate quicli;
-
 use ag::pipeline::Pipeline;
 use quicli::prelude::*;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
+use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder")]
@@ -16,12 +14,13 @@ struct Cli {
     /// Optionally reads from a file instead of Stdin
     #[structopt(long = "file", short = "f")]
     file: Option<String>,
-    /// Pass many times for more log output
-    #[structopt(long = "verbose", short = "v", parse(from_occurrences))]
-    verbosity: u8,
+    #[structopt(flatten)]
+    verbosity: Verbosity,
 }
 
-main!(|args: Cli, log_level: verbosity| {
+fn main() -> CliResult {
+    let args = Cli::from_args();
+    args.verbosity.setup_env_logger("agrind")?;
     let pipeline = Pipeline::new(&args.query)?;
     match args.file {
         Some(file_name) => {
@@ -33,5 +32,6 @@ main!(|args: Cli, log_level: verbosity| {
             let locked = stdin.lock();
             pipeline.process(locked)
         }
-    }
-});
+    };
+    Ok(())
+}

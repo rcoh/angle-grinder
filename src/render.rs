@@ -1,4 +1,4 @@
-use data;
+use crate::data;
 use std;
 use std::collections::HashMap;
 use std::io::{stdout, Write};
@@ -243,8 +243,8 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data::*;
-    use operator::*;
+    use crate::data::*;
+    use crate::operator::*;
 
     #[test]
     fn print_raw() {

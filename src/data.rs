@@ -1,7 +1,7 @@
 extern crate ordered_float;
 
 use self::ordered_float::OrderedFloat;
-use render;
+use crate::render;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
