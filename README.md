@@ -266,7 +266,7 @@ it has a refresh rate of about 20hz.
 ```bash
 cargo build
 cargo test
-cargo install
+cargo install --path .
 agrind --help
 ```
 

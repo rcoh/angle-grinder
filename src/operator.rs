@@ -711,7 +711,7 @@ impl AggregateOperator for Total {
     fn process(&mut self, row: Row) {
         match row {
             Row::Aggregate(mut agg) => {
-                agg.columns.push("_total".to_string());
+                agg.columns.push(self.output_column.to_string());
                 self.columns = agg.columns;
                 self.total = 0.0;
                 let new_agg = agg

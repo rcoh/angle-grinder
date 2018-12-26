@@ -1,4 +1,4 @@
-query = "* | json | total(num_things)"
+query = "* | json | total(num_things) as _lotal"
 input = """
 {"level": "info", "message": "A thing happened", "num_things": 1.5}
 {"level": "info", "message": "A thing happened", "num_things": 1103}
@@ -10,7 +10,7 @@ input = """
 {"level": "info", "message": "A thing happened", "num_things": 1105}
 {"level": "info", "message": "A thing happened", "num_things": 1105.5}
 """
-output = """_total        level        message                 num_things
+output = """_lotal        level        message                 num_things
 ---------------------------------------------------------------------
 1.50          info         A thing happened        1.50
 1104.50       info         A thing happened        1103
