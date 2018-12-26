@@ -7,7 +7,7 @@ use std::io::BufReader;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-//#[structopt(after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder")]
+#[structopt(after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder")]
 struct Cli {
     /// The query
     query: String,
