@@ -6,7 +6,7 @@ description = "CLI App to slice and dice logfiles"
 license = "MIT"
 repository = "https://github.com/rcoh/angle-grinder"
 readme = "README.md"
-
+edition = "2018"
 [package.metadata.deb]
 extended-description = """Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. \
                         You can see it, live-updating, in your terminal. Angle grinder is designed for when, for \
