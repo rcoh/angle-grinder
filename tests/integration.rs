@@ -21,8 +21,8 @@ mod integration {
     use super::*;
     use ag::pipeline::Pipeline;
     use assert_cli;
-    use toml;
     use std::borrow::Borrow;
+    use toml;
 
     fn structured_test(s: &str) {
         let conf: TestDefinition = toml::from_str(s).unwrap();
@@ -55,6 +55,11 @@ mod integration {
     #[test]
     fn sort_order() {
         structured_test(include_str!("structured_tests/sort_order.toml"));
+    }
+
+    #[test]
+    fn total() {
+        structured_test(include_str!("structured_tests/total.toml"));
     }
 
     #[test]
@@ -185,20 +190,12 @@ $None$       1")
     #[test]
     fn filter_wildcard() {
         assert_cli::Assert::main_binary()
-            .with_args(&[
-                r#""*STAR*""#,
-                "--file",
-                "test_files/filter_test.log",
-            ])
+            .with_args(&[r#""*STAR*""#, "--file", "test_files/filter_test.log"])
             .stdout()
             .is("[INFO] Match a *STAR*!")
             .unwrap();
         assert_cli::Assert::main_binary()
-            .with_args(&[
-                r#"*STAR*"#,
-                "--file",
-                "test_files/filter_test.log",
-            ])
+            .with_args(&[r#"*STAR*"#, "--file", "test_files/filter_test.log"])
             .stdout()
             .is("[INFO] Match a *STAR*!
 [INFO] Not a STAR!")
@@ -210,6 +207,7 @@ $None$       1")
             "Query: `{}` from the README should have parsed",
             query
         ));
+        println!("validated {}", query);
     }
 
     #[test]

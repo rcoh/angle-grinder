@@ -17,17 +17,17 @@ mod render;
 mod typecheck;
 
 pub mod pipeline {
-    use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
     use crate::data::{Record, Row, Value};
-    use failure::Error;
     use crate::lang;
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
+    use crate::typecheck;
+    use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
+    use failure::Error;
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
-    use crate::typecheck;
 
     #[derive(Debug, Fail)]
     pub enum CompileError {
@@ -125,12 +125,12 @@ pub mod pipeline {
                     pattern,
                     fields,
                     input_column,
-                } => Ok(
-                    operator::Parse::new(
-                        pattern.to_regex(),
-                        fields,
-                        input_column.map(|c| c.force()))?.into(),
-                ),
+                } => Ok(operator::Parse::new(
+                    pattern.to_regex(),
+                    fields,
+                    input_column.map(|c| c.force()),
+                )?
+                .into()),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
                         FieldMode::Except => operator::FieldMode::Except,
@@ -143,6 +143,10 @@ pub mod pipeline {
                     typecheck::create_where_adapt(expr)
                 }
             }
+        }
+
+        fn convert_total(op: lang::TotalOperator) -> Box<operator::AggregateOperator> {
+            Box::new(operator::Total::new(op.input_column, op.output_column))
         }
 
         fn convert_sort(op: lang::SortOperator) -> Box<operator::AggregateOperator> {
@@ -168,7 +172,8 @@ pub mod pipeline {
         }
 
         fn convert_multi_agg(op: lang::MultiAggregateOperator) -> Box<operator::AggregateOperator> {
-            let agg_functions = op.aggregate_functions
+            let agg_functions = op
+                .aggregate_functions
                 .into_iter()
                 .map(|(k, func)| (k, Pipeline::convert_agg_function(func)));
             let key_cols: Vec<operator::Expr> =
@@ -185,9 +190,7 @@ pub mod pipeline {
                 message: format!("{:?}", e),
             });
             let query = parsed?;
-            let filters = query.search.iter()
-                .map(lang::Keyword::to_regex)
-                .collect();
+            let filters = query.search.iter().map(lang::Keyword::to_regex).collect();
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
@@ -210,16 +213,19 @@ pub mod pipeline {
             };
             for op in query.operators {
                 match op {
-                    Operator::Inline(inline_op) => if !in_agg {
-                        pre_agg.push(Pipeline::convert_inline(inline_op)?);
-                    } else {
-                        post_agg.push(Pipeline::convert_inline_adapted(inline_op)?)
-                    },
+                    Operator::Inline(inline_op) => {
+                        if !in_agg {
+                            pre_agg.push(Pipeline::convert_inline(inline_op)?);
+                        } else {
+                            post_agg.push(Pipeline::convert_inline_adapted(inline_op)?)
+                        }
+                    }
                     Operator::MultiAggregate(agg_op) => {
                         in_agg = true;
                         post_agg.push(Pipeline::convert_multi_agg(agg_op))
                     }
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
+                    Operator::Total(total_op) => post_agg.push(Pipeline::convert_total(total_op)),
                 }
             }
             if let Some(op) = final_op {
@@ -285,9 +291,6 @@ pub mod pipeline {
             let preaggs = self.pre_aggregates;
             let renderer = self.renderer;
             let t = if !aggregators.is_empty() {
-                if aggregators.len() == 1 {
-                    panic!("Every aggregate pipeline should have a real operator and a sort");
-                }
                 let head = aggregators.remove(0);
                 thread::spawn(move || Pipeline::render_aggregate(head, aggregators, renderer, &rx))
             } else {
@@ -327,7 +330,6 @@ pub mod pipeline {
             } else {
                 None
             }
-
         }
 
         pub fn run_agg_pipeline(

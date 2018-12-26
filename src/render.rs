@@ -56,7 +56,8 @@ impl PrettyPrinter {
     }
 
     fn new_columns(&self, data: &HashMap<String, data::Value>) -> Vec<String> {
-        let mut new_keys: Vec<String> = data.keys()
+        let mut new_keys: Vec<String> = data
+            .keys()
             .filter(|key| !self.column_order.contains(key))
             .cloned()
             .collect();
@@ -100,7 +101,8 @@ impl PrettyPrinter {
         } else {
             false
         };
-        let strs: Vec<String> = self.column_order
+        let strs: Vec<String> = self
+            .column_order
             .iter()
             .map(|column_name| {
                 let value = record.data.get(column_name);
@@ -149,10 +151,10 @@ impl PrettyPrinter {
         if aggregate.data.is_empty() {
             return "No data\n".to_string();
         }
-        aggregate
-            .data
-            .iter()
-            .for_each(|row| self.column_widths = self.compute_column_widths(row));
+        aggregate.data.iter().for_each(|row| {
+            let new_widths = self.compute_column_widths(row);
+            self.column_widths.extend(new_widths);
+        });
         let header: Vec<String> = aggregate
             .columns
             .iter()
@@ -322,14 +324,14 @@ mod tests {
             "count".to_string(),
             &[
                 (
-                    hashmap!{
+                    hashmap! {
                         "kc1".to_string() => "k1".to_string(),
                         "kc2".to_string() => "k2".to_string()
                     },
                     Value::Int(100),
                 ),
                 (
-                    hashmap!{
+                    hashmap! {
                         "kc1".to_string() => "k300".to_string(),
                         "kc2".to_string() => "k40000".to_string()
                     },

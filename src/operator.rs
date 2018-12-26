@@ -36,8 +36,10 @@ pub enum TypeError {
     #[fail(display = "Expected boolean expression, found {}", found)]
     ExpectedBool { found: String },
 
-    #[fail(display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
-           pattern, extracted)]
+    #[fail(
+        display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
+        pattern, extracted
+    )]
     ParseNumPatterns { pattern: usize, extracted: usize },
 }
 
@@ -51,6 +53,9 @@ pub trait EvaluatableBorrowed<T> {
 
 pub trait UnaryPreAggOperator: Send + Sync {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError>;
+    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+        self.process(rec)
+    }
     fn get_input<'a>(&self, rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
         match col {
             Some(expr) => {
@@ -106,7 +111,8 @@ impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T
             Row::Aggregate(agg) => {
                 let columns = agg.columns;
                 let processed_records: Vec<data::VMap> = {
-                    let records = agg.data
+                    let records = agg
+                        .data
                         .into_iter()
                         .map(|vmap| data::Record {
                             data: vmap,
@@ -123,7 +129,8 @@ impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T
                         .filter(|col| !columns.contains(col))
                         .unique()
                         .cloned()
-                }.collect();
+                }
+                .collect();
                 let mut columns = columns;
                 columns.extend(new_keys);
                 self.state = Aggregate {
@@ -282,7 +289,8 @@ impl AggregateFunction for Sum {
                 &data::Value::Int(ref i) => {
                     self.total += *i as f64;
                 }
-                _other => self.warnings
+                _other => self
+                    .warnings
                     .push("Got string. Can only average into or float".to_string()),
             });
     }
@@ -362,7 +370,8 @@ impl AggregateFunction for Average {
                     self.total += *i as f64;
                     self.count += 1
                 }
-                _other => self.warnings
+                _other => self
+                    .warnings
                     .push("Got string. Can only average into or float".to_string()),
             });
     }
@@ -407,7 +416,8 @@ impl AggregateFunction for Percentile {
                     self.ckms.insert(f.into_inner());
                 }
                 &data::Value::Int(ref i) => self.ckms.insert(*i as f64),
-                _other => self.warnings
+                _other => self
+                    .warnings
                     .push("Got string. Can only average int or float".to_string()),
             });
     }
@@ -448,7 +458,8 @@ impl Sorter {
     }
 
     fn new_columns(&self, data: &HashMap<String, data::Value>) -> Vec<String> {
-        let mut new_keys: Vec<String> = data.keys()
+        let mut new_keys: Vec<String> = data
+            .keys()
             .filter(|key| !self.columns.contains(key))
             .cloned()
             .collect();
@@ -590,8 +601,7 @@ impl Parse {
 
     fn matches(&self, rec: &Record) -> Result<Option<Vec<data::Value>>, EvalError> {
         let inp = self.get_input(rec, &self.input_column)?;
-        let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim())
-            .collect();
+        let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
         if matches.is_empty() {
             Ok(None)
         } else {
@@ -638,6 +648,85 @@ impl<T: Evaluatable<bool> + Send + Sync> UnaryPreAggOperator for Where<T> {
             Ok(Some(rec))
         } else {
             Ok(None)
+        }
+    }
+}
+
+pub struct Total {
+    column: Expr,
+    total: f64,
+    state: Vec<Data>,
+    columns: Vec<String>,
+    output_column: String,
+}
+
+impl Total {
+    pub fn new<T: Into<Expr>>(column: T, output_column: String) -> Total {
+        Total {
+            column: column.into(),
+            total: 0.0,
+            state: Vec::new(),
+            columns: Vec::new(),
+            output_column,
+        }
+    }
+
+    fn new_columns(&self, data: &HashMap<String, data::Value>) -> Vec<String> {
+        let mut new_keys: Vec<String> = data
+            .keys()
+            .filter(|key| !self.columns.contains(key))
+            .cloned()
+            .collect();
+        new_keys.sort();
+        new_keys
+    }
+
+    fn proc_rec(&mut self, mut data: Data) -> Data {
+        let val: f64 = self
+            .column
+            .eval_borrowed(&data)
+            .map(|value| match value {
+                data::Value::Int(i) => *i as f64,
+                data::Value::Float(f) => f.into_inner(),
+                _ => 0.0,
+            })
+            .unwrap_or(0.0);
+        self.total += val;
+        data.insert(
+            self.output_column.to_string(),
+            data::Value::from_float(self.total),
+        );
+        data
+    }
+}
+
+impl AggregateOperator for Total {
+    fn emit(&self) -> data::Aggregate {
+        Aggregate {
+            data: self.state.to_vec(),
+            columns: self.columns.clone(),
+        }
+    }
+
+    fn process(&mut self, row: Row) {
+        match row {
+            Row::Aggregate(mut agg) => {
+                agg.columns.push("_total".to_string());
+                self.columns = agg.columns;
+                self.total = 0.0;
+                let new_agg = agg
+                    .data
+                    .into_iter()
+                    .map(|data| self.proc_rec(data))
+                    .collect();
+                self.state = new_agg;
+            }
+            Row::Record(rec) => {
+                let processed = self.proc_rec(rec.data);
+                let new_cols = self.new_columns(&processed);
+                self.state.push(processed);
+                self.columns.extend(new_cols);
+            }
         }
     }
 }
@@ -699,11 +788,13 @@ impl UnaryPreAggOperator for ParseJson {
         let res = match json {
             JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
                 record_opt.and_then(|record| match v {
-                    &JsonValue::Number(ref num) => if num.is_i64() {
-                        Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
-                    } else {
-                        Some(record.put(k, data::Value::from_float(num.as_f64().unwrap())))
-                    },
+                    &JsonValue::Number(ref num) => {
+                        if num.is_i64() {
+                            Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
+                        } else {
+                            Some(record.put(k, data::Value::from_float(num.as_f64().unwrap())))
+                        }
+                    }
                     &JsonValue::String(ref s) => {
                         Some(record.put(k, data::Value::Str(s.to_string())))
                     }
@@ -721,8 +812,8 @@ impl UnaryPreAggOperator for ParseJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang;
     use crate::data::Value;
+    use crate::lang;
     //use crate::operator::itertools::Itertools;
 
     impl From<String> for Expr {
@@ -802,7 +893,8 @@ mod tests {
                 "length".to_string(),
             ],
             None,
-        ).unwrap();
+        )
+        .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("sender").unwrap(),
@@ -823,7 +915,8 @@ mod tests {
             lang::Keyword::new_wildcard("[*=*]".to_string()).to_regex(),
             vec!["key".to_string(), "value".to_string()],
             Some("from_col".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("key").unwrap(),
@@ -1036,5 +1129,41 @@ mod tests {
         );
         let _: () = adapted.process(Row::Aggregate(agg.clone()));
         assert_eq!(adapted.emit(), agg.clone());
+    }
+
+    #[test]
+    fn test_total() {
+        let mut total_op = Total::new(Expr::Column("count".to_string()), "_total".to_string());
+        let agg = Aggregate::new(
+            &["kc1".to_string(), "kc2".to_string()],
+            "count".to_string(),
+            &[
+                (
+                    hashmap! {
+                        "kc1".to_string() => "k1".to_string(),
+                        "kc2".to_string() => "k2".to_string()
+                    },
+                    Value::Int(100),
+                ),
+                (
+                    hashmap! {
+                        "kc1".to_string() => "k300".to_string(),
+                        "kc2".to_string() => "k40000".to_string()
+                    },
+                    Value::Int(500),
+                ),
+            ],
+        );
+        total_op.process(Row::Aggregate(agg.clone()));
+        let result = total_op.emit().data;
+        assert_eq!(result[0].get("_total").unwrap(), &Value::from_float(100.0));
+        assert_eq!(result[1].get("_total").unwrap(), &Value::from_float(600.0));
+        assert_eq!(result.len(), 2);
+        total_op.process(Row::Aggregate(agg.clone()));
+        let result = total_op.emit().data;
+        assert_eq!(result[0].get("_total").unwrap(), &Value::from_float(100.0));
+        assert_eq!(result[1].get("_total").unwrap(), &Value::from_float(600.0));
+        assert_eq!(result.len(), 2);
+        //assert_eq!(, agg.clone());
     }
 }
