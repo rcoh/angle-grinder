@@ -6,9 +6,9 @@ extern crate serde_json;
 
 use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
-use data;
-use data::{Aggregate, Record, Row};
-use operator::itertools::Itertools;
+use crate::data;
+use crate::data::{Aggregate, Record, Row};
+use crate::operator::itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -721,9 +721,9 @@ impl UnaryPreAggOperator for ParseJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lang;
-    use data::Value;
-    use operator::itertools::Itertools;
+    use crate::lang;
+    use crate::data::Value;
+    use crate::operator::itertools::Itertools;
 
     impl From<String> for Expr {
         fn from(inp: String) -> Self {

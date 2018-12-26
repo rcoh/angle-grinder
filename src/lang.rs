@@ -1,4 +1,4 @@
-use data;
+use crate::data;
 use nom;
 use nom::types::CompleteStr;
 use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1, multispace};

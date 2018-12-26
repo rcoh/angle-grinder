@@ -18,16 +18,16 @@ mod typecheck;
 
 pub mod pipeline {
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
-    use data::{Record, Row, Value};
+    use crate::data::{Record, Row, Value};
     use failure::Error;
-    use lang;
-    use lang::*;
-    use operator;
-    use render::{RenderConfig, Renderer};
+    use crate::lang;
+    use crate::lang::*;
+    use crate::operator;
+    use crate::render::{RenderConfig, Renderer};
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
-    use typecheck;
+    use crate::typecheck;
 
     #[derive(Debug, Fail)]
     pub enum CompileError {
