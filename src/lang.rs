@@ -1,7 +1,7 @@
 use crate::data;
 use nom;
 use nom::types::CompleteStr;
-use nom::{is_alphabetic, is_alphanumeric, is_digit, digit1, multispace};
+use nom::{digit1, is_alphabetic, is_alphanumeric, is_digit, multispace};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -45,7 +45,7 @@ enum KeywordType {
     /// The keyword string should exactly match the input.
     EXACT,
     /// The keyword string can contain wildcards.
-    WILDCARD
+    WILDCARD,
 }
 
 /// Represents a `keyword` search string.
@@ -90,6 +90,7 @@ pub enum Operator {
     Inline(InlineOperator),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
+    Total(TotalOperator),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -156,6 +157,12 @@ pub struct SortOperator {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct TotalOperator {
+    pub input_column: Expr,
+    pub output_column: String,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Query {
     pub search: Vec<Keyword>,
     pub operators: Vec<Operator>,
@@ -178,7 +185,7 @@ fn is_keyword(c: char) -> bool {
     match c {
         '-' | '_' | ':' | '/' | '.' | '+' | '@' | '#' | '$' | '%' | '^' | '*' => true,
         alpha if is_alphanumeric(alpha as u8) => true,
-        _ => false
+        _ => false,
     }
 }
 
@@ -349,7 +356,7 @@ named!(aggregate_function<CompleteStr, AggregateFunction>, alt!(
     sum |
     p_nn));
 
-named!(operator<CompleteStr, Operator>, alt!(inline_operator | sort | multi_aggregate_operator));
+named!(operator<CompleteStr, Operator>, alt!(inline_operator | sort | multi_aggregate_operator | total));
 
 // count by x,y
 // avg(foo) by x
@@ -408,6 +415,17 @@ named!(sort<CompleteStr, Operator>, ws!(do_parse!(
     (Operator::Sort(SortOperator{
         sort_cols: key_cols_opt.unwrap_or_default(),
         direction: dir.unwrap_or(SortMode::Ascending) ,
+     })))
+));
+
+named!(total<CompleteStr, Operator>, ws!(do_parse!(
+    tag!("total") >>
+    input_column: delimited!(tag!("("), expr, tag!(")")) >>
+    rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
+    (Operator::Total(TotalOperator{
+        input_column,
+        output_column:
+            rename_opt.map(|s|s.to_string()).unwrap_or_else(||"_total".to_string()),
      })))
 ));
 
@@ -657,9 +675,10 @@ mod tests {
                                 right: Box::new(Expr::Value(data::Value::Int(123))),
                             },
                         ],
-                        aggregate_functions: vec![
-                            ("_count".to_string(), AggregateFunction::Count {}),
-                        ],
+                        aggregate_functions: vec![(
+                            "_count".to_string(),
+                            AggregateFunction::Count {}
+                        ),],
                     }),
                     Operator::Sort(SortOperator {
                         sort_cols: vec!["foo".to_string()],

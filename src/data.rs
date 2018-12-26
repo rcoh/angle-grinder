@@ -107,7 +107,12 @@ impl Value {
     }
 
     pub fn from_float(f: f64) -> Value {
-        Value::Float(OrderedFloat(f))
+        let rounded = f as i64;
+        if f == f.floor() {
+            Value::Int(rounded)
+        } else {
+            Value::Float(OrderedFloat(f))
+        }
     }
 
     pub fn from_string(s: &str) -> Value {
@@ -138,7 +143,8 @@ impl Aggregate {
                 }
             });
         });
-        let raw_data: Vec<HashMap<String, Value>> = data.iter()
+        let raw_data: Vec<HashMap<String, Value>> = data
+            .iter()
             .map(|&(ref keycols, ref value)| {
                 let mut new_map: HashMap<String, Value> = keycols
                     .iter()
@@ -205,15 +211,13 @@ mod tests {
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
-            &[
-                (
-                    hashmap!{
-                        "kc1".to_string() => "k1".to_string(),
-                        "kc2".to_string() => "k2".to_string()
-                    },
-                    Value::Int(100),
-                ),
-            ],
+            &[(
+                hashmap! {
+                    "kc1".to_string() => "k1".to_string(),
+                    "kc2".to_string() => "k2".to_string()
+                },
+                Value::Int(100),
+            )],
         );
         assert_eq!(agg.data.len(), 1);
     }
@@ -224,14 +228,12 @@ mod tests {
         Aggregate::new(
             &["k1".to_string(), "k2".to_string()],
             "count".to_string(),
-            &[
-                (
-                    hashmap!{
-                        "kc2".to_string() => "k2".to_string()
-                    },
-                    Value::Int(100),
-                ),
-            ],
+            &[(
+                hashmap! {
+                    "kc2".to_string() => "k2".to_string()
+                },
+                Value::Int(100),
+            )],
         );
     }
 
