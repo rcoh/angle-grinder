@@ -1,7 +1,7 @@
 extern crate itertools;
 extern crate quantiles;
 extern crate regex;
-extern crate regex_syntax;
+//extern crate regex_syntax;
 extern crate serde_json;
 
 use self::quantiles::ckms::CKMS;
