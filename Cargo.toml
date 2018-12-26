@@ -27,6 +27,7 @@ quantiles = "0.7.1"
 crossbeam-channel = "0.3.4"
 ordered-float = "1.0.1"
 failure = "0.1.3"
+structopt = "0.2"
 
 [dev-dependencies]
 assert_cli = "0.6.3"
