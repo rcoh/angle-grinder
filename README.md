@@ -37,7 +37,7 @@ If you have Cargo installed, you can compile & install from source: (Works with 
 cargo install ag
 ```
 
-## Query Synax
+## Query Syntax
 
 An angle grinder query is composed of filters followed by a series of operators.
 The filters select the lines from the input stream to be transformed by the operators.
@@ -169,6 +169,7 @@ Count number of source_hosts:
 
 ##### Percentile
 `pXX(column)`: calculate the XXth percentile of `column`
+
 *Examples*:
 ```agrind
 * | json | p50(response_time), p90(response_time) by endpoint_url, status_code
@@ -176,13 +177,15 @@ Count number of source_hosts:
 
 ##### Sort
 `sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
+
 *Examples*:
 ```agrind
 * | json | count by endpoint_url, status_code | sort by endpoint_url desc
 ```
 
 ##### Total
-`total(a)`: Compute the running total of a given field
+`total(a) [as renamed_total]`: Compute the running total of a given field
+
 *Examples*:
 ```agrind
 * | json | total(num_requests) as tot_requests
@@ -190,6 +193,7 @@ Count number of source_hosts:
 
 ##### Count Distinct
 `count_distinct(a)`: Count distinct values of column `a`. Warning: this is not fixed memory. Be careful about processing too many groups.
+
 *Examples*:
 ```agrind
 * | json | count_distinct(ip_address)
