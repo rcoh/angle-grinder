@@ -1,7 +1,4 @@
 extern crate ag;
-#[macro_use] extern crate quicli;
-#[macro_use] extern crate structopt;
-use quicli::prelude::*;
 use ag::pipeline::Pipeline;
 use quicli::prelude::*;
 use std::fs::File;

@@ -723,7 +723,7 @@ mod tests {
     use super::*;
     use crate::lang;
     use crate::data::Value;
-    use crate::operator::itertools::Itertools;
+    //use crate::operator::itertools::Itertools;
 
     impl From<String> for Expr {
         fn from(inp: String) -> Self {
