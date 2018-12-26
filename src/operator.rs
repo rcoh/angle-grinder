@@ -842,7 +842,7 @@ mod tests {
         let mut count_agg = MultiGrouper::new(&[], vec![], ops);
         (0..10)
             .map(|n| Record::new(&n.to_string()))
-            .foreach(|rec| count_agg.process(Row::Record(rec)));
+            .for_each(|rec| count_agg.process(Row::Record(rec)));
         let agg = count_agg.emit();
         assert_eq!(agg.columns, vec!["_count"]);
         assert_eq!(
@@ -851,7 +851,7 @@ mod tests {
         );
         (0..10)
             .map(|n| Record::new(&n.to_string()))
-            .foreach(|rec| count_agg.process(Row::Record(rec)));
+            .for_each(|rec| count_agg.process(Row::Record(rec)));
         assert_eq!(
             count_agg.emit().data,
             vec![hashmap! {"_count".to_string() => data::Value::Int(20)}]
@@ -874,25 +874,25 @@ mod tests {
             vec!["k1".to_string()],
             ops,
         );
-        (0..10).foreach(|n| {
+        (0..10).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
         });
-        (0..10).foreach(|n| {
+        (0..10).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
         });
-        (0..25).foreach(|n| {
+        (0..25).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("not ok".to_string()));
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
         });
-        (0..3).foreach(|n| {
+        (0..3).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
@@ -936,17 +936,17 @@ mod tests {
             vec!["k1".to_string()],
             ops,
         );
-        (0..10).foreach(|n| {
+        (0..10).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
             count_agg.process(Row::Record(rec));
         });
-        (0..25).foreach(|n| {
+        (0..25).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("not ok".to_string()));
             count_agg.process(Row::Record(rec));
         });
-        (0..3).foreach(|n| {
+        (0..3).for_each(|n| {
             let rec = Record::new(&n.to_string());
             count_agg.process(Row::Record(rec));
         });
