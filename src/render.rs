@@ -2,7 +2,9 @@ use crate::data;
 use std;
 use std::collections::HashMap;
 use std::io::{stdout, Write};
+
 extern crate terminal_size;
+
 use self::terminal_size::{terminal_size, Height, Width};
 use std::time::{Duration, Instant};
 
@@ -22,6 +24,24 @@ struct PrettyPrinter {
     column_widths: HashMap<String, usize>,
     column_order: Vec<String>,
     term_size: Option<TerminalSize>,
+}
+
+// MAYBE TODO: do any terminals not support unicode anymore? If so it would be nice to detect that
+// and display "..." instead
+const ELLIPSIS: &str = "…";
+
+fn format_with_ellipsis<S: Into<String>>(inp: S, limit: usize) -> String {
+    let inp = inp.into();
+    if inp.chars().count() > limit {
+        format!(
+            "{str:.prelimit$}{ellipsis} ",
+            str = inp,
+            prelimit = limit - ELLIPSIS.chars().count() - 1,
+            ellipsis = ELLIPSIS
+        )
+    } else {
+        format!("{:limit$}", inp, limit = limit)
+    }
 }
 
 impl PrettyPrinter {
@@ -127,6 +147,52 @@ impl PrettyPrinter {
         strs.join("").trim().to_string()
     }
 
+    fn max_width(&self) -> u16 {
+        match self.term_size {
+            None => 240,
+            Some(TerminalSize { width, .. }) => width,
+        }
+    }
+
+    fn fits_within_term_agg(&self) -> bool {
+        let allocated_width = self.max_width() as usize;
+        let used_width: usize = self.column_widths.values().sum();
+        used_width <= allocated_width
+    }
+
+    fn resize_widths_to_fit(
+        &self,
+        column_widths: &HashMap<String, usize>,
+        ordering: &[String],
+    ) -> HashMap<String, usize> {
+        if !self.fits_within_term_agg() {
+            let allocated_width = self.max_width();
+            let mut remaining = allocated_width as usize;
+            ordering
+                .iter()
+                .enumerate()
+                .map(|(i, col)| {
+                    let width = column_widths.get(col).unwrap();
+                    let col = col.clone();
+                    let max_column_width =
+                        (remaining as f64 / (self.column_widths.len() - i) as f64) as usize;
+                    let fair_size = if *width < max_column_width {
+                        println!("under max width {} {}", col, *width);
+                        remaining -= width;
+                        (col, *width)
+                    } else {
+                        println!("over max width {} {}", col, max_column_width);
+                        remaining -= max_column_width;
+                        (col, max_column_width)
+                    };
+                    fair_size
+                })
+                .collect()
+        } else {
+            column_widths.clone()
+        }
+    }
+
     fn format_aggregate_row(
         &self,
         columns: &[String],
@@ -135,12 +201,11 @@ impl PrettyPrinter {
         let row: Vec<String> = columns
             .iter()
             .map(|column_name| {
-                format!(
-                    "{:width$}",
+                format_with_ellipsis(
                     row.get(column_name)
                         .unwrap_or(&data::Value::None)
                         .render(&self.render_config),
-                    width = self.column_widths[column_name]
+                    self.column_widths[column_name],
                 )
             })
             .collect();
@@ -151,10 +216,14 @@ impl PrettyPrinter {
         if aggregate.data.is_empty() {
             return "No data\n".to_string();
         }
+
         aggregate.data.iter().for_each(|row| {
             let new_widths = self.compute_column_widths(row);
             self.column_widths.extend(new_widths);
         });
+
+        self.column_widths = self.resize_widths_to_fit(&self.column_widths, &aggregate.columns);
+        assert!(self.fits_within_term_agg(), "{:?}", self.column_widths);
         let header: Vec<String> = aggregate
             .columns
             .iter()
@@ -358,4 +427,67 @@ mod tests {
         );
     }
 
+    #[test]
+    fn pretty_print_aggregate_too_long() {
+        let agg = Aggregate::new(
+            &["kc1".to_string(), "kc2".to_string()],
+            "count".to_string(),
+            &[
+                (
+                    hashmap! {
+                        "kc1".to_string() => "k1".to_string(),
+                        "kc2".to_string() => "k40000 k40000k50000k60000k70000k80000".to_string()
+                    },
+                    Value::from_string("0bcdefghijklmnopqrztuvwxyz 1bcdefghijklmnopqrztuvwxyz 2bcdefghijklmnopqrztuvwxyz"),
+                ),
+                (
+                    hashmap! {
+                        "kc1".to_string() => "k1".to_string(),
+                        "kc2".to_string() => "k2".to_string()
+                    },
+                    Value::from_string("0bcdefghijklmnopqrztuvwxyz 1bcdefghijklmnopqrztuvwxyz 2bcdefghijklmnopqrztuvwxyz"),
+                ),
+                (
+                    hashmap! {
+                        "kc1".to_string() => "k300".to_string(),
+                        "kc2".to_string() => "k40000 k40000k50000k60000k70000k80000".to_string()
+                    },
+                    Value::Int(500),
+                ),
+            ],
+        );
+        let max_width = 60;
+        let mut pp = PrettyPrinter::new(
+            RenderConfig {
+                floating_points: 2,
+                min_buffer: 2,
+                max_buffer: 4,
+            },
+            Some(TerminalSize {
+                width: max_width as u16,
+                height: 10,
+            }),
+        );
+        println!("{}", pp.format_aggregate(&agg));
+        let result = pp.format_aggregate(&agg);
+        for line in result.lines() {
+            assert!(
+                line.chars().count() <= max_width as usize,
+                "Expected `{}` to be shorter than {} -- it was {}",
+                line,
+                max_width,
+                line.len()
+            );
+        }
+        assert_eq!(
+            pp.format_aggregate(&agg),
+            "kc1    kc2                       count\n------------------------------------------------------------\nk1     k40000 k40000k50000k6000… 0bcdefghijklmnopqrztuvwxy…\nk1     k2                        0bcdefghijklmnopqrztuvwxy…\nk300   k40000 k40000k50000k6000… 500\n"
+        );
+    }
+
+    #[test]
+    fn test_format_with_ellipsis() {
+        assert_eq!(format_with_ellipsis("abcde", 4), "ab… ");
+        assert_eq!(format_with_ellipsis("abcde", 10), "abcde     ");
+    }
 }

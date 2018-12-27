@@ -1,4 +1,6 @@
 extern crate ag;
+#[macro_use]
+extern crate human_panic;
 use ag::pipeline::Pipeline;
 use quicli::prelude::*;
 use std::fs::File;
@@ -19,6 +21,7 @@ struct Cli {
 }
 
 fn main() -> CliResult {
+    setup_panic!();
     let args = Cli::from_args();
     args.verbosity.setup_env_logger("agrind")?;
     let pipeline = Pipeline::new(&args.query)?;
