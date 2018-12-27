@@ -41,6 +41,11 @@ mod integration {
     }
 
     #[test]
+    fn long_aggregate_values() {
+        structured_test(include_str!("structured_tests/longlines.toml"));
+    }
+
+    #[test]
     fn sum_operator() {
         structured_test(include_str!("structured_tests/sum.toml"));
     }

@@ -176,16 +176,13 @@ impl PrettyPrinter {
                     let col = col.clone();
                     let max_column_width =
                         (remaining as f64 / (self.column_widths.len() - i) as f64) as usize;
-                    let fair_size = if *width < max_column_width {
-                        println!("under max width {} {}", col, *width);
+                    if *width < max_column_width {
                         remaining -= width;
                         (col, *width)
                     } else {
-                        println!("over max width {} {}", col, max_column_width);
                         remaining -= max_column_width;
                         (col, max_column_width)
-                    };
-                    fair_size
+                    }
                 })
                 .collect()
         } else {

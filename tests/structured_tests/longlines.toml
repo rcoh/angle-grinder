@@ -1,0 +1,15 @@
+query = "* | json | count by event"
+input = """
+{"env": "dev", "timestamp": "2018-03-09T18:52:16.611872Z", "level": "info", "schema_name": "db_shard", "hostname": "127.0.0.1", "module": "angle.grinder.logs:146", "key": 3, "greenlet_id": 99191, "event": "wow thats a alot of fieldsabcdefghijklmnopqrstuvvwxyz fieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwxyz"}
+{"env": "dev", "timestamp": "2018-03-09T18:52:16.611872Z", "level": "info", "schema_name": "db_shard", "hostname": "127.0.0.1", "module": "angle.grinder.logs:146", "key": 3, "greenlet_id": 99191, "event": "wow thats a alot of fields"}
+{"env": "dev", "timestamp": "2018-03-09T18:52:16.611872Z", "level": "info", "schema_name": "db_shard", "hostname": "127.0.0.1", "module": "angle.grinder.logs:146", "key": 3, "greenlet_id": 99191, "event": "wow thats a alot of fields"}
+{"env": "dev", "timestamp": "2018-03-09T18:52:16.611872Z", "level": "info", "schema_name": "db_shard", "hostname": "127.0.0.1", "module": "angle.grinder.logs:146", "key": 3, "greenlet_id": 99191, "event": "wow thats a alot of fields"}
+{"env": "dev", "timestamp": "2018-03-09T18:52:16.611872Z", "level": "info", "schema_name": "db_shard", "hostname": "127.0.0.1", "module": "angle.grinder.logs:146", "key": 3, "greenlet_id": 99191, "event": "wow thats a alot of fields"}
+{"env": "dev", "timestamp": "2018-03-09T18:52:16.611872Z", "level": "info", "schema_name": "db_shard", "hostname": "127.0.0.1", "module": "angle.grinder.logs:146", "key": 3, "greenlet_id": 99191, "event": "wow thats a alot of fields"}
+"""
+output = """
+event                                                                                                                   _count
+--------------------------------------------------------------------------------------------------------------------------------------
+wow thats a alot of fields                                                                                              5
+wow thats a alot of fieldsabcdefghijklmnopqrstuvvwxyz fieldsabcdefghijklmnopqrstuvvwxyzfieldsabcdefghijklmnopqrstuvvwx… 1
+"""
