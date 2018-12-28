@@ -1,11 +1,4 @@
 #[macro_use]
-extern crate nom;
-
-#[macro_use]
-#[cfg(test)]
-extern crate maplit;
-
-#[macro_use]
 extern crate failure;
 
 extern crate crossbeam_channel;

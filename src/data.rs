@@ -197,6 +197,7 @@ impl Record {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maplit::hashmap;
 
     #[test]
     fn record_put_get() {

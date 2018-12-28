@@ -3,8 +3,7 @@ extern crate assert_cli;
 extern crate pulldown_cmark;
 extern crate toml;
 
-#[macro_use]
-extern crate serde_derive;
+use serde_derive::Deserialize;
 
 mod code_blocks;
 

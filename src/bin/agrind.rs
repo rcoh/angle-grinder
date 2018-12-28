@@ -1,7 +1,6 @@
-extern crate ag;
-#[macro_use]
-extern crate human_panic;
-#[macro_use] extern crate self_update;
+use human_panic::setup_panic;
+use self_update;
+use self_update::cargo_crate_version;
 use ag::pipeline::Pipeline;
 use quicli::prelude::*;
 use std::fs::File;

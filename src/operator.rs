@@ -814,7 +814,7 @@ mod tests {
     use super::*;
     use crate::data::Value;
     use crate::lang;
-    //use crate::operator::itertools::Itertools;
+    use maplit::hashmap;
 
     impl From<String> for Expr {
         fn from(inp: String) -> Self {
