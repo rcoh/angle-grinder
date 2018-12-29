@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn pretty_print_record() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
-        let parser = ParseJson::new(None);
+        let mut parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         let mut pp = PrettyPrinter::new(
             RenderConfig {
@@ -343,20 +343,20 @@ mod tests {
         );
         assert_eq!(pp.format_record(&rec), "[k1=5]     [k2=5.50]    [k3=str]");
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
-        let parser = ParseJson::new(None);
+        let mut parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(pp.format_record(&rec), "[k1=955]   [k2=5.50]    [k3=str3]");
         let rec = Record::new(
             r#"{"k1": "here is a amuch longer stsring", "k2": 5.5000001, "k3": "str3"}"#,
         );
-        let parser = ParseJson::new(None);
+        let mut parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             pp.format_record(&rec),
             "[k1=here is a amuch longer stsring]    [k2=5.50]    [k3=str3]"
         );
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
-        let parser = ParseJson::new(None);
+        let mut parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             pp.format_record(&rec),
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn pretty_print_record_too_long() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
-        let parser = ParseJson::new(None);
+        let mut parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         let mut pp = PrettyPrinter::new(
             RenderConfig {

@@ -1,7 +1,7 @@
 use crate::data;
 use nom;
 use nom::types::CompleteStr;
-use nom::{digit1, is_alphabetic, is_alphanumeric, is_digit, multispace};
+use nom::{digit1, is_alphabetic, is_alphanumeric, is_digit, double, multispace};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -49,7 +49,7 @@ enum KeywordType {
 }
 
 /// Represents a `keyword` search string.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Keyword(String, KeywordType);
 
 impl Keyword {
@@ -93,7 +93,7 @@ pub enum Operator {
     Total(TotalOperator),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum InlineOperator {
     Json {
         input_column: Option<String>,
@@ -110,9 +110,14 @@ pub enum InlineOperator {
     Where {
         expr: Expr,
     },
+    Limit {
+        /// The count for the limit is pretty loosely typed at this point, the next phase will
+        /// check the value to see if it's sane or provide a default if no number was given.
+        count: Option<f64>,
+    }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FieldMode {
     Only,
     Except,
@@ -250,6 +255,12 @@ named!(whre<CompleteStr, InlineOperator>, ws!(do_parse!(
     (InlineOperator::Where { expr: ex })
 )));
 
+named!(limit<CompleteStr, InlineOperator>, ws!(do_parse!(
+    tag!("limit") >>
+    count: opt!(double) >>
+    (InlineOperator::Limit{ count })
+)));
+
 named!(quoted_string <CompleteStr, &str>, delimited!(
     tag!("\""), 
     map!(escaped!(take_while1!(not_escape), '\\', one_of!("\"n\\")), |ref s|s.0),
@@ -347,7 +358,7 @@ named!(p_nn<CompleteStr, AggregateFunction>, ws!(
 ));
 
 named!(inline_operator<CompleteStr, Operator>,
-   map!(alt!(parse | json | fields | whre), Operator::Inline)
+   map!(alt!(parse | json | fields | whre | limit), Operator::Inline)
 );
 named!(aggregate_function<CompleteStr, AggregateFunction>, alt!(
     count_distinct |
@@ -580,6 +591,38 @@ mod tests {
                 fields: vec!["v".to_string()],
                 input_column: Some(Expr::Column("field".to_string())),
             },))
+        );
+    }
+
+    #[test]
+    fn parse_limit() {
+        expect!(
+            operator,
+            " limit",
+            Ok(Operator::Inline(InlineOperator::Limit {
+                count: None
+            }))
+        );
+        expect!(
+            operator,
+            " limit 5",
+            Ok(Operator::Inline(InlineOperator::Limit {
+                count: Some(5.0),
+            }))
+        );
+        expect!(
+            operator,
+            " limit -5",
+            Ok(Operator::Inline(InlineOperator::Limit {
+                count: Some(-5.0),
+            }))
+        );
+        expect!(
+            operator,
+            " limit 1e2",
+            Ok(Operator::Inline(InlineOperator::Limit {
+                count: Some(1e2),
+            }))
         );
     }
 

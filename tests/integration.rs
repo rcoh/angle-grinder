@@ -207,6 +207,30 @@ $None$       1")
             .unwrap();
     }
 
+    #[test]
+    fn test_limit() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"* | limit 2"#,
+                "--file",
+                "test_files/filter_test.log",
+            ])
+            .stdout()
+            .is("[INFO] I am a log!
+[WARN] Uh oh, danger ahead! ")
+            .unwrap();
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"* | limit -2"#,
+                "--file",
+                "test_files/filter_test.log",
+            ])
+            .stdout()
+            .is("[INFO] Match a *STAR*!
+[INFO] Not a STAR! ")
+            .unwrap();
+    }
+
     fn ensure_parses(query: &str) {
         Pipeline::new(query).expect(&format!(
             "Query: `{}` from the README should have parsed",
