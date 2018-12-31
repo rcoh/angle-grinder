@@ -1,8 +1,8 @@
+use ag::pipeline::Pipeline;
 use human_panic::setup_panic;
+use quicli::prelude::*;
 use self_update;
 use self_update::cargo_crate_version;
-use ag::pipeline::Pipeline;
-use quicli::prelude::*;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
@@ -16,14 +16,17 @@ fn main_arg_group() -> ArgGroup<'static> {
 }
 
 #[derive(Debug, StructOpt)]
-#[structopt(after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder", raw(group="main_arg_group()"))]
+#[structopt(
+    after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder",
+    raw(group = "main_arg_group()")
+)]
 struct Cli {
     /// The query
-    #[structopt(group="main")]
+    #[structopt(group = "main")]
     query: Option<String>,
 
     /// Update agrind to the latest published version Github (https://github.com/rcoh/angle-grinder)
-    #[structopt(long = "self-update", group="main")]
+    #[structopt(long = "self-update", group = "main")]
     update: bool,
 
     /// Optionally reads from a file instead of Stdin
@@ -31,7 +34,6 @@ struct Cli {
     file: Option<String>,
     #[structopt(flatten)]
     verbosity: Verbosity,
-
 }
 
 #[derive(Debug, Fail)]
@@ -76,7 +78,10 @@ fn update() -> CliResult {
         .update()?;
 
     if cargo_crate_version!() == status.version() {
-        println!("Currently running a new version than publicly available ({}). No changes", status.version());
+        println!(
+            "Currently running a new version than publicly available ({}). No changes",
+            status.version()
+        );
     } else {
         println!("Updated to version: {}", status.version());
     }

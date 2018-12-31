@@ -91,7 +91,7 @@ pub mod pipeline {
                 } => Ok(Box::new(operator::Parse::new(
                     pattern.to_regex(),
                     fields,
-                    input_column.map(|expr|expr.into()),
+                    input_column.map(|expr| expr.into()),
                 )?)),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {

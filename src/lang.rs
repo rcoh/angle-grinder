@@ -1,8 +1,8 @@
 use crate::data;
 use nom;
 use nom::types::CompleteStr;
-use nom::{digit1, is_alphabetic, is_alphanumeric, is_digit, multispace};
 use nom::*;
+use nom::{digit1, is_alphabetic, is_alphanumeric, is_digit, multispace};
 use std::str;
 
 #[derive(Debug, PartialEq, Eq, Clone)]

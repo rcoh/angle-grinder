@@ -40,8 +40,8 @@ pub enum TypeError {
     ExpectedBool { found: String },
 
     #[fail(
-    display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
-    pattern, extracted
+        display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
+        pattern, extracted
     )]
     ParseNumPatterns { pattern: usize, extracted: usize },
 }
@@ -133,7 +133,7 @@ impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T
                         .unique()
                         .cloned()
                 }
-                    .collect();
+                .collect();
                 let mut columns = columns;
                 columns.extend(new_keys);
                 self.state = Aggregate {
@@ -228,7 +228,9 @@ impl Evaluatable<f64> for Expr {
         match value {
             data::Value::Int(i) => Ok(*i as f64),
             data::Value::Float(f) => Ok(f.into_inner()),
-            other => Err(EvalError::ExpectedNumber { found: format!("{}", other) })
+            other => Err(EvalError::ExpectedNumber {
+                found: format!("{}", other),
+            }),
         }
     }
 }
@@ -312,7 +314,7 @@ impl CountDistinct {
     pub fn empty<T: Into<Expr>>(column: T) -> Self {
         CountDistinct {
             state: HashSet::new(),
-            column: column.into()
+            column: column.into(),
         }
     }
 }
@@ -865,7 +867,7 @@ mod tests {
             ],
             None,
         )
-            .unwrap();
+        .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("sender").unwrap(),
@@ -887,7 +889,7 @@ mod tests {
             vec!["key".to_string(), "value".to_string()],
             Some("from_col".to_string()),
         )
-            .unwrap();
+        .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("key").unwrap(),
