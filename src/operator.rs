@@ -29,6 +29,9 @@ pub enum EvalError {
 
     #[fail(display = "Expected string, found {}", found)]
     ExpectedString { found: String },
+
+    #[fail(display = "Expected number, found {}", found)]
+    ExpectedNumber { found: String },
 }
 
 #[derive(Debug, Fail)]
@@ -37,8 +40,8 @@ pub enum TypeError {
     ExpectedBool { found: String },
 
     #[fail(
-        display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
-        pattern, extracted
+    display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
+    pattern, extracted
     )]
     ParseNumPatterns { pattern: usize, extracted: usize },
 }
@@ -130,7 +133,7 @@ impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T
                         .unique()
                         .cloned()
                 }
-                .collect();
+                    .collect();
                 let mut columns = columns;
                 columns.extend(new_keys);
                 self.state = Aggregate {
@@ -150,7 +153,7 @@ pub trait AggregateOperator: Send + Sync {
 }
 
 pub trait AggregateFunction: Send + Sync {
-    fn process(&mut self, rec: &Data);
+    fn process(&mut self, rec: &Data) -> Result<(), EvalError>;
     fn emit(&self) -> data::Value;
     fn empty_box(&self) -> Box<AggregateFunction>;
 }
@@ -219,6 +222,17 @@ impl EvaluatableBorrowed<data::Value> for Expr {
     }
 }
 
+impl Evaluatable<f64> for Expr {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<f64, EvalError> {
+        let value: &data::Value = self.eval_borrowed(record)?;
+        match value {
+            data::Value::Int(i) => Ok(*i as f64),
+            data::Value::Float(f) => Ok(f.into_inner()),
+            other => Err(EvalError::ExpectedNumber { found: format!("{}", other) })
+        }
+    }
+}
+
 impl EvaluatableBorrowed<String> for Expr {
     fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a String, EvalError> {
         let as_value: &data::Value = self.eval_borrowed(record)?;
@@ -245,8 +259,9 @@ impl Count {
 }
 
 impl AggregateFunction for Count {
-    fn process(&mut self, _rec: &Data) {
+    fn process(&mut self, _rec: &Data) -> Result<(), EvalError> {
         self.count += 1;
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -277,30 +292,14 @@ impl Sum {
 }
 
 impl AggregateFunction for Sum {
-    fn process(&mut self, rec: &Data) {
-        self.column
-            .eval_borrowed(rec)
-            .iter()
-            .for_each(|value| match value {
-                &data::Value::Float(ref f) => {
-                    self.is_float = true;
-                    self.total += f.into_inner();
-                }
-                &data::Value::Int(ref i) => {
-                    self.total += *i as f64;
-                }
-                _other => self
-                    .warnings
-                    .push("Got string. Can only average into or float".to_string()),
-            });
+    fn process(&mut self, rec: &Data) -> Result<(), EvalError> {
+        let value: f64 = self.column.eval(rec)?;
+        self.total += value;
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
-        if self.is_float {
-            data::Value::from_float(self.total)
-        } else {
-            data::Value::Int(self.total as i64)
-        }
+        data::Value::from_float(self.total)
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
@@ -323,10 +322,12 @@ impl CountDistinct {
 }
 
 impl AggregateFunction for CountDistinct {
-    fn process(&mut self, rec: &Data) {
+    fn process(&mut self, rec: &Data) -> Result<(), EvalError> {
+        // TODO: column should be an expression
         rec.get(&self.column).iter().cloned().for_each(|value| {
             self.state.insert(value.clone());
         });
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -357,23 +358,11 @@ impl Average {
 }
 
 impl AggregateFunction for Average {
-    fn process(&mut self, data: &Data) {
-        self.column
-            .eval_borrowed(data)
-            .iter()
-            .for_each(|value| match value {
-                &data::Value::Float(ref f) => {
-                    self.total += f.into_inner();
-                    self.count += 1
-                }
-                &data::Value::Int(ref i) => {
-                    self.total += *i as f64;
-                    self.count += 1
-                }
-                _other => self
-                    .warnings
-                    .push("Got string. Can only average into or float".to_string()),
-            });
+    fn process(&mut self, data: &Data) -> Result<(), EvalError> {
+        let value: f64 = self.column.eval(data)?;
+        self.total += value;
+        self.count += 1;
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -408,18 +397,12 @@ impl Percentile {
 }
 
 impl AggregateFunction for Percentile {
-    fn process(&mut self, data: &Data) {
-        data.get(&self.column)
-            .iter()
-            .for_each(|value| match *value {
-                &data::Value::Float(ref f) => {
-                    self.ckms.insert(f.into_inner());
-                }
-                &data::Value::Int(ref i) => self.ckms.insert(*i as f64),
-                _other => self
-                    .warnings
-                    .push("Got string. Can only average int or float".to_string()),
-            });
+    // TODO: column should be an expression
+    fn process(&mut self, data: &Data) -> Result<(), EvalError> {
+        let col_expr = Expr::Column(self.column.to_string());
+        let value: f64 = col_expr.eval(data)?;
+        self.ckms.insert(value);
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -894,7 +877,7 @@ mod tests {
             ],
             None,
         )
-        .unwrap();
+            .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("sender").unwrap(),
@@ -916,7 +899,7 @@ mod tests {
             vec!["key".to_string(), "value".to_string()],
             Some("from_col".to_string()),
         )
-        .unwrap();
+            .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("key").unwrap(),
