@@ -888,7 +888,7 @@ mod tests {
         let parser = Parse::new(
             lang::Keyword::new_wildcard("[*=*]".to_string()).to_regex(),
             vec!["key".to_string(), "value".to_string()],
-            Some("from_col".to_string()),
+            Some("from_col".into()),
         )
         .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
