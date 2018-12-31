@@ -305,24 +305,22 @@ impl AggregateFunction for Sum {
 
 pub struct CountDistinct {
     state: HashSet<data::Value>,
-    column: String,
+    column: Expr,
 }
 
 impl CountDistinct {
-    pub fn empty(column: &str) -> Self {
+    pub fn empty<T: Into<Expr>>(column: T) -> Self {
         CountDistinct {
             state: HashSet::new(),
-            column: column.to_string(),
+            column: column.into()
         }
     }
 }
 
 impl AggregateFunction for CountDistinct {
     fn process(&mut self, rec: &Data) -> Result<(), EvalError> {
-        // TODO: column should be an expression
-        rec.get(&self.column).iter().cloned().for_each(|value| {
-            self.state.insert(value.clone());
-        });
+        let value: &data::Value = self.column.eval_borrowed(rec)?;
+        self.state.insert(value.clone());
         Ok(())
     }
 
@@ -331,7 +329,7 @@ impl AggregateFunction for CountDistinct {
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
-        Box::new(CountDistinct::empty(&self.column))
+        Box::new(CountDistinct::empty(self.column.clone()))
     }
 }
 
@@ -370,29 +368,27 @@ impl AggregateFunction for Average {
 
 pub struct Percentile {
     ckms: CKMS<f64>,
-    column: String,
+    column: Expr,
     percentile: f64,
 }
 
 impl Percentile {
-    pub fn empty(column: String, percentile: f64) -> Self {
+    pub fn empty<T: Into<Expr>>(column: T, percentile: f64) -> Self {
         if percentile >= 1.0 {
             panic!("Percentiles must be < 1");
         }
 
         Percentile {
             ckms: CKMS::<f64>::new(0.001),
-            column,
+            column: column.into(),
             percentile,
         }
     }
 }
 
 impl AggregateFunction for Percentile {
-    // TODO: column should be an expression
     fn process(&mut self, data: &Data) -> Result<(), EvalError> {
-        let col_expr = Expr::Column(self.column.to_string());
-        let value: f64 = col_expr.eval(data)?;
+        let value: f64 = self.column.eval(data)?;
         self.ckms.insert(value);
         Ok(())
     }
@@ -791,9 +787,9 @@ mod tests {
     use crate::lang;
     use maplit::hashmap;
 
-    impl From<String> for Expr {
-        fn from(inp: String) -> Self {
-            Expr::Column(inp)
+    impl<S: Into<String>> From<S> for Expr {
+        fn from(inp: S) -> Self {
+            Expr::Column(inp.into())
         }
     }
 
@@ -930,7 +926,7 @@ mod tests {
     fn multi_grouper() {
         let ops: Vec<(String, Box<AggregateFunction>)> = vec![
             ("_count".to_string(), Box::new(Count::new())),
-            ("_sum".to_string(), Box::new(Sum::empty("v1".to_string()))),
+            ("_sum".to_string(), Box::new(Sum::empty("v1"))),
             (
                 "_distinct".to_string(),
                 Box::new(CountDistinct::empty("v1")),

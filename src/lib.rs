@@ -157,9 +157,9 @@ pub mod pipeline {
                 AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(column)),
                 AggregateFunction::Percentile {
                     column, percentile, ..
-                } => Box::new(operator::Percentile::empty(column.force(), percentile)),
+                } => Box::new(operator::Percentile::empty(column, percentile)),
                 AggregateFunction::CountDistinct { column } => {
-                    Box::new(operator::CountDistinct::empty(&column.force()))
+                    Box::new(operator::CountDistinct::empty(column))
                 }
             }
         }
