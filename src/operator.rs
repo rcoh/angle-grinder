@@ -276,8 +276,6 @@ impl AggregateFunction for Count {
 pub struct Sum {
     total: f64,
     column: Expr,
-    warnings: Vec<String>,
-    is_float: bool,
 }
 
 impl Sum {
@@ -285,8 +283,6 @@ impl Sum {
         Sum {
             total: 0.0,
             column: column.into(),
-            warnings: Vec::new(),
-            is_float: false,
         }
     }
 }
@@ -343,7 +339,6 @@ pub struct Average {
     total: f64,
     count: i64,
     column: Expr,
-    warnings: Vec<String>,
 }
 
 impl Average {
@@ -352,7 +347,6 @@ impl Average {
             total: 0.0,
             count: 0,
             column: column.into(),
-            warnings: Vec::new(),
         }
     }
 }
@@ -378,7 +372,6 @@ pub struct Percentile {
     ckms: CKMS<f64>,
     column: String,
     percentile: f64,
-    warnings: Vec<String>,
 }
 
 impl Percentile {
@@ -390,7 +383,6 @@ impl Percentile {
         Percentile {
             ckms: CKMS::<f64>::new(0.001),
             column,
-            warnings: Vec::new(),
             percentile,
         }
     }
@@ -516,7 +508,7 @@ impl MultiGrouper {
                 .collect()
         });
         for fun in row.values_mut() {
-            fun.process(data);
+            let _ = fun.process(data);
         }
     }
 }
