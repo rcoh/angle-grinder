@@ -313,6 +313,7 @@ mod tests {
     use super::*;
     use crate::data::*;
     use crate::operator::*;
+    use maplit::hashmap;
 
     #[test]
     fn print_raw() {

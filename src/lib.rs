@@ -1,11 +1,4 @@
 #[macro_use]
-extern crate nom;
-
-#[macro_use]
-#[cfg(test)]
-extern crate maplit;
-
-#[macro_use]
 extern crate failure;
 
 extern crate crossbeam_channel;
@@ -98,7 +91,7 @@ pub mod pipeline {
                 } => Ok(Box::new(operator::Parse::new(
                     pattern.to_regex(),
                     fields,
-                    input_column.map(|c| c.force()),
+                    input_column.map(|expr| expr.into()),
                 )?)),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
@@ -128,7 +121,7 @@ pub mod pipeline {
                 } => Ok(operator::Parse::new(
                     pattern.to_regex(),
                     fields,
-                    input_column.map(|c| c.force()),
+                    input_column.map(|c| c.into()),
                 )?
                 .into()),
                 InlineOperator::Fields { fields, mode } => {
@@ -164,9 +157,9 @@ pub mod pipeline {
                 AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(column)),
                 AggregateFunction::Percentile {
                     column, percentile, ..
-                } => Box::new(operator::Percentile::empty(column.force(), percentile)),
+                } => Box::new(operator::Percentile::empty(column, percentile)),
                 AggregateFunction::CountDistinct { column } => {
-                    Box::new(operator::CountDistinct::empty(&column.force()))
+                    Box::new(operator::CountDistinct::empty(column))
                 }
             }
         }

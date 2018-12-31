@@ -29,6 +29,9 @@ pub enum EvalError {
 
     #[fail(display = "Expected string, found {}", found)]
     ExpectedString { found: String },
+
+    #[fail(display = "Expected number, found {}", found)]
+    ExpectedNumber { found: String },
 }
 
 #[derive(Debug, Fail)]
@@ -150,7 +153,7 @@ pub trait AggregateOperator: Send + Sync {
 }
 
 pub trait AggregateFunction: Send + Sync {
-    fn process(&mut self, rec: &Data);
+    fn process(&mut self, rec: &Data) -> Result<(), EvalError>;
     fn emit(&self) -> data::Value;
     fn empty_box(&self) -> Box<AggregateFunction>;
 }
@@ -219,6 +222,19 @@ impl EvaluatableBorrowed<data::Value> for Expr {
     }
 }
 
+impl Evaluatable<f64> for Expr {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<f64, EvalError> {
+        let value: &data::Value = self.eval_borrowed(record)?;
+        match value {
+            data::Value::Int(i) => Ok(*i as f64),
+            data::Value::Float(f) => Ok(f.into_inner()),
+            other => Err(EvalError::ExpectedNumber {
+                found: format!("{}", other),
+            }),
+        }
+    }
+}
+
 impl EvaluatableBorrowed<String> for Expr {
     fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a String, EvalError> {
         let as_value: &data::Value = self.eval_borrowed(record)?;
@@ -245,8 +261,9 @@ impl Count {
 }
 
 impl AggregateFunction for Count {
-    fn process(&mut self, _rec: &Data) {
+    fn process(&mut self, _rec: &Data) -> Result<(), EvalError> {
         self.count += 1;
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -261,8 +278,6 @@ impl AggregateFunction for Count {
 pub struct Sum {
     total: f64,
     column: Expr,
-    warnings: Vec<String>,
-    is_float: bool,
 }
 
 impl Sum {
@@ -270,37 +285,19 @@ impl Sum {
         Sum {
             total: 0.0,
             column: column.into(),
-            warnings: Vec::new(),
-            is_float: false,
         }
     }
 }
 
 impl AggregateFunction for Sum {
-    fn process(&mut self, rec: &Data) {
-        self.column
-            .eval_borrowed(rec)
-            .iter()
-            .for_each(|value| match value {
-                &data::Value::Float(ref f) => {
-                    self.is_float = true;
-                    self.total += f.into_inner();
-                }
-                &data::Value::Int(ref i) => {
-                    self.total += *i as f64;
-                }
-                _other => self
-                    .warnings
-                    .push("Got string. Can only average into or float".to_string()),
-            });
+    fn process(&mut self, rec: &Data) -> Result<(), EvalError> {
+        let value: f64 = self.column.eval(rec)?;
+        self.total += value;
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
-        if self.is_float {
-            data::Value::from_float(self.total)
-        } else {
-            data::Value::Int(self.total as i64)
-        }
+        data::Value::from_float(self.total)
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
@@ -310,23 +307,23 @@ impl AggregateFunction for Sum {
 
 pub struct CountDistinct {
     state: HashSet<data::Value>,
-    column: String,
+    column: Expr,
 }
 
 impl CountDistinct {
-    pub fn empty(column: &str) -> Self {
+    pub fn empty<T: Into<Expr>>(column: T) -> Self {
         CountDistinct {
             state: HashSet::new(),
-            column: column.to_string(),
+            column: column.into(),
         }
     }
 }
 
 impl AggregateFunction for CountDistinct {
-    fn process(&mut self, rec: &Data) {
-        rec.get(&self.column).iter().cloned().for_each(|value| {
-            self.state.insert(value.clone());
-        });
+    fn process(&mut self, rec: &Data) -> Result<(), EvalError> {
+        let value: &data::Value = self.column.eval_borrowed(rec)?;
+        self.state.insert(value.clone());
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -334,7 +331,7 @@ impl AggregateFunction for CountDistinct {
     }
 
     fn empty_box(&self) -> Box<AggregateFunction> {
-        Box::new(CountDistinct::empty(&self.column))
+        Box::new(CountDistinct::empty(self.column.clone()))
     }
 }
 
@@ -342,7 +339,6 @@ pub struct Average {
     total: f64,
     count: i64,
     column: Expr,
-    warnings: Vec<String>,
 }
 
 impl Average {
@@ -351,29 +347,16 @@ impl Average {
             total: 0.0,
             count: 0,
             column: column.into(),
-            warnings: Vec::new(),
         }
     }
 }
 
 impl AggregateFunction for Average {
-    fn process(&mut self, data: &Data) {
-        self.column
-            .eval_borrowed(data)
-            .iter()
-            .for_each(|value| match value {
-                &data::Value::Float(ref f) => {
-                    self.total += f.into_inner();
-                    self.count += 1
-                }
-                &data::Value::Int(ref i) => {
-                    self.total += *i as f64;
-                    self.count += 1
-                }
-                _other => self
-                    .warnings
-                    .push("Got string. Can only average into or float".to_string()),
-            });
+    fn process(&mut self, data: &Data) -> Result<(), EvalError> {
+        let value: f64 = self.column.eval(data)?;
+        self.total += value;
+        self.count += 1;
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -387,39 +370,29 @@ impl AggregateFunction for Average {
 
 pub struct Percentile {
     ckms: CKMS<f64>,
-    column: String,
+    column: Expr,
     percentile: f64,
-    warnings: Vec<String>,
 }
 
 impl Percentile {
-    pub fn empty(column: String, percentile: f64) -> Self {
+    pub fn empty<T: Into<Expr>>(column: T, percentile: f64) -> Self {
         if percentile >= 1.0 {
             panic!("Percentiles must be < 1");
         }
 
         Percentile {
             ckms: CKMS::<f64>::new(0.001),
-            column,
-            warnings: Vec::new(),
+            column: column.into(),
             percentile,
         }
     }
 }
 
 impl AggregateFunction for Percentile {
-    fn process(&mut self, data: &Data) {
-        data.get(&self.column)
-            .iter()
-            .for_each(|value| match *value {
-                &data::Value::Float(ref f) => {
-                    self.ckms.insert(f.into_inner());
-                }
-                &data::Value::Int(ref i) => self.ckms.insert(*i as f64),
-                _other => self
-                    .warnings
-                    .push("Got string. Can only average int or float".to_string()),
-            });
+    fn process(&mut self, data: &Data) -> Result<(), EvalError> {
+        let value: f64 = self.column.eval(data)?;
+        self.ckms.insert(value);
+        Ok(())
     }
 
     fn emit(&self) -> data::Value {
@@ -533,7 +506,8 @@ impl MultiGrouper {
                 .collect()
         });
         for fun in row.values_mut() {
-            fun.process(data);
+            // TODO: #25 capture erorrs here instead of ignoring
+            let _ = fun.process(data);
         }
     }
 }
@@ -583,7 +557,7 @@ impl Parse {
     pub fn new(
         pattern: regex::Regex,
         fields: Vec<String>,
-        input_column: Option<String>,
+        input_column: Option<Expr>,
     ) -> Result<Self, TypeError> {
         if (pattern.captures_len() - 1) != fields.len() {
             Result::Err(TypeError::ParseNumPatterns {
@@ -594,7 +568,7 @@ impl Parse {
             Result::Ok(Parse {
                 regex: pattern,
                 fields,
-                input_column: input_column.map(Expr::Column),
+                input_column,
             })
         }
     }
@@ -814,11 +788,11 @@ mod tests {
     use super::*;
     use crate::data::Value;
     use crate::lang;
-    //use crate::operator::itertools::Itertools;
+    use maplit::hashmap;
 
-    impl From<String> for Expr {
-        fn from(inp: String) -> Self {
-            Expr::Column(inp)
+    impl<S: Into<String>> From<S> for Expr {
+        fn from(inp: S) -> Self {
+            Expr::Column(inp.into())
         }
     }
 
@@ -914,7 +888,7 @@ mod tests {
         let parser = Parse::new(
             lang::Keyword::new_wildcard("[*=*]".to_string()).to_regex(),
             vec!["key".to_string(), "value".to_string()],
-            Some("from_col".to_string()),
+            Some("from_col".into()),
         )
         .unwrap();
         let rec = parser.process(rec).unwrap().unwrap();
@@ -955,7 +929,7 @@ mod tests {
     fn multi_grouper() {
         let ops: Vec<(String, Box<AggregateFunction>)> = vec![
             ("_count".to_string(), Box::new(Count::new())),
-            ("_sum".to_string(), Box::new(Sum::empty("v1".to_string()))),
+            ("_sum".to_string(), Box::new(Sum::empty("v1"))),
             (
                 "_distinct".to_string(),
                 Box::new(CountDistinct::empty("v1")),

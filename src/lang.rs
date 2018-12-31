@@ -1,6 +1,7 @@
 use crate::data;
 use nom;
 use nom::types::CompleteStr;
+use nom::*;
 use nom::{digit1, is_alphabetic, is_alphanumeric, is_digit, multispace};
 use std::str;
 
@@ -28,15 +29,6 @@ pub enum Expr {
         right: Box<Expr>,
     },
     Value(data::Value),
-}
-
-impl Expr {
-    pub fn force(&self) -> String {
-        match self {
-            &Expr::Column(ref s) => s.clone(),
-            _other => unimplemented!(),
-        }
-    }
 }
 
 /// The KeywordType determines how a keyword string should be interpreted.
@@ -444,8 +436,8 @@ named!(filter<CompleteStr, Vec<Keyword>>, map!(
 ));
 
 named!(query<CompleteStr, Query>, ws!(do_parse!(
-    filter: dbg!(filter) >>
-    operators: dbg!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
+    filter: filter >>
+    operators: opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator)))) >>
     eof!() >>
     (Query{
         search: filter,
@@ -455,7 +447,6 @@ named!(query<CompleteStr, Query>, ws!(do_parse!(
 
 pub fn parse_query(query_str: &str) -> Result<Query, nom::Err<CompleteStr, u32>> {
     let parse_result = query(CompleteStr(query_str));
-    //Err(CompleteStr("ok"))
     parse_result.map(|x| x.1)
 }
 
