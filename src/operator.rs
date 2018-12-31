@@ -554,7 +554,7 @@ impl Parse {
     pub fn new(
         pattern: regex::Regex,
         fields: Vec<String>,
-        input_column: Option<String>,
+        input_column: Option<Expr>,
     ) -> Result<Self, TypeError> {
         if (pattern.captures_len() - 1) != fields.len() {
             Result::Err(TypeError::ParseNumPatterns {
@@ -565,7 +565,7 @@ impl Parse {
             Result::Ok(Parse {
                 regex: pattern,
                 fields,
-                input_column: input_column.map(Expr::Column),
+                input_column,
             })
         }
     }

@@ -91,7 +91,7 @@ pub mod pipeline {
                 } => Ok(Box::new(operator::Parse::new(
                     pattern.to_regex(),
                     fields,
-                    input_column.map(|c| c.force()),
+                    input_column.map(|expr|expr.into()),
                 )?)),
                 InlineOperator::Fields { fields, mode } => {
                     let omode = match mode {
@@ -121,7 +121,7 @@ pub mod pipeline {
                 } => Ok(operator::Parse::new(
                     pattern.to_regex(),
                     fields,
-                    input_column.map(|c| c.force()),
+                    input_column.map(|c| c.into()),
                 )?
                 .into()),
                 InlineOperator::Fields { fields, mode } => {

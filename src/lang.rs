@@ -31,15 +31,6 @@ pub enum Expr {
     Value(data::Value),
 }
 
-impl Expr {
-    pub fn force(&self) -> String {
-        match self {
-            &Expr::Column(ref s) => s.clone(),
-            _other => unimplemented!(),
-        }
-    }
-}
-
 /// The KeywordType determines how a keyword string should be interpreted.
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum KeywordType {
