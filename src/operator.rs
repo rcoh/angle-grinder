@@ -506,6 +506,7 @@ impl MultiGrouper {
                 .collect()
         });
         for fun in row.values_mut() {
+            // TODO: #25 capture erorrs here instead of ignoring
             let _ = fun.process(data);
         }
     }
