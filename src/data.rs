@@ -20,7 +20,7 @@ pub struct Aggregate {
     pub data: Vec<VMap>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Record {
     pub data: VMap,
     pub raw: String,
