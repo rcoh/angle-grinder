@@ -24,8 +24,8 @@ pub enum EvalError {
     #[fail(display = "Found None, expected {}", tpe)]
     UnexpectedNone { tpe: String },
 
-    #[fail(display = "Expected JSON")]
-    ExpectedJson,
+    #[fail(display = "Expected JSON, found {}", found)]
+    ExpectedJson { found: String },
 
     #[fail(display = "Expected string, found {}", found)]
     ExpectedString { found: String },
@@ -34,19 +34,7 @@ pub enum EvalError {
     ExpectedNumber { found: String },
 }
 
-#[derive(Debug, Fail)]
-pub enum TypeError {
-    #[fail(display = "Expected boolean expression, found {}", found)]
-    ExpectedBool { found: String },
-
-    #[fail(
-        display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
-        pattern, extracted
-    )]
-    ParseNumPatterns { pattern: usize, extracted: usize },
-}
-
-pub trait Evaluatable<T> {
+pub trait Evaluatable<T>: Send + Sync + Clone {
     fn eval(&self, record: &Data) -> Result<T, EvalError>;
 }
 
@@ -54,37 +42,53 @@ pub trait EvaluatableBorrowed<T> {
     fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a T, EvalError>;
 }
 
-pub trait UnaryPreAggOperator: Send + Sync {
+/// Trait for operators that are functional in nature and do not maintain state.
+pub trait UnaryPreAggFunction: Send + Sync {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError>;
-    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
-        self.process(rec)
-    }
-    fn get_input<'a>(&self, rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
-        match col {
-            Some(expr) => {
-                let res: &String = expr.eval_borrowed(&rec.data)?;
-                Ok(res)
-            }
-            None => Ok(&rec.raw),
+}
+
+/// Get a column from the given record.
+fn get_input<'a>(rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
+    match col {
+        Some(expr) => {
+            let res: &String = expr.eval_borrowed(&rec.data)?;
+            Ok(res)
         }
+        None => Ok(&rec.raw),
     }
 }
 
-impl<'a, T: UnaryPreAggOperator + Send + Sync + 'a> From<T> for Box<AggregateOperator + 'a> {
-    fn from(op: T) -> Self {
-        Box::new(PreAggAdapter::new(op))
+/// Trait for operators that maintain state while processing records.
+pub trait UnaryPreAggOperator: Send + Sync {
+    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError>;
+}
+
+/// Trait used to instantiate an operator from its definition.  If an operator does not maintain
+/// state, the operator definition value can be cloned and returned.
+pub trait OperatorBuilder: Send + Sync {
+    fn build(&self) -> Box<UnaryPreAggOperator>;
+}
+
+/// A trivial OperatorBuilder implementation for functional traits since they don't need to
+/// maintain state.
+impl<T> OperatorBuilder for T
+    where T: 'static + UnaryPreAggFunction + Clone {
+    fn build(&self) -> Box<UnaryPreAggOperator> {
+        // TODO: eliminate the clone since a functional operator definition could be shared.
+        Box::new((*self).clone())
     }
 }
 
-pub struct PreAggAdapter<T: UnaryPreAggOperator + Send + Sync> {
-    op: T,
+/// Adapter for pre-aggregate operators to be used on the output of aggregate operators.
+pub struct PreAggAdapter {
+    op_builder: Box<OperatorBuilder>,
     state: Aggregate,
 }
 
-impl<T: UnaryPreAggOperator + Send + Sync> PreAggAdapter<T> {
-    pub fn new(op: T) -> Self {
+impl PreAggAdapter {
+    pub fn new(op_builder: Box<OperatorBuilder>) -> Self {
         PreAggAdapter {
-            op,
+            op_builder,
             state: Aggregate {
                 columns: Vec::new(),
                 data: Vec::new(),
@@ -93,25 +97,25 @@ impl<T: UnaryPreAggOperator + Send + Sync> PreAggAdapter<T> {
     }
 }
 
-impl<T: UnaryPreAggOperator + Send + Sync> UnaryPreAggOperator for PreAggAdapter<T> {
-    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
-        self.op.process(rec)
-    }
-
-    fn get_input<'a>(&self, rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
-        self.op.get_input(rec, col)
+/// A trivial UnaryPreAggOperator implementation for functional operators since they don't need
+/// an object to contain any state.
+impl<T> UnaryPreAggOperator for T
+    where T: UnaryPreAggFunction {
+    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+        self.process(rec)
     }
 }
 
-impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T> {
+impl AggregateOperator for PreAggAdapter {
     fn emit(&self) -> Aggregate {
         self.state.clone()
     }
 
     fn process(&mut self, row: Row) {
         match row {
-            Row::Record(_) => panic!("PreAgg adaptor should only be used after aggregataes"),
+            Row::Record(_) => panic!("PreAgg adaptor should only be used after aggregates"),
             Row::Aggregate(agg) => {
+                let mut op = self.op_builder.build();
                 let columns = agg.columns;
                 let processed_records: Vec<data::VMap> = {
                     let records = agg
@@ -121,7 +125,7 @@ impl<T: UnaryPreAggOperator + Send + Sync> AggregateOperator for PreAggAdapter<T
                             data: vmap,
                             raw: "".to_string(),
                         })
-                        .flat_map(|rec| self.op.process(rec).unwrap_or(None))
+                        .flat_map(|rec| op.process_mut(rec).unwrap_or(None))
                         .map(|rec| rec.data);
                     records.collect()
                 };
@@ -182,7 +186,7 @@ pub enum BoolExpr {
     Lte,
 }
 
-impl<T: Copy> Evaluatable<T> for T {
+impl<T: Copy + Send + Sync> Evaluatable<T> for T {
     fn eval(&self, _record: &HashMap<String, data::Value>) -> Result<T, EvalError> {
         Ok(*self)
     }
@@ -547,6 +551,7 @@ impl AggregateOperator for MultiGrouper {
     }
 }
 
+#[derive(Clone)]
 pub struct Parse {
     regex: regex::Regex,
     fields: Vec<String>,
@@ -558,23 +563,16 @@ impl Parse {
         pattern: regex::Regex,
         fields: Vec<String>,
         input_column: Option<Expr>,
-    ) -> Result<Self, TypeError> {
-        if (pattern.captures_len() - 1) != fields.len() {
-            Result::Err(TypeError::ParseNumPatterns {
-                pattern: pattern.captures_len() - 1,
-                extracted: fields.len(),
-            })
-        } else {
-            Result::Ok(Parse {
-                regex: pattern,
-                fields,
-                input_column,
-            })
+    ) -> Self {
+        Parse {
+            regex: pattern,
+            fields,
+            input_column,
         }
     }
 
     fn matches(&self, rec: &Record) -> Result<Option<Vec<data::Value>>, EvalError> {
-        let inp = self.get_input(rec, &self.input_column)?;
+        let inp = get_input(rec, &self.input_column)?;
         let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
         if matches.is_empty() {
             Ok(None)
@@ -590,7 +588,7 @@ impl Parse {
     }
 }
 
-impl UnaryPreAggOperator for Parse {
+impl UnaryPreAggFunction for Parse {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let matches = self.matches(&rec)?;
         match matches {
@@ -606,17 +604,18 @@ impl UnaryPreAggOperator for Parse {
     }
 }
 
-pub struct Where<T: Evaluatable<bool> + Send + Sync> {
+#[derive(Clone)]
+pub struct Where<T: 'static + Evaluatable<bool>> {
     expr: T,
 }
 
-impl<T: Evaluatable<bool> + Send + Sync> Where<T> {
+impl<T: 'static + Evaluatable<bool>> Where<T> {
     pub fn new(expr: T) -> Self {
         Where { expr }
     }
 }
 
-impl<T: Evaluatable<bool> + Send + Sync> UnaryPreAggOperator for Where<T> {
+impl<T: 'static + Evaluatable<bool>> UnaryPreAggFunction for Where<T> {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         if self.expr.eval(&rec.data)? {
             Ok(Some(rec))
@@ -705,11 +704,13 @@ impl AggregateOperator for Total {
     }
 }
 
+#[derive(Clone)]
 pub enum FieldMode {
     Only,
     Except,
 }
 
+#[derive(Clone)]
 pub struct Fields {
     columns: HashSet<String>,
     mode: FieldMode,
@@ -722,7 +723,7 @@ impl Fields {
     }
 }
 
-impl UnaryPreAggOperator for Fields {
+impl UnaryPreAggFunction for Fields {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let mut rec = rec;
         match self.mode {
@@ -741,6 +742,7 @@ impl UnaryPreAggOperator for Fields {
     }
 }
 
+#[derive(Clone)]
 pub struct ParseJson {
     input_column: Option<Expr>,
 }
@@ -753,11 +755,13 @@ impl ParseJson {
     }
 }
 
-impl UnaryPreAggOperator for ParseJson {
+impl UnaryPreAggFunction for ParseJson {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let json: JsonValue = {
-            let inp = self.get_input(&rec, &self.input_column)?;
-            serde_json::from_str(&inp).map_err(|_| EvalError::ExpectedJson)?
+            let inp = get_input(&rec, &self.input_column)?;
+            serde_json::from_str(&inp).map_err(|_| EvalError::ExpectedJson{
+                found: inp.trim_end().to_string()
+            })?
         };
         let res = match json {
             JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
@@ -780,6 +784,55 @@ impl UnaryPreAggOperator for ParseJson {
             _other => Some(rec),
         };
         Ok(res)
+    }
+}
+
+/// The definition for a limit operator, which is a positive number used to specify whether
+/// the first N rows should be passed through to the downstream operators.  Negative limits are
+/// not supported at this time.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct LimitDef {
+    limit: i64,
+}
+
+impl LimitDef {
+    pub fn new(limit: i64) -> Self {
+        LimitDef { limit }
+    }
+}
+
+/// The state for a limit operator
+pub enum Limit {
+    Head {
+        /// The current index into the input stream.
+        index: u64,
+        /// The number of rows to pass through before aborting.
+        limit: u64,
+    },
+}
+
+impl OperatorBuilder for LimitDef {
+    fn build(&self) -> Box<UnaryPreAggOperator> {
+        Box::new(Limit::Head {
+            index: 0,
+            limit: self.limit as u64,
+        })
+    }
+}
+
+impl UnaryPreAggOperator for Limit {
+    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+        match self {
+            Limit::Head { ref mut index, limit } => {
+                (*index) += 1;
+
+                if index <= limit {
+                    Ok(Some(rec))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
     }
 }
 
@@ -867,8 +920,7 @@ mod tests {
                 "length".to_string(),
             ],
             None,
-        )
-        .unwrap();
+        );
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("sender").unwrap(),
@@ -888,9 +940,8 @@ mod tests {
         let parser = Parse::new(
             lang::Keyword::new_wildcard("[*=*]".to_string()).to_regex(),
             vec!["key".to_string(), "value".to_string()],
-            Some("from_col".into()),
-        )
-        .unwrap();
+            Some("from_col".into())
+        );
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
             rec.data.get("key").unwrap(),
@@ -1079,7 +1130,7 @@ mod tests {
     #[test]
     fn test_agg_adapter() {
         let where_op = Where::new(true);
-        let adapted = PreAggAdapter::new(where_op);
+        let adapted = PreAggAdapter::new(Box::new(where_op));
         let mut adapted: Box<AggregateOperator> = Box::new(adapted);
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],

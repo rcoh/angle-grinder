@@ -10,12 +10,11 @@ mod render;
 mod typecheck;
 
 pub mod pipeline {
-    use crate::data::{Record, Row, Value};
+    use crate::data::{Record, Row};
     use crate::lang;
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
-    use crate::typecheck;
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
     use failure::Error;
     use std::io::BufRead;
@@ -41,103 +40,7 @@ pub mod pipeline {
         renderer: Renderer,
     }
 
-    impl From<lang::ComparisonOp> for operator::BoolExpr {
-        fn from(op: ComparisonOp) -> Self {
-            match op {
-                ComparisonOp::Eq => operator::BoolExpr::Eq,
-                ComparisonOp::Neq => operator::BoolExpr::Neq,
-                ComparisonOp::Gt => operator::BoolExpr::Gt,
-                ComparisonOp::Lt => operator::BoolExpr::Lt,
-                ComparisonOp::Gte => operator::BoolExpr::Gte,
-                ComparisonOp::Lte => operator::BoolExpr::Lte,
-            }
-        }
-    }
-
-    impl From<lang::Expr> for operator::Expr {
-        fn from(inp: lang::Expr) -> Self {
-            match inp {
-                lang::Expr::Column(s) => operator::Expr::Column(s),
-                lang::Expr::Binary { op, left, right } => match op {
-                    BinaryOp::Comparison(com_op) => {
-                        operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
-                            left: Box::new((*left).into()),
-                            right: Box::new((*right).into()),
-                            operator: com_op.into(),
-                        })
-                    }
-                },
-                lang::Expr::Value(value) => {
-                    let boxed = Box::new(value);
-                    let static_value: &'static mut Value = Box::leak(boxed);
-                    operator::Expr::Value(static_value)
-                }
-            }
-        }
-    }
-
     impl Pipeline {
-        fn convert_inline(
-            op: lang::InlineOperator,
-        ) -> Result<Box<operator::UnaryPreAggOperator>, operator::TypeError> {
-            match op {
-                InlineOperator::Json { input_column } => {
-                    Ok(Box::new(operator::ParseJson::new(input_column)))
-                }
-                InlineOperator::Parse {
-                    pattern,
-                    fields,
-                    input_column,
-                } => Ok(Box::new(operator::Parse::new(
-                    pattern.to_regex(),
-                    fields,
-                    input_column.map(|expr| expr.into()),
-                )?)),
-                InlineOperator::Fields { fields, mode } => {
-                    let omode = match mode {
-                        FieldMode::Except => operator::FieldMode::Except,
-                        FieldMode::Only => operator::FieldMode::Only,
-                    };
-                    Ok(Box::new(operator::Fields::new(&fields, omode)))
-                }
-                InlineOperator::Where { expr } => {
-                    let expr: operator::Expr = expr.into();
-                    typecheck::create_where(expr)
-                }
-            }
-        }
-
-        fn convert_inline_adapted(
-            op: lang::InlineOperator,
-        ) -> Result<Box<operator::AggregateOperator>, operator::TypeError> {
-            match op {
-                InlineOperator::Json { input_column } => {
-                    Ok(operator::ParseJson::new(input_column).into())
-                }
-                InlineOperator::Parse {
-                    pattern,
-                    fields,
-                    input_column,
-                } => Ok(operator::Parse::new(
-                    pattern.to_regex(),
-                    fields,
-                    input_column.map(|c| c.into()),
-                )?
-                .into()),
-                InlineOperator::Fields { fields, mode } => {
-                    let omode = match mode {
-                        FieldMode::Except => operator::FieldMode::Except,
-                        FieldMode::Only => operator::FieldMode::Only,
-                    };
-                    Ok(operator::Fields::new(&fields, omode).into())
-                }
-                InlineOperator::Where { expr } => {
-                    let expr: operator::Expr = expr.into();
-                    typecheck::create_where_adapt(expr)
-                }
-            }
-        }
-
         fn convert_total(op: lang::TotalOperator) -> Box<operator::AggregateOperator> {
             Box::new(operator::Total::new(op.input_column, op.output_column))
         }
@@ -207,10 +110,12 @@ pub mod pipeline {
             for op in query.operators {
                 match op {
                     Operator::Inline(inline_op) => {
+                        let op_builder = inline_op.semantic_analysis()?;
+
                         if !in_agg {
-                            pre_agg.push(Pipeline::convert_inline(inline_op)?);
+                            pre_agg.push(op_builder.build());
                         } else {
-                            post_agg.push(Pipeline::convert_inline_adapted(inline_op)?)
+                            post_agg.push(Box::new(operator::PreAggAdapter::new(op_builder)));
                         }
                     }
                     Operator::MultiAggregate(agg_op) => {
@@ -235,7 +140,7 @@ pub mod pipeline {
                         max_buffer: 8,
                     },
                     Duration::from_millis(50),
-                ),
+                )
             })
         }
 
@@ -281,7 +186,7 @@ pub mod pipeline {
         pub fn process<T: BufRead>(self, mut buf: T) {
             let (tx, rx) = bounded(1000);
             let mut aggregators = self.aggregators;
-            let preaggs = self.pre_aggregates;
+            let mut preaggs = self.pre_aggregates;
             let renderer = self.renderer;
             let t = if !aggregators.is_empty() {
                 let head = aggregators.remove(0);
@@ -295,7 +200,7 @@ pub mod pipeline {
             // after we match (staying as Vec<u8> until then)
             let mut line = String::with_capacity(1024);
             while buf.read_line(&mut line).unwrap() > 0 {
-                if let Some(row) = Pipeline::proc_preagg(&line, &self.filter, &preaggs) {
+                if let Some(row) = Pipeline::proc_preagg(&line, &self.filter, &mut preaggs) {
                     tx.send(row).unwrap();
                 }
                 line.clear();
@@ -308,12 +213,12 @@ pub mod pipeline {
         fn proc_preagg(
             s: &str,
             filters: &[regex::Regex],
-            pre_aggs: &[Box<operator::UnaryPreAggOperator>],
+            pre_aggs: &mut [Box<operator::UnaryPreAggOperator>],
         ) -> Option<Row> {
             if filters.iter().all(|re| re.is_match(s)) {
                 let mut rec = Record::new(s);
                 for pre_agg in pre_aggs {
-                    match (*pre_agg).process(rec) {
+                    match (*pre_agg).process_mut(rec) {
                         Ok(Some(next_rec)) => rec = next_rec,
                         Ok(None) => return None,
                         Err(_) => return None,

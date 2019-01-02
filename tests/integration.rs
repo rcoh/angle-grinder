@@ -67,6 +67,11 @@ mod integration {
     }
 
     #[test]
+    fn limit() {
+        structured_test(include_str!("structured_tests/limit.toml"));
+    }
+
+    #[test]
     fn no_args() {
         assert_cli::Assert::main_binary()
             .fails()
@@ -203,6 +208,20 @@ $None$       1")
             .stdout()
             .is("[INFO] Match a *STAR*!
 [INFO] Not a STAR!")
+            .unwrap();
+    }
+
+    #[test]
+    fn test_limit() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                r#"* | limit 2"#,
+                "--file",
+                "test_files/filter_test.log",
+            ])
+            .stdout()
+            .is("[INFO] I am a log!
+[WARN] Uh oh, danger ahead! ")
             .unwrap();
     }
 
