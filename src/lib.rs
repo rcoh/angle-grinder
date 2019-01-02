@@ -81,6 +81,18 @@ pub mod pipeline {
             ))
         }
 
+        fn implicit_sort(multi_agg: &MultiAggregateOperator) -> SortOperator {
+            SortOperator {
+                sort_cols: multi_agg
+                    .aggregate_functions
+                    .iter()
+                    .map(|&(ref k, _)| k)
+                    .cloned()
+                    .collect(),
+                direction: SortMode::Descending,
+            }
+        }
+
         pub fn new(pipeline: &str) -> Result<Self, Error> {
             let parsed = lang::parse_query(pipeline).map_err(|e| CompileError::Parse {
                 message: format!("{:?}", e),
@@ -90,24 +102,8 @@ pub mod pipeline {
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
-            let final_op = {
-                let last_op = &(query.operators).last();
-                match last_op {
-                    &Some(&Operator::MultiAggregate(ref agg_op)) => {
-                        Some(Pipeline::convert_sort(SortOperator {
-                            sort_cols: agg_op
-                                .aggregate_functions
-                                .iter()
-                                .map(|&(ref k, _)| k)
-                                .cloned()
-                                .collect(),
-                            direction: SortMode::Descending,
-                        }))
-                    }
-                    _other => None,
-                }
-            };
-            for op in query.operators {
+            let mut op_iter = query.operators.into_iter().peekable();
+            while let Some(op) = op_iter.next() {
                 match op {
                     Operator::Inline(inline_op) => {
                         let op_builder = inline_op.semantic_analysis()?;
@@ -120,15 +116,22 @@ pub mod pipeline {
                     }
                     Operator::MultiAggregate(agg_op) => {
                         in_agg = true;
-                        post_agg.push(Pipeline::convert_multi_agg(agg_op))
+                        let sorter = Pipeline::implicit_sort(&agg_op);
+                        post_agg.push(Pipeline::convert_multi_agg(agg_op));
+
+                        let needs_sort = match op_iter.peek() {
+                            Some(Operator::Inline(InlineOperator::Limit { .. })) => true,
+                            None => true,
+                            _ => false
+                        };
+                        if needs_sort {
+                            post_agg.push(Pipeline::convert_sort(sorter));
+                        }
                     }
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
-                    Operator::Total(total_op) => post_agg.push(Pipeline::convert_total(total_op)),
+                    Operator::Total(total_op) => post_agg.push(Pipeline::convert_total(total_op))
                 }
             }
-            if let Some(op) = final_op {
-                post_agg.push(op)
-            };
             Result::Ok(Pipeline {
                 filter: filters,
                 pre_aggregates: pre_agg,
