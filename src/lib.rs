@@ -122,14 +122,14 @@ pub mod pipeline {
                         let needs_sort = match op_iter.peek() {
                             Some(Operator::Inline(InlineOperator::Limit { .. })) => true,
                             None => true,
-                            _ => false
+                            _ => false,
                         };
                         if needs_sort {
                             post_agg.push(Pipeline::convert_sort(sorter));
                         }
                     }
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
-                    Operator::Total(total_op) => post_agg.push(Pipeline::convert_total(total_op))
+                    Operator::Total(total_op) => post_agg.push(Pipeline::convert_total(total_op)),
                 }
             }
             Result::Ok(Pipeline {
