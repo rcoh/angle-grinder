@@ -111,6 +111,14 @@ Drop only the `event` field
 ```agrind
 * | json | where url != "/hostname"
 ```
+
+##### Limit
+`limit #`: Limit the number of rows to the given amount.
+
+*Examples*
+```agrind
+* | limit 10
+```
 #### Aggregate Operators
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
 The general syntax is:
