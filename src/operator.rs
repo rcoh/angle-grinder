@@ -74,20 +74,21 @@ pub trait OperatorBuilder: Send + Sync {
 impl<T> OperatorBuilder for T
     where T: 'static + UnaryPreAggFunction + Clone {
     fn build(&self) -> Box<UnaryPreAggOperator> {
+        // TODO: eliminate the clone since a functional operator definition could be shared.
         Box::new((*self).clone())
     }
 }
 
 /// Adapter for pre-aggregate operators to be used on the output of aggregate operators.
 pub struct PreAggAdapter {
-    op_supplier: Box<OperatorBuilder>,
+    op_builder: Box<OperatorBuilder>,
     state: Aggregate,
 }
 
 impl PreAggAdapter {
-    pub fn new(op_supplier: Box<OperatorBuilder>) -> Self {
+    pub fn new(op_builder: Box<OperatorBuilder>) -> Self {
         PreAggAdapter {
-            op_supplier,
+            op_builder,
             state: Aggregate {
                 columns: Vec::new(),
                 data: Vec::new(),
@@ -114,7 +115,7 @@ impl AggregateOperator for PreAggAdapter {
         match row {
             Row::Record(_) => panic!("PreAgg adaptor should only be used after aggregates"),
             Row::Aggregate(agg) => {
-                let mut op = self.op_supplier.build();
+                let mut op = self.op_builder.build();
                 let columns = agg.columns;
                 let processed_records: Vec<data::VMap> = {
                     let records = agg
@@ -786,9 +787,9 @@ impl UnaryPreAggFunction for ParseJson {
     }
 }
 
-/// The definition for a limit operator, which is a positive or negative number used to specify
-/// whether the first number of rows should be passed through or the last number of rows,
-/// respectively.
+/// The definition for a limit operator, which is a positive number used to specify whether
+/// the first N rows should be passed through to the downstream operators.  Negative limits are
+/// not supported at this time.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct LimitDef {
     limit: i64,
