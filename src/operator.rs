@@ -65,7 +65,7 @@ pub trait UnaryPreAggOperator: Send + Sync {
     fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError>;
     /// Return any remaining records that may have been gathered by the operator.  This method
     /// will be called when there are no more new input records.
-    fn drain(self: Box<Self>) -> Box<Iterator<Item=Record>> {
+    fn drain(self: Box<Self>) -> Box<Iterator<Item = Record>> {
         Box::new(iter::empty())
     }
 }
@@ -822,12 +822,12 @@ pub enum Limit {
         /// The size of the circular buffer.
         /// XXX Might be better to use a separate type.
         limit: usize,
-    }
+    },
 }
 
 impl OperatorBuilder for LimitDef {
     fn build(&self) -> Box<UnaryPreAggOperator> {
-         Box::new(if self.limit > 0 {
+        Box::new(if self.limit > 0 {
             Limit::Head {
                 index: 0,
                 limit: self.limit as u64,
@@ -856,18 +856,21 @@ impl UnaryPreAggOperator for Limit {
                     Ok(None)
                 }
             }
-            Limit::Tail { ref mut queue, limit } => {
+            Limit::Tail {
+                ref mut queue,
+                limit,
+            } => {
                 if queue.len() == *limit {
                     queue.pop_front();
                 }
                 queue.push_back(rec);
 
-                 Ok(None)
+                Ok(None)
             }
         }
     }
 
-    fn drain(self: Box<Self>) -> Box<Iterator<Item=Record>> {
+    fn drain(self: Box<Self>) -> Box<Iterator<Item = Record>> {
         match *self {
             Limit::Head { .. } => Box::new(iter::empty()),
             Limit::Tail { queue, .. } => Box::new(queue.into_iter()),

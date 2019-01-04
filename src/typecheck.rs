@@ -13,10 +13,7 @@ pub enum TypeError {
     )]
     ParseNumPatterns { pattern: usize, extracted: usize },
 
-    #[fail(
-        display = "Limit must be a non-zero integer, found {}",
-        limit
-    )]
+    #[fail(display = "Limit must be a non-zero integer, found {}", limit)]
     InvalidLimit { limit: f64 },
 }
 
@@ -100,7 +97,7 @@ impl lang::InlineOperator {
                     other => {
                         return Err(TypeError::ExpectedBool {
                             found: format!("{:?}", other),
-                        })
+                        });
                     }
                 };
 

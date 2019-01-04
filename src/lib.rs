@@ -15,7 +15,7 @@ pub mod pipeline {
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
-    use crossbeam_channel::{bounded, Sender, Receiver, RecvTimeoutError};
+    use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
     use std::io::BufRead;
     use std::thread;
@@ -213,7 +213,7 @@ pub mod pipeline {
             while !preaggs.is_empty() {
                 let preagg = preaggs.remove(0);
 
-                 for rec in preagg.drain() {
+                for rec in preagg.drain() {
                     Pipeline::proc_preagg(rec, &mut preaggs, &tx);
                 }
             }
@@ -227,8 +227,9 @@ pub mod pipeline {
         /// sent to `tx`.
         fn proc_preagg(
             mut rec: Record,
-            pre_aggs: & mut [Box<operator::UnaryPreAggOperator>],
-            tx: & Sender<Row>) {
+            pre_aggs: &mut [Box<operator::UnaryPreAggOperator>],
+            tx: &Sender<Row>,
+        ) {
             for pre_agg in pre_aggs {
                 match (*pre_agg).process_mut(rec) {
                     Ok(Some(next_rec)) => rec = next_rec,
@@ -236,7 +237,7 @@ pub mod pipeline {
                     Err(err) => {
                         eprintln!("error: {}", err);
                         return;
-                    },
+                    }
                 }
             }
             tx.send(Row::Record(rec)).unwrap();
