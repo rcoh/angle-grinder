@@ -113,12 +113,17 @@ Drop only the `event` field
 ```
 
 ##### Limit
-`limit #`: Limit the number of rows to the given amount.
+`limit #`: Limit the number of rows to the given amount.  If the number is positive, only the 
+first N rows are returned.  If the number is negative, the last N rows are returned.
 
 *Examples*
 ```agrind
 * | limit 10
 ```
+```agrind
+* | limit -10
+```
+
 #### Aggregate Operators
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
 The general syntax is:

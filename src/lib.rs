@@ -15,7 +15,7 @@ pub mod pipeline {
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
-    use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
+    use crossbeam_channel::{bounded, Sender, Receiver, RecvTimeoutError};
     use failure::Error;
     use std::io::BufRead;
     use std::thread;
@@ -203,34 +203,43 @@ pub mod pipeline {
             // after we match (staying as Vec<u8> until then)
             let mut line = String::with_capacity(1024);
             while buf.read_line(&mut line).unwrap() > 0 {
-                if let Some(row) = Pipeline::proc_preagg(&line, &self.filter, &mut preaggs) {
-                    tx.send(row).unwrap();
+                if self.filter.iter().all(|re| re.is_match(&line)) {
+                    Pipeline::proc_preagg(Record::new(&line), &mut preaggs, &tx);
                 }
                 line.clear();
             }
+
+            // Drain any remaining records from the operators.
+            while !preaggs.is_empty() {
+                let preagg = preaggs.remove(0);
+
+                 for rec in preagg.drain() {
+                    Pipeline::proc_preagg(rec, &mut preaggs, &tx);
+                }
+            }
+
             // Drop tx when causes the thread to exit.
             drop(tx);
             t.join().unwrap();
         }
 
+        /// Process a record using the pre-agg operators.  The output of the last operator will be
+        /// sent to `tx`.
         fn proc_preagg(
-            s: &str,
-            filters: &[regex::Regex],
-            pre_aggs: &mut [Box<operator::UnaryPreAggOperator>],
-        ) -> Option<Row> {
-            if filters.iter().all(|re| re.is_match(s)) {
-                let mut rec = Record::new(s);
-                for pre_agg in pre_aggs {
-                    match (*pre_agg).process_mut(rec) {
-                        Ok(Some(next_rec)) => rec = next_rec,
-                        Ok(None) => return None,
-                        Err(_) => return None,
-                    }
+            mut rec: Record,
+            pre_aggs: & mut [Box<operator::UnaryPreAggOperator>],
+            tx: & Sender<Row>) {
+            for pre_agg in pre_aggs {
+                match (*pre_agg).process_mut(rec) {
+                    Ok(Some(next_rec)) => rec = next_rec,
+                    Ok(None) => return,
+                    Err(err) => {
+                        eprintln!("error: {}", err);
+                        return;
+                    },
                 }
-                Some(Row::Record(rec))
-            } else {
-                None
             }
+            tx.send(Row::Record(rec)).unwrap();
         }
 
         pub fn run_agg_pipeline(

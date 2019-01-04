@@ -69,6 +69,7 @@ mod integration {
     #[test]
     fn limit() {
         structured_test(include_str!("structured_tests/limit.toml"));
+        structured_test(include_str!("structured_tests/limit_tail.toml"));
         structured_test(include_str!("structured_tests/limit_agg.toml"));
     }
 
@@ -101,6 +102,24 @@ mod integration {
             .and()
             .stderr()
             .contains("Expected boolean expression, found")
+            .unwrap();
+    }
+
+    #[test]
+    fn test_limit_typecheck() {
+        assert_cli::Assert::main_binary()
+            .with_args(&["* | limit 0"])
+            .fails()
+            .and()
+            .stderr()
+            .contains("Error: Limit must be a non-zero integer, found 0")
+            .unwrap();
+        assert_cli::Assert::main_binary()
+            .with_args(&["* | limit 0.1"])
+            .fails()
+            .and()
+            .stderr()
+            .contains("Error: Limit must be a non-zero integer, found 0.1")
             .unwrap();
     }
 
