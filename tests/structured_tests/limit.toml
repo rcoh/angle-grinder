@@ -1,4 +1,4 @@
-query = "* | limit -2"
+query = "* | limit 2"
 input = """
 {"level": "info", "message": "A thing happened", "num_things": 1102}
 {"level": "error", "message": "Oh now an error!"}
@@ -8,6 +8,6 @@ input = """
 {"level": null}
 """
 output = """
-{"level": "info", "message": "A different event", "event_duration": 1002.5}
-{"level": null}
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
 """

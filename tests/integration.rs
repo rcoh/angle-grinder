@@ -71,6 +71,7 @@ mod integration {
         structured_test(include_str!("structured_tests/limit.toml"));
         structured_test(include_str!("structured_tests/limit_tail.toml"));
         structured_test(include_str!("structured_tests/limit_agg.toml"));
+        structured_test(include_str!("structured_tests/limit_agg_tail.toml"));
     }
 
     #[test]

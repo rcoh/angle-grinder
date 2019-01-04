@@ -128,7 +128,7 @@ impl AggregateOperator for PreAggAdapter {
             Row::Aggregate(agg) => {
                 let mut op = self.op_builder.build();
                 let columns = agg.columns;
-                let processed_records: Vec<data::VMap> = {
+                let mut processed_records: Vec<data::VMap> = {
                     let records = agg
                         .data
                         .into_iter()
@@ -140,6 +140,7 @@ impl AggregateOperator for PreAggAdapter {
                         .map(|rec| rec.data);
                     records.collect()
                 };
+                processed_records.extend(op.drain().map(|rec| rec.data));
                 let new_keys: Vec<String> = {
                     processed_records
                         .iter()
