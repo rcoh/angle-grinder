@@ -1,0 +1,27 @@
+query = "* | json | count by level | limit -1"
+input = """
+{"level": "error", "message": "Oh now an error!"}
+{"level": "error", "message": "So many more errors!", "num_things": 0.1}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A different event", "event_duration": 1002.5}
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": null}
+"""
+output = """
+level         _count
+----------------------------
+$None$        1
+"""
+notes = "If the implicit sort operator isn't added after the count, the output will be `error` and not `info`"

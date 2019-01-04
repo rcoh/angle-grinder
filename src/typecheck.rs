@@ -13,10 +13,7 @@ pub enum TypeError {
     )]
     ParseNumPatterns { pattern: usize, extracted: usize },
 
-    #[fail(
-        display = "Limit must be an integer that is greater than zero, found {}",
-        limit
-    )]
+    #[fail(display = "Limit must be a non-zero integer, found {}", limit)]
     InvalidLimit { limit: f64 },
 }
 
@@ -100,14 +97,14 @@ impl lang::InlineOperator {
                     other => {
                         return Err(TypeError::ExpectedBool {
                             found: format!("{:?}", other),
-                        })
+                        });
                     }
                 };
 
                 Ok(Box::new(operator::Where::new(oexpr)))
             }
             lang::InlineOperator::Limit { count } => match count.unwrap_or(DEFAULT_LIMIT) as f64 {
-                limit if limit.trunc() <= 0.0 || limit.fract() != 0.0 => {
+                limit if limit.trunc() == 0.0 || limit.fract() != 0.0 => {
                     Err(TypeError::InvalidLimit { limit })
                 }
                 limit => Ok(Box::new(operator::LimitDef::new(limit as i64))),

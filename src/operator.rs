@@ -12,6 +12,8 @@ use crate::operator::itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::iter;
 use std::iter::FromIterator;
 
 type Data = HashMap<String, data::Value>;
@@ -61,6 +63,11 @@ fn get_input<'a>(rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalErr
 /// Trait for operators that maintain state while processing records.
 pub trait UnaryPreAggOperator: Send + Sync {
     fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError>;
+    /// Return any remaining records that may have been gathered by the operator.  This method
+    /// will be called when there are no more new input records.
+    fn drain(self: Box<Self>) -> Box<Iterator<Item = Record>> {
+        Box::new(iter::empty())
+    }
 }
 
 /// Trait used to instantiate an operator from its definition.  If an operator does not maintain
@@ -121,7 +128,7 @@ impl AggregateOperator for PreAggAdapter {
             Row::Aggregate(agg) => {
                 let mut op = self.op_builder.build();
                 let columns = agg.columns;
-                let processed_records: Vec<data::VMap> = {
+                let mut processed_records: Vec<data::VMap> = {
                     let records = agg
                         .data
                         .into_iter()
@@ -133,6 +140,7 @@ impl AggregateOperator for PreAggAdapter {
                         .map(|rec| rec.data);
                     records.collect()
                 };
+                processed_records.extend(op.drain().map(|rec| rec.data));
                 let new_keys: Vec<String> = {
                     processed_records
                         .iter()
@@ -809,13 +817,27 @@ pub enum Limit {
         /// The number of rows to pass through before aborting.
         limit: u64,
     },
+    Tail {
+        /// A circular queue to keep track of the tail of the input stream.
+        queue: VecDeque<Record>,
+        /// The size of the circular buffer.
+        /// XXX Might be better to use a separate type.
+        limit: usize,
+    },
 }
 
 impl OperatorBuilder for LimitDef {
     fn build(&self) -> Box<UnaryPreAggOperator> {
-        Box::new(Limit::Head {
-            index: 0,
-            limit: self.limit as u64,
+        Box::new(if self.limit > 0 {
+            Limit::Head {
+                index: 0,
+                limit: self.limit as u64,
+            }
+        } else {
+            Limit::Tail {
+                queue: VecDeque::with_capacity(-self.limit as usize),
+                limit: -self.limit as usize,
+            }
         })
     }
 }
@@ -835,6 +857,24 @@ impl UnaryPreAggOperator for Limit {
                     Ok(None)
                 }
             }
+            Limit::Tail {
+                ref mut queue,
+                limit,
+            } => {
+                if queue.len() == *limit {
+                    queue.pop_front();
+                }
+                queue.push_back(rec);
+
+                Ok(None)
+            }
+        }
+    }
+
+    fn drain(self: Box<Self>) -> Box<Iterator<Item = Record>> {
+        match *self {
+            Limit::Head { .. } => Box::new(iter::empty()),
+            Limit::Tail { queue, .. } => Box::new(queue.into_iter()),
         }
     }
 }
