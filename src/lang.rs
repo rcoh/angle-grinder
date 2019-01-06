@@ -82,7 +82,6 @@ pub enum Operator {
     Inline(InlineOperator),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
-    Total(TotalOperator),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -106,6 +105,10 @@ pub enum InlineOperator {
         /// The count for the limit is pretty loosely typed at this point, the next phase will
         /// check the value to see if it's sane or provide a default if no number was given.
         count: Option<f64>,
+    },
+    Total {
+        input_column: Expr,
+        output_column: String,
     },
 }
 
@@ -151,12 +154,6 @@ pub struct MultiAggregateOperator {
 pub struct SortOperator {
     pub sort_cols: Vec<String>,
     pub direction: SortMode,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TotalOperator {
-    pub input_column: Expr,
-    pub output_column: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -252,6 +249,16 @@ named!(limit<CompleteStr, InlineOperator>, ws!(do_parse!(
     count: opt!(double) >>
     (InlineOperator::Limit{ count })
 )));
+
+named!(total<CompleteStr, InlineOperator>, ws!(do_parse!(
+    tag!("total") >>
+    input_column: delimited!(tag!("("), expr, tag!(")")) >>
+    rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
+    (InlineOperator::Total{
+        input_column,
+        output_column:
+            rename_opt.map(|s|s.to_string()).unwrap_or_else(||"_total".to_string()),
+}))));
 
 named!(quoted_string <CompleteStr, &str>, delimited!(
     tag!("\""), 
@@ -350,7 +357,7 @@ named!(p_nn<CompleteStr, AggregateFunction>, ws!(
 ));
 
 named!(inline_operator<CompleteStr, Operator>,
-   map!(alt!(parse | json | fields | whre | limit), Operator::Inline)
+   map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline)
 );
 named!(aggregate_function<CompleteStr, AggregateFunction>, alt!(
     count_distinct |
@@ -359,7 +366,7 @@ named!(aggregate_function<CompleteStr, AggregateFunction>, alt!(
     sum |
     p_nn));
 
-named!(operator<CompleteStr, Operator>, alt!(inline_operator | sort | multi_aggregate_operator | total));
+named!(operator<CompleteStr, Operator>, alt!(inline_operator | sort | multi_aggregate_operator));
 
 // count by x,y
 // avg(foo) by x
@@ -418,17 +425,6 @@ named!(sort<CompleteStr, Operator>, ws!(do_parse!(
     (Operator::Sort(SortOperator{
         sort_cols: key_cols_opt.unwrap_or_default(),
         direction: dir.unwrap_or(SortMode::Ascending) ,
-     })))
-));
-
-named!(total<CompleteStr, Operator>, ws!(do_parse!(
-    tag!("total") >>
-    input_column: delimited!(tag!("("), expr, tag!(")")) >>
-    rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
-    (Operator::Total(TotalOperator{
-        input_column,
-        output_column:
-            rename_opt.map(|s|s.to_string()).unwrap_or_else(||"_total".to_string()),
      })))
 ));
 

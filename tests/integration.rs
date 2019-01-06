@@ -64,6 +64,7 @@ mod integration {
     #[test]
     fn total() {
         structured_test(include_str!("structured_tests/total.toml"));
+        structured_test(include_str!("structured_tests/total_agg.toml"));
     }
 
     #[test]

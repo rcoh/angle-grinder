@@ -633,11 +633,29 @@ impl<T: 'static + Evaluatable<bool>> UnaryPreAggFunction for Where<T> {
     }
 }
 
+pub struct TotalDef {
+    column: Expr,
+    output_column: String,
+}
+
+impl TotalDef {
+    pub fn new(column: Expr, output_column: String) -> Self {
+        TotalDef {
+            column,
+            output_column,
+        }
+    }
+}
+
+impl OperatorBuilder for TotalDef {
+    fn build(&self) -> Box<UnaryPreAggOperator> {
+        Box::new(Total::new(self.column.clone(), self.output_column.clone()))
+    }
+}
+
 pub struct Total {
     column: Expr,
     total: f64,
-    state: Vec<Data>,
-    columns: Vec<String>,
     output_column: String,
 }
 
@@ -646,69 +664,19 @@ impl Total {
         Total {
             column: column.into(),
             total: 0.0,
-            state: Vec::new(),
-            columns: Vec::new(),
             output_column,
         }
     }
-
-    fn new_columns(&self, data: &HashMap<String, data::Value>) -> Vec<String> {
-        let mut new_keys: Vec<String> = data
-            .keys()
-            .filter(|key| !self.columns.contains(key))
-            .cloned()
-            .collect();
-        new_keys.sort();
-        new_keys
-    }
-
-    fn proc_rec(&mut self, mut data: Data) -> Data {
-        let val: f64 = self
-            .column
-            .eval_borrowed(&data)
-            .map(|value| match value {
-                data::Value::Int(i) => *i as f64,
-                data::Value::Float(f) => f.into_inner(),
-                _ => 0.0,
-            })
-            .unwrap_or(0.0);
-        self.total += val;
-        data.insert(
-            self.output_column.to_string(),
-            data::Value::from_float(self.total),
-        );
-        data
-    }
 }
 
-impl AggregateOperator for Total {
-    fn emit(&self) -> data::Aggregate {
-        Aggregate {
-            data: self.state.to_vec(),
-            columns: self.columns.clone(),
-        }
-    }
-
-    fn process(&mut self, row: Row) {
-        match row {
-            Row::Aggregate(mut agg) => {
-                agg.columns.push(self.output_column.to_string());
-                self.columns = agg.columns;
-                self.total = 0.0;
-                let new_agg = agg
-                    .data
-                    .into_iter()
-                    .map(|data| self.proc_rec(data))
-                    .collect();
-                self.state = new_agg;
-            }
-            Row::Record(rec) => {
-                let processed = self.proc_rec(rec.data);
-                let new_cols = self.new_columns(&processed);
-                self.state.push(processed);
-                self.columns.extend(new_cols);
-            }
-        }
+impl UnaryPreAggOperator for Total {
+    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+        // I guess this means there are cases when you need to both emit a warning _and_ a row, TODO
+        // for now, we'll just emit the row
+        let val: f64 = self.column.eval(&rec.data).unwrap_or(0.0);
+        self.total += val;
+        let rec = rec.put(&self.output_column, data::Value::from_float(self.total));
+        Ok(Some(rec))
     }
 }
 
@@ -1201,7 +1169,10 @@ mod tests {
 
     #[test]
     fn test_total() {
-        let mut total_op = Total::new(Expr::Column("count".to_string()), "_total".to_string());
+        let mut total_op = PreAggAdapter::new(Box::new(TotalDef::new(
+            Expr::Column("count".to_string()),
+            "_total".to_string(),
+        )));
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
