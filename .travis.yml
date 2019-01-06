@@ -28,6 +28,7 @@ matrix:
 
 before_install:
   - set -e
+  - rustup component add rustfmt
   - cargo fmt -- --check
   - rustup self update
 
