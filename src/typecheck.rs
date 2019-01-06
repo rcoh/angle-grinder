@@ -109,6 +109,13 @@ impl lang::InlineOperator {
                 }
                 limit => Ok(Box::new(operator::LimitDef::new(limit as i64))),
             },
+            lang::InlineOperator::Total {
+                input_column,
+                output_column,
+            } => Ok(Box::new(operator::TotalDef::new(
+                input_column.into(),
+                output_column,
+            ))),
         }
     }
 }

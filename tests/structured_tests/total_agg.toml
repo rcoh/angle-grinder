@@ -1,0 +1,20 @@
+query = "* | json | avg(num_things) by level | sort by _average, level | total(_average)"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1.5}
+{"level": "info", "message": "A thing happened", "num_things": 1103}
+{"level": "error", "message": "A thing happened", "num_things": 1105}
+{"level": "error", "message": "A thing happened", "num_things": "not_a_number"}
+{"level": "warn", "message": "A thing happened"}
+{"level": "warn", "message": "A thing happened", "num_things": 1105}
+{"level": "warn", "message": "A thing happened", "num_things": 1105}
+{"level": "info", "message": "A thing happened", "num_things": 1105}
+{"level": "debug", "message": "A thing happened", "num_things": 1105.5}
+"""
+output = """
+level        _average        _total
+-------------------------------------------
+info         736.50          736.50
+error        1105            1841.50
+warn         1105            2946.50
+debug        1105.50         4052
+"""

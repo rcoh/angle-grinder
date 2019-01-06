@@ -28,6 +28,7 @@ matrix:
 
 before_install:
   - set -e
+  - cargo fmt -- --check
   - rustup self update
 
 install:

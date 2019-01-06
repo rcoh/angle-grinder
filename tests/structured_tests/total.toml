@@ -10,15 +10,14 @@ input = """
 {"level": "info", "message": "A thing happened", "num_things": 1105}
 {"level": "info", "message": "A thing happened", "num_things": 1105.5}
 """
-output = """_lotal        level        message                 num_things
----------------------------------------------------------------------
-1.50          info         A thing happened        1.50
-1104.50       info         A thing happened        1103
-2209.50       info         A thing happened        1105
-2209.50       info         A thing happened        not_a_number
-2209.50       info         A thing happened        $None$
-3314.50       info         A thing happened        1105
-4419.50       info         A thing happened        1105
-5524.50       info         A thing happened        1105
-6630          info         A thing happened        1105.50
+output = """
+[_lotal=1.50]          [level=info]         [message=A thing happened]        [num_things=1.50]
+[_lotal=1104.50]       [level=info]         [message=A thing happened]        [num_things=1103]
+[_lotal=2209.50]       [level=info]         [message=A thing happened]        [num_things=1105]
+[_lotal=2209.50]       [level=info]         [message=A thing happened]        [num_things=not_a_number]
+[_lotal=2209.50]       [level=info]         [message=A thing happened]
+[_lotal=3314.50]       [level=info]         [message=A thing happened]        [num_things=1105]
+[_lotal=4419.50]       [level=info]         [message=A thing happened]        [num_things=1105]
+[_lotal=5524.50]       [level=info]         [message=A thing happened]        [num_things=1105]
+[_lotal=6630]          [level=info]         [message=A thing happened]        [num_things=1105.50]
 """

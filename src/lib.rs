@@ -41,10 +41,6 @@ pub mod pipeline {
     }
 
     impl Pipeline {
-        fn convert_total(op: lang::TotalOperator) -> Box<operator::AggregateOperator> {
-            Box::new(operator::Total::new(op.input_column, op.output_column))
-        }
-
         fn convert_sort(op: lang::SortOperator) -> Box<operator::AggregateOperator> {
             let mode = match op.direction {
                 SortMode::Ascending => operator::SortDirection::Ascending,
@@ -129,7 +125,6 @@ pub mod pipeline {
                         }
                     }
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
-                    Operator::Total(total_op) => post_agg.push(Pipeline::convert_total(total_op)),
                 }
             }
             Result::Ok(Pipeline {
