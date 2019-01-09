@@ -52,13 +52,14 @@ impl From<lang::Expr> for operator::Expr {
     }
 }
 
-const DEFAULT_LIMIT: f64 = 10.0;
+const DEFAULT_LIMIT: i64 = 10;
 
 impl lang::InlineOperator {
     /// Convert the operator syntax to a builder that can instantiate an operator for the
     /// pipeline.  Any semantic errors in the operator syntax should be detected here.
     pub fn semantic_analysis(
         self,
+        pipeline: &lang::QueryContainer,
     ) -> Result<Box<operator::OperatorBuilder + Send + Sync>, TypeError> {
         match self {
             lang::InlineOperator::Json { input_column } => {
@@ -103,12 +104,24 @@ impl lang::InlineOperator {
 
                 Ok(Box::new(operator::Where::new(oexpr)))
             }
-            lang::InlineOperator::Limit { count } => match count.unwrap_or(DEFAULT_LIMIT) as f64 {
+            lang::InlineOperator::Limit { count: Some(count) } => match count.value {
                 limit if limit.trunc() == 0.0 || limit.fract() != 0.0 => {
-                    Err(TypeError::InvalidLimit { limit })
+                    let e = TypeError::InvalidLimit { limit };
+
+                    pipeline
+                        .report_error_for(e.to_string())
+                        .with_annotation(&count, "")
+                        .with_resolution("Use a positive value to select the first N rows")
+                        .with_resolution("Use a negative value to select the last N rows")
+                        .send_report();
+
+                    Err(e)
                 }
                 limit => Ok(Box::new(operator::LimitDef::new(limit as i64))),
             },
+            lang::InlineOperator::Limit { count: None } => {
+                Ok(Box::new(operator::LimitDef::new(DEFAULT_LIMIT)))
+            }
             lang::InlineOperator::Total {
                 input_column,
                 output_column,
@@ -116,6 +129,53 @@ impl lang::InlineOperator {
                 input_column.into(),
                 output_column,
             ))),
+        }
+    }
+}
+
+impl lang::Positioned<lang::AggregateFunction> {
+    pub fn semantic_analysis(
+        self,
+        pipeline: &lang::QueryContainer,
+    ) -> Result<Box<operator::AggregateFunction>, ()> {
+        match self.value {
+            lang::AggregateFunction::Count => Ok(Box::new(operator::Count::new())),
+            lang::AggregateFunction::Average { column } => {
+                Ok(Box::new(operator::Average::empty(column)))
+            }
+            lang::AggregateFunction::Sum { column } => Ok(Box::new(operator::Sum::empty(column))),
+            lang::AggregateFunction::Percentile {
+                column, percentile, ..
+            } => Ok(Box::new(operator::Percentile::empty(column, percentile))),
+            lang::AggregateFunction::CountDistinct { column: Some(pos) } => {
+                match pos.value.as_slice() {
+                    [column] => Ok(Box::new(operator::CountDistinct::empty(column.clone()))),
+                    _ => {
+                        pipeline
+                            .report_error_for("Expecting a single expression to count")
+                            .with_annotation(
+                                &pos,
+                                match pos.value.len() {
+                                    0 => "No expression given".to_string(),
+                                    _ => "Only a single expression can be given".to_string(),
+                                },
+                            )
+                            .with_resolution("example: count_distinct(field_to_count)")
+                            .send_report();
+
+                        Err(())
+                    }
+                }
+            }
+            lang::AggregateFunction::CountDistinct { column: None } => {
+                pipeline
+                    .report_error_for("Expecting an expression to count")
+                    .with_annotation(&self, "")
+                    .with_resolution("example: count_distinct(field_to_count)")
+                    .send_report();
+
+                Err(())
+            }
         }
     }
 }

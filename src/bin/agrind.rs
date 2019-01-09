@@ -1,8 +1,10 @@
-use ag::pipeline::Pipeline;
+use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
+use annotate_snippets::snippet::Snippet;
 use human_panic::setup_panic;
 use quicli::prelude::*;
 use self_update;
 use self_update::cargo_crate_version;
+use std::env;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
@@ -42,15 +44,35 @@ pub enum InvalidArgs {
     MissingQuery,
 }
 
+/// An ErrorReporter that writes errors related to the query string to the terminal
+struct TermErrorReporter {
+    formatter: annotate_snippets::formatter::DisplayListFormatter,
+}
+
+impl ErrorReporter for TermErrorReporter {
+    fn handle_error(&self, snippet: Snippet) {
+        let dl = annotate_snippets::display_list::DisplayList::from(snippet);
+
+        eprintln!("{}", self.formatter.format(&dl));
+    }
+}
+
 fn main() -> CliResult {
     setup_panic!();
     let args = Cli::from_args();
     if args.update {
         return update();
     }
-    let query = &args.query.ok_or(InvalidArgs::MissingQuery)?;
+    let query = QueryContainer::new(
+        args.query.ok_or(InvalidArgs::MissingQuery)?,
+        Box::new(TermErrorReporter {
+            formatter: annotate_snippets::formatter::DisplayListFormatter::new(
+                env::var("NO_COLOR").is_err(),
+            ),
+        }),
+    );
     args.verbosity.setup_env_logger("agrind")?;
-    let pipeline = Pipeline::new(query)?;
+    let pipeline = Pipeline::new(&query)?;
     match args.file {
         Some(file_name) => {
             let f = File::open(file_name)?;
