@@ -22,6 +22,11 @@ matrix:
       os: osx
       rust: stable
 
+    # Windows
+    - env: TARGET=x86_64-pc-windows-msvc NATIVE_BUILD=1
+      os: windows
+      rust: stable
+
     # Testing other channels
     - env: TARGET=x86_64-unknown-linux-musl
       rust: nightly
