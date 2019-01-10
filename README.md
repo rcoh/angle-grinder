@@ -328,7 +328,7 @@ Ideally, any errors should explain the problem, point the user to the relevant p
 string, and lead the user to a solution.
 Using the `ErrorBuilder`, you can call the `new_error_report_for()` method to construct a 
 `SnippetBuilder` for a given error.
-To highlight a portion of the query string, use the `with_annotation()` method with the
+To highlight a portion of the query string, use the `with_code_pointer()` method with the
 `Positioned` object that refers to the relevant segment of the query string.
 Finally, additional help/examples can be added by calling the `with_resolution()` method.
 

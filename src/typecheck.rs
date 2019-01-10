@@ -111,9 +111,16 @@ impl lang::InlineOperator {
 
                     error_builder
                         .report_error_for(e.to_string())
-                        .with_annotation(&count, "")
-                        .with_resolution("Use a positive value to select the first N rows")
-                        .with_resolution("Use a negative value to select the last N rows")
+                        .with_code_pointer(
+                            &count,
+                            if limit.fract() != 0.0 {
+                                "Fractional limits are not allowed"
+                            } else {
+                                "Zero is not allowed"
+                            },
+                        )
+                        .with_resolution("Use a positive integer to select the first N rows")
+                        .with_resolution("Use a negative integer to select the last N rows")
                         .send_report();
 
                     Err(e)
@@ -154,11 +161,11 @@ impl lang::Positioned<lang::AggregateFunction> {
                     _ => {
                         error_builder
                             .report_error_for("Expecting a single expression to count")
-                            .with_annotation(
+                            .with_code_pointer(
                                 &pos,
                                 match pos.value.len() {
-                                    0 => "No expression given".to_string(),
-                                    _ => "Only a single expression can be given".to_string(),
+                                    0 => "No expression given",
+                                    _ => "Only a single expression can be given",
                                 },
                             )
                             .with_resolution("example: count_distinct(field_to_count)")
@@ -171,7 +178,7 @@ impl lang::Positioned<lang::AggregateFunction> {
             lang::AggregateFunction::CountDistinct { column: None } => {
                 error_builder
                     .report_error_for("Expecting an expression to count")
-                    .with_annotation(&self, "No field argument given")
+                    .with_code_pointer(&self, "No field argument given")
                     .with_resolution("example: count_distinct(field_to_count)")
                     .send_report();
 

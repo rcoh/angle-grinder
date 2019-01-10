@@ -53,7 +53,7 @@ mod integration {
 
     #[test]
     fn count_distinct_operator() {
-        // structured_test(include_str!("structured_tests/count_distinct.toml"));
+        structured_test(include_str!("structured_tests/count_distinct.toml"));
         structured_test(include_str!("structured_tests/count_distinct_error.toml"));
     }
 

@@ -51,7 +51,7 @@ impl QueryContainer {
                         (ref start_span, ErrorKind::Custom(SyntaxErrors::DelimiterStart)),
                     )) => {
                         self.report_error_for(delim_error)
-                            .with_annotation_range((*start_span).into(), (*end_span).into(), "")
+                            .with_code_range((*start_span).into(), (*end_span).into(), "")
                             .with_resolutions(delim_error.to_resolution())
                             .send_report();
                     }
@@ -60,7 +60,7 @@ impl QueryContainer {
             }
             Err(nom::Err::Error(nom::Context::Code(span, _))) => {
                 self.report_error_for("Unexpected input")
-                    .with_annotation_range(span.into(), QueryPosition(self.query.len()), "")
+                    .with_code_range(span.into(), QueryPosition(self.query.len()), "")
                     .send_report();
             }
             _ => (),
@@ -140,7 +140,7 @@ pub struct SnippetBuilder<'a> {
 impl<'a> SnippetBuilder<'a> {
     /// Adds an annotation to a portion of the query string.  The given position will be
     /// highlighted with the accompanying label.
-    pub fn with_annotation<T, S: ToString>(mut self, pos: &Positioned<T>, label: S) -> Self {
+    pub fn with_code_pointer<T, S: ToString>(mut self, pos: &Positioned<T>, label: S) -> Self {
         self.data
             .annotations
             .push(((pos.start_pos.0, pos.end_pos.0), label.to_string()));
@@ -149,7 +149,7 @@ impl<'a> SnippetBuilder<'a> {
 
     /// Adds an annotation to a portion of the query string.  The given position will be
     /// highlighted with the accompanying label.
-    pub fn with_annotation_range<S: ToString>(
+    pub fn with_code_range<S: ToString>(
         mut self,
         start_pos: QueryPosition,
         end_pos: QueryPosition,
