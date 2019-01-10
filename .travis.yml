@@ -23,8 +23,9 @@ matrix:
       rust: stable
 
     # Testing other channels
-    - env: TARGET=x86_64-unknown-linux-musl
-      rust: nightly
+    # Disabling temporarily because of https://github.com/rust-lang/rust/issues/57488
+    # - env: TARGET=x86_64-unknown-linux-musl
+    #  rust: nightly
 
 before_install:
   - set -e
