@@ -1,9 +1,15 @@
 #[macro_use]
 extern crate failure;
+extern crate atty;
+extern crate nom_locate;
+extern crate num_derive;
+extern crate num_traits;
 
+extern crate annotate_snippets;
 extern crate crossbeam_channel;
 
 mod data;
+mod errors;
 mod lang;
 mod operator;
 mod render;
@@ -11,7 +17,7 @@ mod typecheck;
 
 pub mod pipeline {
     use crate::data::{Record, Row};
-    use crate::lang;
+    pub use crate::errors::{ErrorReporter, QueryContainer};
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
@@ -23,8 +29,8 @@ pub mod pipeline {
 
     #[derive(Debug, Fail)]
     pub enum CompileError {
-        #[fail(display = "Failure parsing query. Parse failed at: {}", message)]
-        Parse { message: String },
+        #[fail(display = "Failed to parse query")]
+        Parse,
 
         #[fail(display = "Non aggregate operators can't follow aggregate operators")]
         NonAggregateAfterAggregate,
@@ -41,7 +47,7 @@ pub mod pipeline {
     }
 
     impl Pipeline {
-        fn convert_sort(op: lang::SortOperator) -> Box<operator::AggregateOperator> {
+        fn convert_sort(op: SortOperator) -> Box<operator::AggregateOperator> {
             let mode = match op.direction {
                 SortMode::Ascending => operator::SortDirection::Ascending,
                 SortMode::Descending => operator::SortDirection::Descending,
@@ -49,32 +55,30 @@ pub mod pipeline {
             Box::new(operator::Sorter::new(op.sort_cols, mode))
         }
 
-        fn convert_agg_function(func: lang::AggregateFunction) -> Box<operator::AggregateFunction> {
-            match func {
-                AggregateFunction::Count => Box::new(operator::Count::new()),
-                AggregateFunction::Average { column } => Box::new(operator::Average::empty(column)),
-                AggregateFunction::Sum { column } => Box::new(operator::Sum::empty(column)),
-                AggregateFunction::Percentile {
-                    column, percentile, ..
-                } => Box::new(operator::Percentile::empty(column, percentile)),
-                AggregateFunction::CountDistinct { column } => {
-                    Box::new(operator::CountDistinct::empty(column))
+        fn convert_multi_agg(
+            op: MultiAggregateOperator,
+            pipeline: &QueryContainer,
+        ) -> Result<Box<operator::AggregateOperator>, ()> {
+            let mut agg_functions = Vec::with_capacity(op.aggregate_functions.len());
+            let mut has_errors = false;
+
+            for agg in op.aggregate_functions {
+                if let Ok(operator_function) = agg.1.semantic_analysis(pipeline) {
+                    agg_functions.push((agg.0, operator_function));
+                } else {
+                    has_errors = true;
                 }
             }
-        }
-
-        fn convert_multi_agg(op: lang::MultiAggregateOperator) -> Box<operator::AggregateOperator> {
-            let agg_functions = op
-                .aggregate_functions
-                .into_iter()
-                .map(|(k, func)| (k, Pipeline::convert_agg_function(func)));
+            if has_errors {
+                return Err(());
+            }
             let key_cols: Vec<operator::Expr> =
                 op.key_cols.into_iter().map(|expr| expr.into()).collect();
-            Box::new(operator::MultiGrouper::new(
+            Ok(Box::new(operator::MultiGrouper::new(
                 &key_cols[..],
                 op.key_col_headers,
-                agg_functions.collect(),
-            ))
+                agg_functions,
+            )))
         }
 
         fn implicit_sort(multi_agg: &MultiAggregateOperator) -> SortOperator {
@@ -89,20 +93,19 @@ pub mod pipeline {
             }
         }
 
-        pub fn new(pipeline: &str) -> Result<Self, Error> {
-            let parsed = lang::parse_query(pipeline).map_err(|e| CompileError::Parse {
-                message: format!("{:?}", e),
-            });
+        pub fn new(pipeline: &QueryContainer) -> Result<Self, Error> {
+            let parsed = pipeline.parse().map_err(|_pos| CompileError::Parse);
             let query = parsed?;
-            let filters = query.search.iter().map(lang::Keyword::to_regex).collect();
+            let filters = query.search.iter().map(Keyword::to_regex).collect();
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
             let mut op_iter = query.operators.into_iter().peekable();
+            let mut has_errors = false;
             while let Some(op) = op_iter.next() {
                 match op {
                     Operator::Inline(inline_op) => {
-                        let op_builder = inline_op.semantic_analysis()?;
+                        let op_builder = inline_op.semantic_analysis(pipeline)?;
 
                         if !in_agg {
                             pre_agg.push(op_builder.build());
@@ -113,19 +116,26 @@ pub mod pipeline {
                     Operator::MultiAggregate(agg_op) => {
                         in_agg = true;
                         let sorter = Pipeline::implicit_sort(&agg_op);
-                        post_agg.push(Pipeline::convert_multi_agg(agg_op));
+                        if let Ok(op) = Pipeline::convert_multi_agg(agg_op, pipeline) {
+                            post_agg.push(op);
 
-                        let needs_sort = match op_iter.peek() {
-                            Some(Operator::Inline(InlineOperator::Limit { .. })) => true,
-                            None => true,
-                            _ => false,
-                        };
-                        if needs_sort {
-                            post_agg.push(Pipeline::convert_sort(sorter));
+                            let needs_sort = match op_iter.peek() {
+                                Some(Operator::Inline(InlineOperator::Limit { .. })) => true,
+                                None => true,
+                                _ => false,
+                            };
+                            if needs_sort {
+                                post_agg.push(Pipeline::convert_sort(sorter));
+                            }
+                        } else {
+                            has_errors = true;
                         }
                     }
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
                 }
+            }
+            if has_errors {
+                return Err(CompileError::Parse.into());
             }
             Result::Ok(Pipeline {
                 filter: filters,

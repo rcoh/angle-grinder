@@ -1,4 +1,5 @@
 use crate::data::Value;
+use crate::errors::ErrorBuilder;
 use crate::lang;
 use crate::operator;
 
@@ -52,13 +53,14 @@ impl From<lang::Expr> for operator::Expr {
     }
 }
 
-const DEFAULT_LIMIT: f64 = 10.0;
+const DEFAULT_LIMIT: i64 = 10;
 
 impl lang::InlineOperator {
     /// Convert the operator syntax to a builder that can instantiate an operator for the
     /// pipeline.  Any semantic errors in the operator syntax should be detected here.
-    pub fn semantic_analysis(
+    pub fn semantic_analysis<T: ErrorBuilder>(
         self,
+        error_builder: &T,
     ) -> Result<Box<operator::OperatorBuilder + Send + Sync>, TypeError> {
         match self {
             lang::InlineOperator::Json { input_column } => {
@@ -103,12 +105,31 @@ impl lang::InlineOperator {
 
                 Ok(Box::new(operator::Where::new(oexpr)))
             }
-            lang::InlineOperator::Limit { count } => match count.unwrap_or(DEFAULT_LIMIT) as f64 {
+            lang::InlineOperator::Limit { count: Some(count) } => match count.value {
                 limit if limit.trunc() == 0.0 || limit.fract() != 0.0 => {
-                    Err(TypeError::InvalidLimit { limit })
+                    let e = TypeError::InvalidLimit { limit };
+
+                    error_builder
+                        .report_error_for(e.to_string())
+                        .with_code_pointer(
+                            &count,
+                            if limit.fract() != 0.0 {
+                                "Fractional limits are not allowed"
+                            } else {
+                                "Zero is not allowed"
+                            },
+                        )
+                        .with_resolution("Use a positive integer to select the first N rows")
+                        .with_resolution("Use a negative integer to select the last N rows")
+                        .send_report();
+
+                    Err(e)
                 }
                 limit => Ok(Box::new(operator::LimitDef::new(limit as i64))),
             },
+            lang::InlineOperator::Limit { count: None } => {
+                Ok(Box::new(operator::LimitDef::new(DEFAULT_LIMIT)))
+            }
             lang::InlineOperator::Total {
                 input_column,
                 output_column,
@@ -116,6 +137,53 @@ impl lang::InlineOperator {
                 input_column.into(),
                 output_column,
             ))),
+        }
+    }
+}
+
+impl lang::Positioned<lang::AggregateFunction> {
+    pub fn semantic_analysis<T: ErrorBuilder>(
+        self,
+        error_builder: &T,
+    ) -> Result<Box<operator::AggregateFunction>, ()> {
+        match self.value {
+            lang::AggregateFunction::Count => Ok(Box::new(operator::Count::new())),
+            lang::AggregateFunction::Average { column } => {
+                Ok(Box::new(operator::Average::empty(column)))
+            }
+            lang::AggregateFunction::Sum { column } => Ok(Box::new(operator::Sum::empty(column))),
+            lang::AggregateFunction::Percentile {
+                column, percentile, ..
+            } => Ok(Box::new(operator::Percentile::empty(column, percentile))),
+            lang::AggregateFunction::CountDistinct { column: Some(pos) } => {
+                match pos.value.as_slice() {
+                    [column] => Ok(Box::new(operator::CountDistinct::empty(column.clone()))),
+                    _ => {
+                        error_builder
+                            .report_error_for("Expecting a single expression to count")
+                            .with_code_pointer(
+                                &pos,
+                                match pos.value.len() {
+                                    0 => "No expression given",
+                                    _ => "Only a single expression can be given",
+                                },
+                            )
+                            .with_resolution("example: count_distinct(field_to_count)")
+                            .send_report();
+
+                        Err(())
+                    }
+                }
+            }
+            lang::AggregateFunction::CountDistinct { column: None } => {
+                error_builder
+                    .report_error_for("Expecting an expression to count")
+                    .with_code_pointer(&self, "No field argument given")
+                    .with_resolution("example: count_distinct(field_to_count)")
+                    .send_report();
+
+                Err(())
+            }
         }
     }
 }

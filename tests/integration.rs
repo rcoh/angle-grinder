@@ -12,36 +12,61 @@ struct TestDefinition {
     query: String,
     input: String,
     output: String,
+    error: Option<String>,
     notes: Option<String>,
+    succeeds: Option<bool>,
 }
 
 #[cfg(test)]
 mod integration {
     use super::*;
-    use ag::pipeline::Pipeline;
+    use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
     use assert_cli;
     use std::borrow::Borrow;
     use toml;
 
+    pub struct EmptyErrorReporter;
+
+    impl ErrorReporter for EmptyErrorReporter {}
+
     fn structured_test(s: &str) {
         let conf: TestDefinition = toml::from_str(s).unwrap();
         let out: &str = conf.output.borrow();
-        assert_cli::Assert::main_binary()
+        let err = conf.error.unwrap_or("".to_string());
+        let env = assert_cli::Environment::inherit().insert("RUST_BACKTRACE", "0");
+        let mut asserter = assert_cli::Assert::main_binary()
+            .with_env(env)
             .stdin(conf.input)
             .with_args(&[&conf.query])
             .stdout()
             .is(out)
-            .unwrap();
+            .stderr()
+            .is(err.as_str());
+
+        if conf.succeeds.unwrap_or(true) {
+            asserter = asserter.succeeds();
+        } else {
+            asserter = asserter.fails();
+        }
+        asserter.unwrap();
     }
 
     #[test]
     fn count_distinct_operator() {
         structured_test(include_str!("structured_tests/count_distinct.toml"));
+        structured_test(include_str!("structured_tests/count_distinct_error.toml"));
     }
 
     #[test]
     fn long_aggregate_values() {
         structured_test(include_str!("structured_tests/longlines.toml"));
+    }
+
+    #[test]
+    fn parse_operator() {
+        structured_test(include_str!(
+            "structured_tests/parse_error_unterminated.toml"
+        ));
     }
 
     #[test]
@@ -92,7 +117,7 @@ mod integration {
             .fails()
             .and()
             .stderr()
-            .contains("Failure parsing")
+            .contains("Failed to parse query")
             .unwrap();
     }
 
@@ -244,7 +269,8 @@ $None$       1")
     }
 
     fn ensure_parses(query: &str) {
-        Pipeline::new(query).expect(&format!(
+        let query_container = QueryContainer::new(query.to_string(), Box::new(EmptyErrorReporter));
+        Pipeline::new(&query_container).expect(&format!(
             "Query: `{}` from the README should have parsed",
             query
         ));

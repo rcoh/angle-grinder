@@ -1,0 +1,16 @@
+query = "* | json | count, count_distinct"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+"""
+output = ""
+error = """
+error: Expecting an expression to count
+  |
+1 | * | json | count, count_distinct
+  |                   ^^^^^^^^^^^^^^ No field argument given
+  |
+  = help: example: count_distinct(field_to_count)
+Error: Failed to parse query
+"""
+succeeds = false
