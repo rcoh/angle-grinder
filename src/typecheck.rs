@@ -2,6 +2,7 @@ use crate::data::Value;
 use crate::errors::ErrorBuilder;
 use crate::lang;
 use crate::operator;
+use std::collections::HashSet;
 
 #[derive(Debug, Fail)]
 pub enum TypeError {
@@ -74,6 +75,8 @@ impl lang::InlineOperator {
             } => {
                 let regex = pattern.to_regex();
 
+                let options: HashSet<lang::ParseOption> = parse_options.iter().cloned().collect();
+
                 if (regex.captures_len() - 1) != fields.len() {
                     Err(TypeError::ParseNumPatterns {
                         pattern: regex.captures_len() - 1,
@@ -84,6 +87,9 @@ impl lang::InlineOperator {
                         regex,
                         fields,
                         input_column.map(|e| e.into()),
+                        operator::ParseOptions {
+                            drop_nonmatching: options.contains(&lang::ParseOption::NoDrop)
+                        }
                     )))
                 }
             }

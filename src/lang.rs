@@ -175,9 +175,9 @@ pub enum SortMode {
     Descending,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub enum ParseOption {
-    NoDrop
+    NoDrop,
 }
 
 #[derive(Debug, PartialEq)]
