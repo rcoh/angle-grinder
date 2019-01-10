@@ -31,7 +31,14 @@ main() {
     cp target/$TARGET/release/agrind $stage/
 
     cd $stage
-    tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
+    case $TRAVIS_OS_NAME in
+        windows)
+            zip $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.zip *
+            ;;
+        *)
+            tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
+            ;;
+    esac
     cd $src
 
     rm -rf $stage
