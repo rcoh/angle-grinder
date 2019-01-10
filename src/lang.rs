@@ -143,7 +143,7 @@ pub enum InlineOperator {
         pattern: Keyword,
         fields: Vec<String>,
         input_column: Option<Expr>,
-        parse_options: Vec<ParseOption>,
+        no_drop: bool,
     },
     Fields {
         mode: FieldMode,
@@ -173,11 +173,6 @@ pub enum FieldMode {
 pub enum SortMode {
     Ascending,
     Descending,
-}
-
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
-pub enum ParseOption {
-    NoDrop,
 }
 
 #[derive(Debug, PartialEq)]
@@ -281,10 +276,6 @@ named!(comp_op<Span, ComparisonOp>, ws!(alt!(
     | map!(tag!("<"), |_|ComparisonOp::Lt)
 )));
 
-named!(parse_option<Span, ParseOption>, ws!(alt!(
-    map!(tag!("nodrop"), |_|ParseOption::NoDrop)
-)));
-
 named!(expr<Span, Expr>, ws!(alt!(
     do_parse!(
         l: e_ident >>
@@ -355,12 +346,12 @@ named!(parse<Span, InlineOperator>, ws!(do_parse!(
     from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
     tag!("as") >>
     vars: var_list >>
-    parse_options: many0!(parse_option) >>
+    no_drop_opt: opt!(ws!(tag!("nodrop"))) >>
     ( InlineOperator::Parse{
         pattern: Keyword::new_wildcard(pattern.to_string()),
         fields: vars,
         input_column: from_column_opt,
-        parse_options: parse_options
+        no_drop: no_drop_opt.is_some()
         } )
 )));
 
@@ -625,7 +616,7 @@ mod tests {
                 pattern: Keyword::new_wildcard("[key=*]".to_string()),
                 fields: vec!["v".to_string()],
                 input_column: None,
-                parse_options: vec![]
+                no_drop: false
             }
         );
         expect!(
@@ -635,7 +626,7 @@ mod tests {
                 pattern: Keyword::new_wildcard("[key=*]".to_string()),
                 fields: vec!["v".to_string()],
                 input_column: None,
-                parse_options: vec![ParseOption::NoDrop]
+                no_drop: true
             }
         );
         expect!(
@@ -645,7 +636,7 @@ mod tests {
                 pattern: Keyword::new_wildcard("[key=*][val=*]".to_string()),
                 fields: vec!["k".to_string(), "v".to_string()],
                 input_column: None,
-                parse_options: vec![ParseOption::NoDrop]
+                no_drop: true
             }
         );
     }
@@ -664,7 +655,7 @@ mod tests {
                 pattern: Keyword::new_wildcard("[key=*]".to_string()),
                 fields: vec!["v".to_string()],
                 input_column: Some(Expr::Column("field".to_string())),
-                parse_options: vec![]
+                no_drop: false
             },)
         );
     }
@@ -808,7 +799,7 @@ mod tests {
                         pattern: Keyword::new_wildcard("!123*".to_string()),
                         fields: vec!["foo".to_string()],
                         input_column: None,
-                        parse_options: vec![]
+                        no_drop: false
                     }),
                     Operator::MultiAggregate(MultiAggregateOperator {
                         key_col_headers: vec!["foo".to_string(), "foo == 123".to_string()],

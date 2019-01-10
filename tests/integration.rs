@@ -67,6 +67,8 @@ mod integration {
         structured_test(include_str!(
             "structured_tests/parse_error_unterminated.toml"
         ));
+        structured_test(include_str!("structured_tests/parse_drop.toml"));
+        structured_test(include_str!("structured_tests/parse_nodrop.toml"));
     }
 
     #[test]
@@ -212,7 +214,7 @@ $None$       1")
         assert_cli::Assert::main_binary()
             .with_args(&[
                 r#"* "error" | parse "* *" as lev, js
-                     | json from js 
+                     | json from js
                      | fields except js, lev"#,
                 "--file",
                 "test_files/test_partial_json.log",

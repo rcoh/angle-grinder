@@ -611,18 +611,16 @@ impl Parse {
 impl UnaryPreAggFunction for Parse {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let matches = self.matches(&rec)?;
-        match matches {
-            None => match self.options.drop_nonmatching {
-                true => Ok(None),
-                false => {
-                    let rec = self
-                        .fields
-                        .iter()
-                        .fold(rec, |rec, field| rec.put(field, data::Value::None));
-                    Ok(Some(rec))
+        match (matches, self.options.drop_nonmatching) {
+            (None, true) => Ok(None),
+            (None, false) => {
+                let mut rec = rec;
+                for field in &self.fields {
+                    rec = rec.put(field, data::Value::None);
                 }
-            },
-            Some(matches) => {
+                Ok(Some(rec))
+            }
+            (Some(matches), _) => {
                 let mut rec = rec;
                 for (i, field) in self.fields.iter().enumerate() {
                     rec = rec.put(field, matches[i].clone());
