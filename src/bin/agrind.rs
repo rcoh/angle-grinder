@@ -1,5 +1,6 @@
 use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
 use annotate_snippets::snippet::Snippet;
+use atty::Stream;
 use human_panic::setup_panic;
 use quicli::prelude::*;
 use self_update;
@@ -67,7 +68,7 @@ fn main() -> CliResult {
         args.query.ok_or(InvalidArgs::MissingQuery)?,
         Box::new(TermErrorReporter {
             formatter: annotate_snippets::formatter::DisplayListFormatter::new(
-                env::var("NO_COLOR").is_err(),
+                env::var("NO_COLOR").is_err() && atty::is(Stream::Stderr),
             ),
         }),
     );

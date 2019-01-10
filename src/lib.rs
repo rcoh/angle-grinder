@@ -1,14 +1,15 @@
 #[macro_use]
 extern crate failure;
-#[macro_use]
-extern crate num_derive;
+extern crate atty;
 extern crate nom_locate;
+extern crate num_derive;
 extern crate num_traits;
 
 extern crate annotate_snippets;
 extern crate crossbeam_channel;
 
 mod data;
+mod errors;
 mod lang;
 mod operator;
 mod render;
@@ -16,8 +17,8 @@ mod typecheck;
 
 pub mod pipeline {
     use crate::data::{Record, Row};
+    pub use crate::errors::{ErrorReporter, QueryContainer};
     use crate::lang::*;
-    pub use crate::lang::{ErrorReporter, QueryContainer};
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
@@ -59,16 +60,16 @@ pub mod pipeline {
             pipeline: &QueryContainer,
         ) -> Result<Box<operator::AggregateOperator>, ()> {
             let mut agg_functions = Vec::with_capacity(op.aggregate_functions.len());
-            let mut error_count = 0;
+            let mut has_errors = false;
 
             for agg in op.aggregate_functions {
                 if let Ok(operator_function) = agg.1.semantic_analysis(pipeline) {
                     agg_functions.push((agg.0, operator_function));
                 } else {
-                    error_count += 1;
+                    has_errors = true;
                 }
             }
-            if error_count > 0 {
+            if has_errors {
                 return Err(());
             }
             let key_cols: Vec<operator::Expr> =
@@ -100,7 +101,7 @@ pub mod pipeline {
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
             let mut op_iter = query.operators.into_iter().peekable();
-            let mut error_count = 0;
+            let mut has_errors = false;
             while let Some(op) = op_iter.next() {
                 match op {
                     Operator::Inline(inline_op) => {
@@ -127,13 +128,13 @@ pub mod pipeline {
                                 post_agg.push(Pipeline::convert_sort(sorter));
                             }
                         } else {
-                            error_count += 1;
+                            has_errors = true;
                         }
                     }
                     Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
                 }
             }
-            if error_count > 0 {
+            if has_errors {
                 return Err(CompileError::Parse.into());
             }
             Result::Ok(Pipeline {

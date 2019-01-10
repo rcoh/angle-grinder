@@ -283,7 +283,65 @@ cargo install --path .
 agrind --help
 ```
 
-See the open issues for specific potential improvements/bugs.
+See the following projects and open issues for specific potential improvements/bugs.
+
+#### Project: Improving Error Reporting
+
+Usability can be greatly improved by accurate and helpful error messages for query-related issues.
+If you have struggled to figure out why a query is not working correctly and had a hard time 
+fixing the issue, that would be a good place to jump in and start making changes!
+
+First, you need to determine where the problem is occurring.
+If the parser is rejecting a query, the grammar may need some tweaking to be more accepting of 
+some syntax.
+For example, if the field names are not provided for the `parse` operator, the query can still 
+be parsed to produce a syntax tree and the error can be raised in the next phase.
+If the query passes the parsing phase, the problem may lie in the semantic analysis phase where the
+values in parse tree are verified for correctness.
+Continuing with the `parse` example, if the number of captures in the pattern string does not 
+match the number of field names, the error would be raised here.
+Finally, if the query has been valid up to this point, you might want to raise an error at 
+execution time.
+For example, if a field name being accessed does not exist in the records being passed to an 
+operator, an error could be raised to tell the user that they might have mistyped the name.
+
+Once you have an idea of where the problem might lie, you can start to dig into the code.
+The grammar is written using [nom](https://github.com/Geal/nom/) and is contained in the
+[`lang.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/lang.rs) module.
+The enums/structs that make up the parse tree are also in the `lang.rs` module.
+To make error reporting easier, values in the parse tree are wrapped with a `Positioned` object 
+that records where the value came from in the query string.
+The `Positioned` objects are produced by the `with_pos!()` parser combinator.
+These objects can then be passed to the `SnippetBuilder` in the
+[`errors.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/errors.rs) module to highlight 
+portions of the query string in error messages.
+
+The semantic phase is contained in the
+[`typecheck.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/typecheck.rs) module and 
+is probably where most of the work will need to be done.
+The `semantic_analysis()` methods in that module are passed an `ErrorBuilder` that can be used to
+build and send error reports to the user. 
+
+After adjusting the grammar and adding a check for the problem, it will be time to figure out how
+to inform the user.
+Ideally, any errors should explain the problem, point the user to the relevant part of the query 
+string, and lead the user to a solution.
+Using the `ErrorBuilder`, you can call the `new_error_report_for()` method to construct a 
+`SnippetBuilder` for a given error.
+To highlight a portion of the query string, use the `with_annotation()` method with the
+`Positioned` object that refers to the relevant segment of the query string.
+Finally, additional help/examples can be added by calling the `with_resolution()` method.
+
+Once you're all done, you should see a nicely formatted error message like the following:
+
+```
+error: Expecting an expression to count
+  |
+1 | * | count_distinct
+  |     ^^^^^^^^^^^^^^ No field argument given
+  |
+  = help: example: count_distinct(field_to_count)
+```
 
 ### Similar Projects
 * Angle Grinder is a rewrite of [Sumoshell](https://github.com/SumoLogic/sumoshell) written to be easier to use, testable and a better platform for new features.

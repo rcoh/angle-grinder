@@ -1,4 +1,5 @@
 use crate::data::Value;
+use crate::errors::ErrorBuilder;
 use crate::lang;
 use crate::operator;
 
@@ -57,9 +58,9 @@ const DEFAULT_LIMIT: i64 = 10;
 impl lang::InlineOperator {
     /// Convert the operator syntax to a builder that can instantiate an operator for the
     /// pipeline.  Any semantic errors in the operator syntax should be detected here.
-    pub fn semantic_analysis(
+    pub fn semantic_analysis<T: ErrorBuilder>(
         self,
-        pipeline: &lang::QueryContainer,
+        error_builder: &T,
     ) -> Result<Box<operator::OperatorBuilder + Send + Sync>, TypeError> {
         match self {
             lang::InlineOperator::Json { input_column } => {
@@ -108,7 +109,7 @@ impl lang::InlineOperator {
                 limit if limit.trunc() == 0.0 || limit.fract() != 0.0 => {
                     let e = TypeError::InvalidLimit { limit };
 
-                    pipeline
+                    error_builder
                         .report_error_for(e.to_string())
                         .with_annotation(&count, "")
                         .with_resolution("Use a positive value to select the first N rows")
@@ -134,9 +135,9 @@ impl lang::InlineOperator {
 }
 
 impl lang::Positioned<lang::AggregateFunction> {
-    pub fn semantic_analysis(
+    pub fn semantic_analysis<T: ErrorBuilder>(
         self,
-        pipeline: &lang::QueryContainer,
+        error_builder: &T,
     ) -> Result<Box<operator::AggregateFunction>, ()> {
         match self.value {
             lang::AggregateFunction::Count => Ok(Box::new(operator::Count::new())),
@@ -151,7 +152,7 @@ impl lang::Positioned<lang::AggregateFunction> {
                 match pos.value.as_slice() {
                     [column] => Ok(Box::new(operator::CountDistinct::empty(column.clone()))),
                     _ => {
-                        pipeline
+                        error_builder
                             .report_error_for("Expecting a single expression to count")
                             .with_annotation(
                                 &pos,
@@ -168,9 +169,9 @@ impl lang::Positioned<lang::AggregateFunction> {
                 }
             }
             lang::AggregateFunction::CountDistinct { column: None } => {
-                pipeline
+                error_builder
                     .report_error_for("Expecting an expression to count")
-                    .with_annotation(&self, "")
+                    .with_annotation(&self, "No field argument given")
                     .with_resolution("example: count_distinct(field_to_count)")
                     .send_report();
 

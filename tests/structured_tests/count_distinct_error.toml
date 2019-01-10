@@ -8,8 +8,9 @@ error = """
 error: Expecting an expression to count
   |
 1 | * | json | count, count_distinct
-  |                   ^^^^^^^^^^^^^^
+  |                   ^^^^^^^^^^^^^^ No field argument given
   |
   = help: example: count_distinct(field_to_count)
 Error: Failed to parse query
 """
+succeeds = false

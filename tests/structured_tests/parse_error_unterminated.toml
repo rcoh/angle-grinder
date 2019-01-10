@@ -5,7 +5,7 @@ input = """
 """
 output = ""
 error = """
-error: unterminated double quote string
+error: unterminated double quoted string
   |
 1 | * | parse "abc
   |           ^^^^
@@ -13,3 +13,4 @@ error: unterminated double quote string
   = help: Insert a double quote to terminate this string
 Error: Failed to parse query
 """
+succeeds = false

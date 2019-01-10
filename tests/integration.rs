@@ -14,6 +14,7 @@ struct TestDefinition {
     output: String,
     error: Option<String>,
     notes: Option<String>,
+    succeeds: Option<bool>
 }
 
 #[cfg(test)]
@@ -33,23 +34,27 @@ mod integration {
         let out: &str = conf.output.borrow();
         let err = conf.error.unwrap_or("".to_string());
         let env = assert_cli::Environment::inherit()
-            .insert("RUST_BACKTRACE", "0")
-            .insert("NO_COLOR", "");
-        assert_cli::Assert::main_binary()
-            .with_env(&env)
+            .insert("RUST_BACKTRACE", "0");
+        let mut asserter = assert_cli::Assert::main_binary()
+            .with_env(env)
             .stdin(conf.input)
             .with_args(&[&conf.query])
             .stdout()
             .is(out)
             .stderr()
-            .is(err.as_str())
-            .ignore_status()
-            .unwrap();
+            .is(err.as_str());
+
+        if conf.succeeds.unwrap_or(true) {
+            asserter = asserter.succeeds();
+        } else {
+            asserter = asserter.fails();
+        }
+        asserter.unwrap();
     }
 
     #[test]
     fn count_distinct_operator() {
-        structured_test(include_str!("structured_tests/count_distinct.toml"));
+        // structured_test(include_str!("structured_tests/count_distinct.toml"));
         structured_test(include_str!("structured_tests/count_distinct_error.toml"));
     }
 
