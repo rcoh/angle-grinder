@@ -33,7 +33,7 @@ main() {
     cd $stage
     case $TRAVIS_OS_NAME in
         windows)
-            zip $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.zip *
+            7z a $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.zip *
             ;;
         *)
             tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
