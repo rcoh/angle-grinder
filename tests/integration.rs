@@ -14,7 +14,7 @@ struct TestDefinition {
     output: String,
     error: Option<String>,
     notes: Option<String>,
-    succeeds: Option<bool>
+    succeeds: Option<bool>,
 }
 
 #[cfg(test)]
@@ -33,8 +33,7 @@ mod integration {
         let conf: TestDefinition = toml::from_str(s).unwrap();
         let out: &str = conf.output.borrow();
         let err = conf.error.unwrap_or("".to_string());
-        let env = assert_cli::Environment::inherit()
-            .insert("RUST_BACKTRACE", "0");
+        let env = assert_cli::Environment::inherit().insert("RUST_BACKTRACE", "0");
         let mut asserter = assert_cli::Assert::main_binary()
             .with_env(env)
             .stdin(conf.input)
