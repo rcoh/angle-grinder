@@ -76,7 +76,7 @@ specified.
 ![json.gif](/screen_shots/json.gif)
 
 ##### Parse
-`parse "* pattern * otherpattern *" [from field] as a,b,c`: Parse text that matches the pattern into variables. Lines that don't match the pattern will be dropped. `*` is equivalent to regular expression `.*` and is greedy. 
+`parse "* pattern * otherpattern *" [from field] as a,b,c [nodrop]`: Parse text that matches the pattern into variables. Lines that don't match the pattern will be dropped unless `nodrop` is specified. `*` is equivalent to regular expression `.*` and is greedy.
 By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.
 
 *Examples*:
