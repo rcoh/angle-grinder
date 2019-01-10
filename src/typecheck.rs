@@ -70,6 +70,7 @@ impl lang::InlineOperator {
                 pattern,
                 fields,
                 input_column,
+                parse_options
             } => {
                 let regex = pattern.to_regex();
 
