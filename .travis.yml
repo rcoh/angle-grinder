@@ -22,11 +22,6 @@ matrix:
       os: osx
       rust: stable
 
-    # Windows
-    - env: TARGET=x86_64-pc-windows-msvc NATIVE_BUILD=1
-      os: windows
-      rust: stable
-
     # Testing other channels
     # Disabling temporarily because of https://github.com/rust-lang/rust/issues/57488
     # - env: TARGET=x86_64-unknown-linux-musl
@@ -75,7 +70,6 @@ branches:
     # release tags
     - /^v\d+\.\d+\.\d+.*$/
     - master
-    - build-windows
 
 notifications:
   email:
