@@ -44,4 +44,8 @@ main() {
            --target $target
 }
 
+if [ "$NATIVE_BUILD" ]; then
+    exit 0
+fi
+
 main
