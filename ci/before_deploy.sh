@@ -8,7 +8,7 @@ main() {
           stage=
 
     case $TRAVIS_OS_NAME in
-        linux | windows)
+        linux)
             stage=$(mktemp -d)
             ;;
         osx)
@@ -16,29 +16,16 @@ main() {
             ;;
     esac
 
-
     test -f Cargo.lock || cargo generate-lockfile
 
     # TODO Update this to build the artifacts that matter to you
-
-    if [ "$NATIVE_BUILD" ]; then
-        cargo rustc --bin agrind --target $TARGET --release -- -C lto
-    else
-        cross rustc --bin agrind --target $TARGET --release -- -C lto
-    fi
+    cross rustc --bin agrind --target $TARGET --release -- -C lto
 
     # TODO Update this to package the right artifacts
     cp target/$TARGET/release/agrind $stage/
 
     cd $stage
-    case $TRAVIS_OS_NAME in
-        windows)
-            7z a $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.zip *
-            ;;
-        *)
-            tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
-            ;;
-    esac
+    tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
     cd $src
 
     rm -rf $stage
