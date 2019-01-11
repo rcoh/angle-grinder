@@ -614,8 +614,14 @@ impl UnaryPreAggFunction for Parse {
         match (matches, self.options.drop_nonmatching) {
             (None, true) => Ok(None),
             (None, false) => {
+                let new_fields: Vec<_> = self
+                    .fields
+                    .iter()
+                    .filter(|f| !rec.data.contains_key(&f.to_string()))
+                    .collect();
+
                 let mut rec = rec;
-                for field in &self.fields {
+                for field in new_fields {
                     rec = rec.put(field, data::Value::None);
                 }
                 Ok(Some(rec))
@@ -994,6 +1000,24 @@ mod tests {
         );
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(rec.data.get("ip").unwrap(), &Value::None);
+    }
+
+    #[test]
+    fn parse_nodrop_preserve_existing() {
+        let rec = Record::new("abcd 1234").put("ip", Value::Str("127.0.0.1".to_string()));
+        let parser = Parse::new(
+            lang::Keyword::new_wildcard("IP *".to_string()).to_regex(),
+            vec!["ip".to_string()],
+            None,
+            ParseOptions {
+                drop_nonmatching: false,
+            },
+        );
+        let rec = parser.process(rec).unwrap().unwrap();
+        assert_eq!(
+            rec.data.get("ip").unwrap(),
+            &Value::Str("127.0.0.1".to_string())
+        );
     }
 
     #[test]
