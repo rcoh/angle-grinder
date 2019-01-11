@@ -564,18 +564,30 @@ impl AggregateOperator for MultiGrouper {
 }
 
 #[derive(Clone)]
+pub struct ParseOptions {
+    pub drop_nonmatching: bool,
+}
+
+#[derive(Clone)]
 pub struct Parse {
     regex: regex::Regex,
     fields: Vec<String>,
     input_column: Option<Expr>,
+    options: ParseOptions,
 }
 
 impl Parse {
-    pub fn new(pattern: regex::Regex, fields: Vec<String>, input_column: Option<Expr>) -> Self {
+    pub fn new(
+        pattern: regex::Regex,
+        fields: Vec<String>,
+        input_column: Option<Expr>,
+        options: ParseOptions,
+    ) -> Self {
         Parse {
             regex: pattern,
             fields,
             input_column,
+            options,
         }
     }
 
@@ -599,9 +611,22 @@ impl Parse {
 impl UnaryPreAggFunction for Parse {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let matches = self.matches(&rec)?;
-        match matches {
-            None => Ok(None),
-            Some(matches) => {
+        match (matches, self.options.drop_nonmatching) {
+            (None, true) => Ok(None),
+            (None, false) => {
+                let new_fields: Vec<_> = self
+                    .fields
+                    .iter()
+                    .filter(|f| !rec.data.contains_key(&f.to_string()))
+                    .collect();
+
+                let mut rec = rec;
+                for field in new_fields {
+                    rec = rec.put(field, data::Value::None);
+                }
+                Ok(Some(rec))
+            }
+            (Some(matches), _) => {
                 let mut rec = rec;
                 for (i, field) in self.fields.iter().enumerate() {
                     rec = rec.put(field, matches[i].clone());
@@ -931,6 +956,9 @@ mod tests {
                 "length".to_string(),
             ],
             None,
+            ParseOptions {
+                drop_nonmatching: true,
+            },
         );
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
@@ -945,6 +973,54 @@ mod tests {
     }
 
     #[test]
+    fn parse_drop() {
+        let rec = Record::new("abcd 1234");
+        let parser = Parse::new(
+            lang::Keyword::new_wildcard("IP *".to_string()).to_regex(),
+            vec!["ip".to_string()],
+            None,
+            ParseOptions {
+                drop_nonmatching: true,
+            },
+        );
+        let rec = parser.process(rec).unwrap();
+        assert_eq!(rec, None);
+    }
+
+    #[test]
+    fn parse_nodrop() {
+        let rec = Record::new("abcd 1234");
+        let parser = Parse::new(
+            lang::Keyword::new_wildcard("IP *".to_string()).to_regex(),
+            vec!["ip".to_string()],
+            None,
+            ParseOptions {
+                drop_nonmatching: false,
+            },
+        );
+        let rec = parser.process(rec).unwrap().unwrap();
+        assert_eq!(rec.data.get("ip").unwrap(), &Value::None);
+    }
+
+    #[test]
+    fn parse_nodrop_preserve_existing() {
+        let rec = Record::new("abcd 1234").put("ip", Value::Str("127.0.0.1".to_string()));
+        let parser = Parse::new(
+            lang::Keyword::new_wildcard("IP *".to_string()).to_regex(),
+            vec!["ip".to_string()],
+            None,
+            ParseOptions {
+                drop_nonmatching: false,
+            },
+        );
+        let rec = parser.process(rec).unwrap().unwrap();
+        assert_eq!(
+            rec.data.get("ip").unwrap(),
+            &Value::Str("127.0.0.1".to_string())
+        );
+    }
+
+    #[test]
     fn parse_from_field() {
         let rec = Record::new("");
         let rec = rec.put("from_col", data::Value::Str("[k1=v1]".to_string()));
@@ -952,6 +1028,9 @@ mod tests {
             lang::Keyword::new_wildcard("[*=*]".to_string()).to_regex(),
             vec!["key".to_string(), "value".to_string()],
             Some("from_col".into()),
+            ParseOptions {
+                drop_nonmatching: true,
+            },
         );
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(

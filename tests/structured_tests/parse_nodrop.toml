@@ -1,0 +1,11 @@
+query = """* | parse "name=* says=*" as name, words nodrop"""
+input = """
+name=Jarrad says=Hi
+name=Ella says=Bye
+name=Jim
+"""
+output = """
+[name=Jarrad]        [words=Hi]
+[name=Ella]          [words=Bye]
+[name=$None$]        [words=$None$]
+"""

@@ -70,6 +70,7 @@ impl lang::InlineOperator {
                 pattern,
                 fields,
                 input_column,
+                no_drop,
             } => {
                 let regex = pattern.to_regex();
 
@@ -83,6 +84,9 @@ impl lang::InlineOperator {
                         regex,
                         fields,
                         input_column.map(|e| e.into()),
+                        operator::ParseOptions {
+                            drop_nonmatching: !no_drop,
+                        },
                     )))
                 }
             }
