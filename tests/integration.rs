@@ -67,7 +67,9 @@ mod integration {
         structured_test(include_str!(
             "structured_tests/parse_error_unterminated.toml"
         ));
-        structured_test(include_str!("structured_tests/parse_error_unterminated_sq.toml"));
+        structured_test(include_str!(
+            "structured_tests/parse_error_unterminated_sq.toml"
+        ));
         structured_test(include_str!("structured_tests/parse_drop.toml"));
         structured_test(include_str!("structured_tests/parse_nodrop.toml"));
     }
