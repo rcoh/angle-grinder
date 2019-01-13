@@ -34,6 +34,9 @@ pub enum EvalError {
 
     #[fail(display = "Expected number, found {}", found)]
     ExpectedNumber { found: String },
+
+    #[fail(display = "Expected boolean, found {}", found)]
+    ExpectedBoolean { found: String },
 }
 
 pub trait Evaluatable<T>: Send + Sync + Clone {
@@ -177,8 +180,20 @@ pub trait AggregateFunction: Send + Sync {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Column(String),
+    BoolUnary(UnaryExpr<BoolUnaryExpr>),
     Comparison(BinaryExpr<BoolExpr>),
     Value(&'static data::Value),
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryExpr<T> {
+    pub operator: T,
+    pub operand: Box<Expr>,
+}
+
+#[derive(Clone, Debug)]
+pub enum BoolUnaryExpr {
+    Not,
 }
 
 #[derive(Debug, Clone)]
@@ -220,6 +235,35 @@ impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     }
 }
 
+impl Evaluatable<bool> for UnaryExpr<BoolUnaryExpr> {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
+        let bool_res: &data::Value = self.operand.eval_borrowed(record)?;
+
+        match bool_res {
+            data::Value::Bool(true) => Ok(false),
+            data::Value::Bool(false) => Ok(true),
+            _ => Err(EvalError::ExpectedBoolean {
+                found: bool_res.to_string(),
+            }),
+        }
+    }
+}
+
+impl Evaluatable<bool> for String {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
+        let bool_res = record
+            .get(self)
+            .ok_or_else(|| EvalError::NoValueForKey { key: self.clone() })?;
+
+        match bool_res {
+            data::Value::Bool(bool_value) => Ok(*bool_value),
+            _ => Err(EvalError::ExpectedBoolean {
+                found: bool_res.to_string(),
+            }),
+        }
+    }
+}
+
 impl EvaluatableBorrowed<data::Value> for Expr {
     fn eval_borrowed<'a>(
         &self,
@@ -229,6 +273,15 @@ impl EvaluatableBorrowed<data::Value> for Expr {
             Expr::Column(ref col) => record
                 .get(col)
                 .ok_or_else(|| EvalError::NoValueForKey { key: col.clone() }),
+            Expr::BoolUnary(
+                ref unary_op @ UnaryExpr {
+                    operator: BoolUnaryExpr::Not,
+                    ..
+                },
+            ) => {
+                let bool_res = unary_op.eval(record)?;
+                Ok(data::Value::from_bool(bool_res))
+            }
             Expr::Comparison(ref binary_expr) => {
                 let bool_res = binary_expr.eval(record)?;
                 Ok(data::Value::from_bool(bool_res))
