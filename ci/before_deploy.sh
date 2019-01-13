@@ -19,7 +19,8 @@ main() {
     test -f Cargo.lock || cargo generate-lockfile
 
     # TODO Update this to build the artifacts that matter to you
-    cargo --bin agrind --target $TARGET --release -- -C lto
+    cross rustc --bin agrind --target $TARGET --release -- -C lto
+    cross test --release
 
     # TODO Update this to package the right artifacts
     cp target/$TARGET/release/agrind $stage/

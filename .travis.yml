@@ -34,7 +34,6 @@ before_install:
   - rustup self update
 
 install:
-  #- sh ci/install.sh
   - source ~/.cargo/env || true
 
 script:
@@ -42,7 +41,9 @@ script:
 
 after_script: set +e
 
+# We need to install cross since we use it to actually build the binaries we want
 before_deploy:
+  - sh ci/install.sh
   - sh ci/before_deploy.sh
 
 deploy:
