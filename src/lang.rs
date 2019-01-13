@@ -234,7 +234,11 @@ fn is_keyword(c: char) -> bool {
     }
 }
 
-fn not_escape(c: char) -> bool {
+fn not_escape_sq(c: char) -> bool {
+    c != '\\' && c != '\''
+}
+
+fn not_escape_dq(c: char) -> bool {
     c != '\\' && c != '\"'
 }
 
@@ -316,12 +320,21 @@ named!(total<Span, InlineOperator>, ws!(do_parse!(
             rename_opt.map(|s|s.to_string()).unwrap_or_else(||"_total".to_string()),
 }))));
 
-named!(quoted_string <Span, &str>,  add_return_error!(
+named!(double_quoted_string <Span, &str>, add_return_error!(
     SyntaxErrors::DelimiterStart.into(), delimited!(
         tag!("\""),
-        map!(escaped!(take_while1!(not_escape), '\\', anychar), |ref s|s.fragment.0),
-        return_error!(SyntaxErrors::UnterminatedString.into(), tag!("\""))
+        map!(escaped!(take_while1!(not_escape_dq), '\\', anychar), |ref s|s.fragment.0),
+        return_error!(SyntaxErrors::UnterminatedDoubleQuotedString.into(), tag!("\""))
 )));
+
+named!(single_quoted_string <Span, &str>, add_return_error!(
+    SyntaxErrors::DelimiterStart.into(), delimited!(
+        tag!("'"),
+        map!(escaped!(take_while1!(not_escape_sq), '\\', anychar), |ref s|s.fragment.0),
+        return_error!(SyntaxErrors::UnterminatedSingleQuotedString.into(), tag!("'"))
+)));
+
+named!(quoted_string<Span, &str>, alt!(double_quoted_string | single_quoted_string));
 
 named!(var_list<Span, Vec<String> >, ws!(separated_nonempty_list!(
     tag!(","), ws!(ident)
@@ -536,7 +549,21 @@ mod tests {
                     assert_eq!(actual_result, $res);
                     assert_eq!(leftover, CompleteStr(""));
                 }
-                Err(e) => panic!(format!("{:?}", e)),
+                Err(e) => panic!(format!(
+                    "Parse failed, but was expected to succeed: \n{:?}",
+                    e
+                )),
+            }
+        }};
+    }
+
+    macro_rules! expect_fail {
+        ($f:expr, $inp:expr) => {{
+            let parse_result = $f(Span::new(CompleteStr($inp)));
+            match parse_result {
+                Ok(res) => panic!(format!("Expected parse to fail, but it succeeded")),
+                // TODO: enable assertions of specific errors
+                Err(_e) => (),
             }
         }};
     }
@@ -550,7 +577,9 @@ mod tests {
     #[test]
     fn parse_quoted_string() {
         expect!(quoted_string, "\"hello\"", "hello");
+        expect!(quoted_string, "'hello'", "hello");
         expect!(quoted_string, r#""test = [*=*] * ""#, "test = [*=*] * ");
+        expect_fail!(quoted_string, "\"hello'");
     }
 
     #[test]
@@ -589,8 +618,7 @@ mod tests {
         expect!(ident, "hello123", "hello123".to_string());
         expect!(ident, "x", "x".to_string());
         expect!(ident, "_x", "_x".to_string());
-        // TODO: improve ergonomics of failure testing
-        // expect!(ident,"5x", Ok("_x".to_string()));
+        expect_fail!(ident, "5x");
     }
 
     #[test]

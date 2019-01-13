@@ -1,16 +1,16 @@
-query = "* | parse \"abc"
+query = "* | parse 'abc"
 input = """
 {"level": "info", "message": "A thing happened", "num_things": 1102}
 {"level": "error", "message": "Oh now an error!"}
 """
 output = ""
 error = """
-error: unterminated double quoted string
+error: unterminated single quoted string
   |
-1 | * | parse "abc
+1 | * | parse 'abc
   |           ^^^^
   |
-  = help: Insert a double quote (") to terminate this string
+  = help: Insert a single quote (') to terminate this string
 Error: Failed to parse query
 """
 succeeds = false

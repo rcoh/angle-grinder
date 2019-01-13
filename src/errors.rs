@@ -17,8 +17,10 @@ pub struct QueryContainer {
 pub enum SyntaxErrors {
     #[fail(display = "")]
     DelimiterStart,
+    #[fail(display = "unterminated single quoted string")]
+    UnterminatedSingleQuotedString,
     #[fail(display = "unterminated double quoted string")]
-    UnterminatedString,
+    UnterminatedDoubleQuotedString,
     #[fail(display = "expecting close parentheses")]
     MissingParen,
 }
@@ -94,11 +96,14 @@ impl SyntaxErrors {
     pub fn to_resolution(&self) -> Vec<String> {
         match self {
             SyntaxErrors::DelimiterStart => Vec::new(),
-            SyntaxErrors::UnterminatedString => {
-                vec!["Insert a double quote to terminate this string".to_string()]
+            SyntaxErrors::UnterminatedSingleQuotedString => {
+                vec!["Insert a single quote (') to terminate this string".to_string()]
+            }
+            SyntaxErrors::UnterminatedDoubleQuotedString => {
+                vec!["Insert a double quote (\") to terminate this string".to_string()]
             }
             SyntaxErrors::MissingParen => {
-                vec!["Insert a right parenthesis to close this expression".to_string()]
+                vec!["Insert a right parenthesis to terminate this expression".to_string()]
             }
         }
     }
