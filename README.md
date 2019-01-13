@@ -8,7 +8,7 @@ Angle grinder can process well above 1M rows per second (simple pipelines as hig
 ![overview gif](/screen_shots/overview.gif)
 
 ## Installation
-Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`.
+Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`. Starting with `v0.9.0`, `agrind` can self-update via the `--self-update` flag.
 
 ### With Brew (OS X)
 ```bash
