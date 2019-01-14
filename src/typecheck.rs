@@ -35,6 +35,12 @@ impl From<lang::Expr> for operator::Expr {
     fn from(inp: lang::Expr) -> Self {
         match inp {
             lang::Expr::Column(s) => operator::Expr::Column(s),
+            lang::Expr::Unary { op, operand } => match op {
+                lang::UnaryOp::Not => operator::Expr::BoolUnary(operator::UnaryExpr {
+                    operator: operator::BoolUnaryExpr::Not,
+                    operand: Box::new((*operand).into()),
+                }),
+            },
             lang::Expr::Binary { op, left, right } => match op {
                 lang::BinaryOp::Comparison(com_op) => {
                     operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
@@ -97,18 +103,19 @@ impl lang::InlineOperator {
                 };
                 Ok(Box::new(operator::Fields::new(&fields, omode)))
             }
-            lang::InlineOperator::Where { expr } => {
-                let oexpr = match expr.into() {
-                    operator::Expr::Comparison(binop) => binop,
-                    other => {
-                        return Err(TypeError::ExpectedBool {
-                            found: format!("{:?}", other),
-                        });
-                    }
-                };
-
-                Ok(Box::new(operator::Where::new(oexpr)))
-            }
+            lang::InlineOperator::Where { expr } => match expr.into() {
+                operator::Expr::Comparison(binop) => Ok(Box::new(operator::Where::new(binop))),
+                operator::Expr::BoolUnary(
+                    unop @ operator::UnaryExpr {
+                        operator: operator::BoolUnaryExpr::Not,
+                        ..
+                    },
+                ) => Ok(Box::new(operator::Where::new(unop))),
+                operator::Expr::Column(name) => Ok(Box::new(operator::Where::new(name))),
+                other => Err(TypeError::ExpectedBool {
+                    found: format!("{:?}", other),
+                }),
+            },
             lang::InlineOperator::Limit { count: Some(count) } => match count.value {
                 limit if limit.trunc() == 0.0 || limit.fract() != 0.0 => {
                     let e = TypeError::InvalidLimit { limit };

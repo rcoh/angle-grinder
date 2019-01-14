@@ -71,8 +71,17 @@ pub enum BinaryOp {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum UnaryOp {
+    Not,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     Column(String),
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expr>,
+    },
     Binary {
         op: BinaryOp,
         left: Box<Expr>,
@@ -280,12 +289,21 @@ named!(comp_op<Span, ComparisonOp>, ws!(alt!(
     | map!(tag!("<"), |_|ComparisonOp::Lt)
 )));
 
+named!(unary_op<Span, UnaryOp>, ws!(alt!(
+    map!(tag!("!"), |_|UnaryOp::Not)
+)));
+
 named!(expr<Span, Expr>, ws!(alt!(
     do_parse!(
         l: e_ident >>
         comp: comp_op >>
         r: e_ident >>
         ( Expr::Binary { op: BinaryOp::Comparison(comp), left: Box::new(l), right: Box::new(r)} )
+    )
+    | do_parse!(
+        op: unary_op >>
+        operand: e_ident >>
+        ( Expr::Unary { op, operand: Box::new(operand) } )
     )
     | e_ident
 )));
