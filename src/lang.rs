@@ -352,6 +352,28 @@ named!(sourced_expr<Span, (String, Expr)>, ws!(
         )
 )));
 
+
+
+
+named!(operator_name<Span, &str>,
+    do_parse!(
+        return_error!(SyntaxErrors::DelimiterStart.into(),
+            alt!(ws!(alt!(tag!("parse") | tag!("where") | tag!("json") | tag!("fields") | tag!("where") | tag!("limit") | tag!("total"))) |
+            // If we exhaust all other possbilities, consume a word and return an error. We won't
+            // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
+            preceded!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a"))))) >>
+        ("abc")
+
+/*
+
+                    tag!("parse") | tag!("where") | tag!("json") | tag!("fields") | tag!("where") | tag!("limit") | tag!("total")
+                    // If we exhaust all other possbilities, consume a word and return an error. We won't
+                    // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
+                    | preceded!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a")))
+                    */
+    )
+);
+
 // parse "blah * ... *" [from other_field] as x, y
 named!(parse<Span, InlineOperator>, ws!(do_parse!(
     tag!("parse") >>
@@ -438,7 +460,11 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
 ));
 
 named!(inline_operator<Span, Operator>,
-   map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline)
+   do_parse!(
+        peek!(operator_name) >>
+        op: map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline) >>
+        (op)
+   )
 );
 named!(aggregate_function<Span, Positioned<AggregateFunction>>, alt!(
     count_distinct |
@@ -447,7 +473,7 @@ named!(aggregate_function<Span, Positioned<AggregateFunction>>, alt!(
     sum |
     p_nn));
 
-named!(operator<Span, Operator>, alt!(inline_operator | sort | multi_aggregate_operator));
+named!(operator<Span, Operator>, alt_complete!(sort | multi_aggregate_operator | inline_operator));
 
 // count by x,y
 // avg(foo) by x
