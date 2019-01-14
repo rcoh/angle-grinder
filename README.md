@@ -99,7 +99,12 @@ Drop only the `event` field
 ```
 
 ##### Where
-`where a == b`: Drop rows where the condition is not met. Note that `None == None`, so a row where both the left and right sides match a non-existent key will match.
+`where <bool-expr>`: Drop rows where the condition is not met.
+The condition must be an expression that returns a boolean value.
+The expression can be as simple as a field name or a comparison (i.e. ==, !=, <=, >=, <, >) 
+between fields and literal values (i.e. numbers, strings).
+The '!' operator can be used to negate the result of a sub-expression.
+Note that `None == None`, so a row where both the left and right sides match a non-existent key will match.
 
 *Examples*
 ```agrind
