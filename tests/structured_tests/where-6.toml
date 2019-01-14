@@ -1,0 +1,16 @@
+query = """* | json | where"""
+input = """
+{"thing_a": 5, "bval": true}
+"""
+output = """"""
+error = """
+error: Expected an expression
+  |
+1 | * | json | where
+  |            ^^^^^ No condition provided for this 'where'
+  |
+  = help: Insert an expression whose result determines whether a record should be passed downstream
+  = help: example: where duration > 100
+Error: Expected an expression
+"""
+succeeds = false

@@ -120,7 +120,10 @@ pub mod pipeline {
                             post_agg.push(op);
 
                             let needs_sort = match op_iter.peek() {
-                                Some(Operator::Inline(InlineOperator::Limit { .. })) => true,
+                                Some(Operator::Inline(Positioned {
+                                    value: InlineOperator::Limit { .. },
+                                    ..
+                                })) => true,
                                 None => true,
                                 _ => false,
                             };

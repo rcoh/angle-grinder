@@ -12,14 +12,20 @@ use std::str;
 /// accordingly.
 macro_rules! with_pos {
   ($i:expr, $submac:ident!( $($args:tt)* )) => ({
-      let start_pos: QueryPosition = $i.into();
-      match $submac!($i, $($args)*) {
-          Ok((i,o)) => Ok((i, Positioned {
-              start_pos,
-              value: o,
-              end_pos: i.into(),
-          })),
+      // XXX The ws!() combinator does not mix well with custom combinators since it does some
+      // rewriting, but only for things it knows about.
+      match space0($i) {
           Err(e) => Err(e),
+          Ok((i1, _o)) => { let start_pos: QueryPosition = i1.into();
+              match $submac!(i1, $($args)*) {
+                  Ok((i,o)) => Ok((i, Positioned {
+                      start_pos,
+                      value: o,
+                      end_pos: i.into(),
+                  })),
+                  Err(e) => Err(e),
+              }
+          }
       }
   });
   ($i:expr, $f:expr) => (
@@ -138,7 +144,7 @@ impl Keyword {
 
 #[derive(Debug, PartialEq)]
 pub enum Operator {
-    Inline(InlineOperator),
+    Inline(Positioned<InlineOperator>),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
 }
@@ -159,7 +165,7 @@ pub enum InlineOperator {
         fields: Vec<String>,
     },
     Where {
-        expr: Expr,
+        expr: Option<Positioned<Expr>>,
     },
     Limit {
         /// The count for the limit is pretty loosely typed at this point, the next phase will
@@ -308,27 +314,27 @@ named!(expr<Span, Expr>, ws!(alt!(
     | e_ident
 )));
 
-named!(json<Span, InlineOperator>, ws!(do_parse!(
+named!(json<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("json") >>
     from_column_opt: opt!(ws!(preceded!(tag!("from"), ident))) >>
     (InlineOperator::Json { input_column: from_column_opt.map(|s|s.to_string()) })
-)));
+))));
 
-named!(whre<Span, InlineOperator>, ws!(do_parse!(
+named!(whre<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("where") >>
-    ex: expr >>
+    ex: opt!(with_pos!(expr)) >>
     (InlineOperator::Where { expr: ex })
-)));
+))));
 
-named!(limit<Span, InlineOperator>, ws!(do_parse!(
+named!(limit<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("limit") >>
     count: opt!(with_pos!(double)) >>
     (InlineOperator::Limit{
         count
     })
-)));
+))));
 
-named!(total<Span, InlineOperator>, ws!(do_parse!(
+named!(total<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("total") >>
     input_column: delimited!(tag!("("), expr, tag!(")")) >>
     rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
@@ -336,7 +342,7 @@ named!(total<Span, InlineOperator>, ws!(do_parse!(
         input_column,
         output_column:
             rename_opt.map(|s|s.to_string()).unwrap_or_else(||"_total".to_string()),
-}))));
+})))));
 
 named!(double_quoted_string <Span, &str>, add_return_error!(
     SyntaxErrors::DelimiterStart.into(), delimited!(
@@ -371,7 +377,7 @@ named!(sourced_expr<Span, (String, Expr)>, ws!(
 )));
 
 // parse "blah * ... *" [from other_field] as x, y
-named!(parse<Span, InlineOperator>, ws!(do_parse!(
+named!(parse<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("parse") >>
     pattern: quoted_string >>
     from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
@@ -384,7 +390,7 @@ named!(parse<Span, InlineOperator>, ws!(do_parse!(
         input_column: from_column_opt,
         no_drop: no_drop_opt.is_some()
         } )
-)));
+))));
 
 named!(fields_mode<Span, FieldMode>, alt!(
     map!(
@@ -397,7 +403,7 @@ named!(fields_mode<Span, FieldMode>, alt!(
     )
 ));
 
-named!(fields<Span, InlineOperator>, ws!(do_parse!(
+named!(fields<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("fields") >>
     mode: opt!(fields_mode) >>
     fields: var_list >>
@@ -407,7 +413,7 @@ named!(fields<Span, InlineOperator>, ws!(do_parse!(
             fields
         }
     )
-)));
+))));
 
 named!(arg_list<Span, Positioned<Vec<Expr>>>, add_return_error!(
     SyntaxErrors::DelimiterStart.into(), with_pos!(delimited!(
@@ -420,19 +426,19 @@ named!(count<Span, Positioned<AggregateFunction>>, with_pos!(map!(tag!("count"),
     |_s|AggregateFunction::Count{}))
 );
 
-named!(average<Span, Positioned<AggregateFunction>>, ws!(with_pos!(do_parse!(
+named!(average<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
     alt!(tag!("avg") | tag!("average")) >>
     column: delimited!(tag!("("), expr ,tag!(")")) >>
     (AggregateFunction::Average{column})
 ))));
 
-named!(count_distinct<Span, Positioned<AggregateFunction>>, ws!(with_pos!(do_parse!(
+named!(count_distinct<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
     tag!("count_distinct") >>
     column: opt!(arg_list) >>
     (AggregateFunction::CountDistinct{ column })
 ))));
 
-named!(sum<Span, Positioned<AggregateFunction>>, ws!(with_pos!(do_parse!(
+named!(sum<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
     tag!("sum") >>
     column: delimited!(tag!("("), expr,tag!(")")) >>
     (AggregateFunction::Sum{column})
@@ -658,31 +664,43 @@ mod tests {
         expect!(
             parse,
             r#"parse "[key=*]" as v"#,
-            InlineOperator::Parse {
-                pattern: Keyword::new_wildcard("[key=*]".to_string()),
-                fields: vec!["v".to_string()],
-                input_column: None,
-                no_drop: false
+            Positioned {
+                start_pos: QueryPosition(0),
+                end_pos: QueryPosition(20),
+                value: InlineOperator::Parse {
+                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
+                    fields: vec!["v".to_string()],
+                    input_column: None,
+                    no_drop: false
+                }
             }
         );
         expect!(
             parse,
             r#"parse "[key=*]" as v nodrop"#,
-            InlineOperator::Parse {
-                pattern: Keyword::new_wildcard("[key=*]".to_string()),
-                fields: vec!["v".to_string()],
-                input_column: None,
-                no_drop: true
+            Positioned {
+                start_pos: QueryPosition(0),
+                end_pos: QueryPosition(27),
+                value: InlineOperator::Parse {
+                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
+                    fields: vec!["v".to_string()],
+                    input_column: None,
+                    no_drop: true
+                }
             }
         );
         expect!(
             parse,
             r#"parse "[key=*][val=*]" as k,v nodrop"#,
-            InlineOperator::Parse {
-                pattern: Keyword::new_wildcard("[key=*][val=*]".to_string()),
-                fields: vec!["k".to_string(), "v".to_string()],
-                input_column: None,
-                no_drop: true
+            Positioned {
+                start_pos: QueryPosition(0),
+                end_pos: QueryPosition(36),
+                value: InlineOperator::Parse {
+                    pattern: Keyword::new_wildcard("[key=*][val=*]".to_string()),
+                    fields: vec!["k".to_string(), "v".to_string()],
+                    input_column: None,
+                    no_drop: true
+                }
             }
         );
     }
@@ -692,17 +710,25 @@ mod tests {
         expect!(
             operator,
             "  json",
-            Operator::Inline(InlineOperator::Json { input_column: None })
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(2),
+                end_pos: QueryPosition(6),
+                value: InlineOperator::Json { input_column: None }
+            })
         );
         expect!(
             operator,
             r#" parse "[key=*]" from field as v "#,
-            Operator::Inline(InlineOperator::Parse {
-                pattern: Keyword::new_wildcard("[key=*]".to_string()),
-                fields: vec!["v".to_string()],
-                input_column: Some(Expr::Column("field".to_string())),
-                no_drop: false
-            },)
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(33),
+                value: InlineOperator::Parse {
+                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
+                    fields: vec!["v".to_string()],
+                    input_column: Some(Expr::Column("field".to_string())),
+                    no_drop: false
+                },
+            })
         );
     }
 
@@ -711,39 +737,55 @@ mod tests {
         expect!(
             operator,
             " limit",
-            Operator::Inline(InlineOperator::Limit { count: None })
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(6),
+                value: InlineOperator::Limit { count: None }
+            })
         );
         expect!(
             operator,
             " limit 5",
-            Operator::Inline(InlineOperator::Limit {
-                count: Some(Positioned {
-                    value: 5.0,
-                    start_pos: QueryPosition(7),
-                    end_pos: QueryPosition(8)
-                })
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(8),
+                value: InlineOperator::Limit {
+                    count: Some(Positioned {
+                        value: 5.0,
+                        start_pos: QueryPosition(7),
+                        end_pos: QueryPosition(8)
+                    })
+                }
             })
         );
         expect!(
             operator,
             " limit -5",
-            Operator::Inline(InlineOperator::Limit {
-                count: Some(Positioned {
-                    value: -5.0,
-                    start_pos: QueryPosition(7),
-                    end_pos: QueryPosition(9)
-                }),
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(9),
+                value: InlineOperator::Limit {
+                    count: Some(Positioned {
+                        value: -5.0,
+                        start_pos: QueryPosition(7),
+                        end_pos: QueryPosition(9)
+                    }),
+                }
             })
         );
         expect!(
             operator,
             " limit 1e2",
-            Operator::Inline(InlineOperator::Limit {
-                count: Some(Positioned {
-                    value: 1e2,
-                    start_pos: QueryPosition(7),
-                    end_pos: QueryPosition(10)
-                })
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(10),
+                value: InlineOperator::Limit {
+                    count: Some(Positioned {
+                        value: 1e2,
+                        start_pos: QueryPosition(7),
+                        end_pos: QueryPosition(10)
+                    })
+                }
             })
         );
     }
@@ -838,14 +880,22 @@ mod tests {
             Query {
                 search: vec![],
                 operators: vec![
-                    Operator::Inline(InlineOperator::Json {
-                        input_column: Some("col".to_string()),
+                    Operator::Inline(Positioned {
+                        start_pos: QueryPosition(4),
+                        end_pos: QueryPosition(18),
+                        value: InlineOperator::Json {
+                            input_column: Some("col".to_string()),
+                        }
                     }),
-                    Operator::Inline(InlineOperator::Parse {
-                        pattern: Keyword::new_wildcard("!123*".to_string()),
-                        fields: vec!["foo".to_string()],
-                        input_column: None,
-                        no_drop: false
+                    Operator::Inline(Positioned {
+                        start_pos: QueryPosition(20),
+                        end_pos: QueryPosition(41),
+                        value: InlineOperator::Parse {
+                            pattern: Keyword::new_wildcard("!123*".to_string()),
+                            fields: vec!["foo".to_string()],
+                            input_column: None,
+                            no_drop: false
+                        }
                     }),
                     Operator::MultiAggregate(MultiAggregateOperator {
                         key_col_headers: vec!["foo".to_string(), "foo == 123".to_string()],
