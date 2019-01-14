@@ -86,6 +86,8 @@ mod integration {
         structured_test(include_str!("structured_tests/where-3.toml"));
         structured_test(include_str!("structured_tests/where-4.toml"));
         structured_test(include_str!("structured_tests/where-5.toml"));
+        structured_test(include_str!("structured_tests/where-6.toml"));
+        structured_test(include_str!("structured_tests/where-7.toml"));
     }
 
     #[test]

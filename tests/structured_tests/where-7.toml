@@ -1,0 +1,16 @@
+query = """* | json | where 1"""
+input = """
+{"thing_a": 5, "bval": true}
+"""
+output = """"""
+error = """
+error: Expected boolean expression, found Int(1)
+  |
+1 | * | json | where 1
+  |                  ^ This is constant
+  |
+  = help: Perhaps you meant to compare a field to this value?
+  = help: example: where field1 == 1
+Error: Expected boolean expression, found Int(1)
+"""
+succeeds = false

@@ -8,6 +8,9 @@ pub enum TypeError {
     #[fail(display = "Expected boolean expression, found {}", found)]
     ExpectedBool { found: String },
 
+    #[fail(display = "Expected an expression")]
+    ExpectedExpr,
+
     #[fail(
         display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
         pattern, extracted
@@ -61,14 +64,14 @@ impl From<lang::Expr> for operator::Expr {
 
 const DEFAULT_LIMIT: i64 = 10;
 
-impl lang::InlineOperator {
+impl lang::Positioned<lang::InlineOperator> {
     /// Convert the operator syntax to a builder that can instantiate an operator for the
     /// pipeline.  Any semantic errors in the operator syntax should be detected here.
     pub fn semantic_analysis<T: ErrorBuilder>(
         self,
         error_builder: &T,
     ) -> Result<Box<operator::OperatorBuilder + Send + Sync>, TypeError> {
-        match self {
+        match self.value {
             lang::InlineOperator::Json { input_column } => {
                 Ok(Box::new(operator::ParseJson::new(input_column)))
             }
@@ -103,7 +106,7 @@ impl lang::InlineOperator {
                 };
                 Ok(Box::new(operator::Fields::new(&fields, omode)))
             }
-            lang::InlineOperator::Where { expr } => match expr.into() {
+            lang::InlineOperator::Where { expr: Some(expr) } => match expr.value.into() {
                 operator::Expr::Comparison(binop) => Ok(Box::new(operator::Where::new(binop))),
                 operator::Expr::BoolUnary(
                     unop @ operator::UnaryExpr {
@@ -112,10 +115,40 @@ impl lang::InlineOperator {
                     },
                 ) => Ok(Box::new(operator::Where::new(unop))),
                 operator::Expr::Column(name) => Ok(Box::new(operator::Where::new(name))),
-                other => Err(TypeError::ExpectedBool {
-                    found: format!("{:?}", other),
-                }),
+                operator::Expr::Value(constant) => {
+                    if let Value::Bool(bool_value) = constant {
+                        Ok(Box::new(operator::Where::new(*bool_value)))
+                    } else {
+                        let e = TypeError::ExpectedBool {
+                            found: format!("{:?}", constant),
+                        };
+
+                        error_builder
+                            .report_error_for(&e)
+                            .with_code_range(expr.start_pos, expr.end_pos, "This is constant")
+                            .with_resolution("Perhaps you meant to compare a field to this value?")
+                            .with_resolution(format!("example: where field1 == {}", constant))
+                            .send_report();
+
+                        Err(e)
+                    }
+                }
             },
+            lang::InlineOperator::Where { expr: None } => {
+                let e = TypeError::ExpectedExpr;
+
+                error_builder
+                    .report_error_for(&e)
+                    .with_code_pointer(&self, "No condition provided for this 'where'")
+                    .with_resolution(
+                        "Insert an expression whose result determines whether a record should be \
+                         passed downstream",
+                    )
+                    .with_resolution("example: where duration > 100")
+                    .send_report();
+
+                Err(e)
+            }
             lang::InlineOperator::Limit { count: Some(count) } => match count.value {
                 limit if limit.trunc() == 0.0 || limit.fract() != 0.0 => {
                     let e = TypeError::InvalidLimit { limit };

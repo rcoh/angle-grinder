@@ -137,6 +137,7 @@ pub struct SnippetData {
     resolution: Vec<String>,
 }
 
+#[must_use = "the send_report() method must eventually be called for this builder"]
 pub struct SnippetBuilder<'a> {
     query: &'a QueryContainer,
     data: SnippetData,
