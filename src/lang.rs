@@ -13,12 +13,14 @@ use std::str;
 macro_rules! with_pos {
   ($i:expr, $submac:ident!( $($args:tt)* )) => ({
       // XXX The ws!() combinator does not mix well with custom combinators since it does some
-      // rewriting, but only for things it knows about.
+      // rewriting, but only for things it knows about.  So, we put the ws!() combinator inside
+      // calls to with_pos!() and have with_pos!() eat up any initial space with space0().
       match space0($i) {
           Err(e) => Err(e),
-          Ok((i1, _o)) => { let start_pos: QueryPosition = i1.into();
+          Ok((i1, _o)) => {
+              let start_pos: QueryPosition = i1.into();
               match $submac!(i1, $($args)*) {
-                  Ok((i,o)) => Ok((i, Positioned {
+                  Ok((i, o)) => Ok((i, Positioned {
                       start_pos,
                       value: o,
                       end_pos: i.into(),

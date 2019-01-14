@@ -116,18 +116,22 @@ impl lang::Positioned<lang::InlineOperator> {
                 ) => Ok(Box::new(operator::Where::new(unop))),
                 operator::Expr::Column(name) => Ok(Box::new(operator::Where::new(name))),
                 operator::Expr::Value(constant) => {
-                    let e = TypeError::ExpectedBool {
-                        found: format!("{:?}", constant),
-                    };
+                    if let Value::Bool(bool_value) = constant {
+                        Ok(Box::new(operator::Where::new(*bool_value)))
+                    } else {
+                        let e = TypeError::ExpectedBool {
+                            found: format!("{:?}", constant),
+                        };
 
-                    error_builder
-                        .report_error_for(&e)
-                        .with_code_range(expr.start_pos, expr.end_pos, "This is constant")
-                        .with_resolution("Perhaps you meant to compare a field to this value?")
-                        .with_resolution(format!("example: where field1 == {}", constant))
-                        .send_report();
+                        error_builder
+                            .report_error_for(&e)
+                            .with_code_range(expr.start_pos, expr.end_pos, "This is constant")
+                            .with_resolution("Perhaps you meant to compare a field to this value?")
+                            .with_resolution(format!("example: where field1 == {}", constant))
+                            .send_report();
 
-                    Err(e)
+                        Err(e)
+                    }
                 }
             },
             lang::InlineOperator::Where { expr: None } => {
