@@ -290,7 +290,6 @@ named!(expr<Span, Expr>, ws!(alt!(
     | e_ident
 )));
 
-
 named!(json<Span, InlineOperator>, ws!(do_parse!(
     tag!("json") >>
     from_column_opt: opt!(ws!(preceded!(tag!("from"), ident))) >>

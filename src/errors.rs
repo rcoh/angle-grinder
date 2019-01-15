@@ -26,16 +26,26 @@ pub enum SyntaxErrors {
     MissingParen,
 
     #[fail(display = "Expected an operator")]
-    NotAnOperator
+    NotAnOperator,
 }
 
 // Used to generate suggestions
 const VALID_OPERATORS: [&'static str; 12] = [
     // inline
-    "parse", "limit", "json", "total", "fields",
+    "parse",
+    "limit",
+    "json",
+    "total",
+    "fields",
     // aggregates
-    "count", "average", "avg", "average", "sum", "count_distinct",
-    "sort"];
+    "count",
+    "average",
+    "avg",
+    "average",
+    "sum",
+    "count_distinct",
+    "sort",
+];
 
 /// Trait that can be used to report errors by the parser and other layers.
 pub trait ErrorBuilder {
@@ -66,7 +76,11 @@ impl QueryContainer {
                     )) => {
                         self.report_error_for(delim_error)
                             .with_code_range((*start_span).into(), (*end_span).into(), "")
-                            .with_resolutions(delim_error.to_resolution(&(&self.query)[start_span.offset..end_span.offset]))
+                            .with_resolutions(
+                                delim_error.to_resolution(
+                                    &(&self.query)[start_span.offset..end_span.offset],
+                                ),
+                            )
                             .send_report();
                     }
                     _ => self.report_error_for(format!("{:?}", list)).send_report(),
@@ -109,15 +123,18 @@ impl SyntaxErrors {
         match self {
             SyntaxErrors::StartOfError => Vec::new(),
             SyntaxErrors::NotAnOperator => {
-                let similarities = VALID_OPERATORS.iter().map(|op| (op, normalized_levenshtein(op, code_fragment)));
-                let mut candidates: Vec<_> = similarities.filter(|(_op, score)|*score > 0.6).collect();
-                candidates.sort_by_key(|(_op,score)|(score*100 as f64) as u16);
+                let similarities = VALID_OPERATORS
+                    .iter()
+                    .map(|op| (op, normalized_levenshtein(op, code_fragment)));
+                let mut candidates: Vec<_> =
+                    similarities.filter(|(_op, score)| *score > 0.6).collect();
+                candidates.sort_by_key(|(_op, score)| (score * 100 as f64) as u16);
                 let mut res = vec![format!("{} is not a valid operator", code_fragment)];
                 if let Some((choice, _)) = candidates.first() {
                     res.push(format!("Did you mean \"{}\"?", choice));
                 }
                 res
-            },
+            }
             SyntaxErrors::UnterminatedSingleQuotedString => {
                 vec!["Insert a single quote (') to terminate this string".to_string()]
             }
