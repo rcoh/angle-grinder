@@ -160,7 +160,12 @@ pub mod pipeline {
                 let next = rx.recv_timeout(Duration::from_millis(50));
                 match next {
                     Ok(row) => {
-                        renderer.render(&row, false);
+                        let result = renderer.render(&row, false);
+
+                        if let Err(e) = result {
+                            eprintln!("error: {}", e);
+                            break;
+                        }
                     }
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => break,
@@ -177,21 +182,27 @@ pub mod pipeline {
             loop {
                 let next = rx.recv_timeout(Duration::from_millis(50));
                 match next {
-                    Ok(row) => {
-                        (*head).process(row);
-                        if renderer.should_print() {
-                            renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
-                        }
-                    }
-                    Err(RecvTimeoutError::Timeout) => {
-                        if renderer.should_print() {
-                            renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
-                        }
-                    }
+                    Ok(row) => (*head).process(row),
+                    Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => break,
                 }
+
+                if renderer.should_print() {
+                    let result =
+                        renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
+
+                    if let Err(e) = result {
+                        eprintln!("error: {}", e);
+                        return;
+                    }
+                }
             }
-            renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), true);
+            let result = renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), true);
+
+            if let Err(e) = result {
+                eprintln!("error: {}", e);
+                return;
+            }
         }
 
         pub fn process<T: BufRead>(self, mut buf: T) {
@@ -212,7 +223,9 @@ pub mod pipeline {
             let mut line = String::with_capacity(1024);
             while buf.read_line(&mut line).unwrap() > 0 {
                 if self.filter.iter().all(|re| re.is_match(&line)) {
-                    Pipeline::proc_preagg(Record::new(&line), &mut preaggs, &tx);
+                    if !Pipeline::proc_preagg(Record::new(&line), &mut preaggs, &tx) {
+                        break;
+                    }
                 }
                 line.clear();
             }
@@ -222,7 +235,9 @@ pub mod pipeline {
                 let preagg = preaggs.remove(0);
 
                 for rec in preagg.drain() {
-                    Pipeline::proc_preagg(rec, &mut preaggs, &tx);
+                    if !Pipeline::proc_preagg(rec, &mut preaggs, &tx) {
+                        break;
+                    }
                 }
             }
 
@@ -237,18 +252,19 @@ pub mod pipeline {
             mut rec: Record,
             pre_aggs: &mut [Box<operator::UnaryPreAggOperator>],
             tx: &Sender<Row>,
-        ) {
+        ) -> bool {
             for pre_agg in pre_aggs {
                 match (*pre_agg).process_mut(rec) {
                     Ok(Some(next_rec)) => rec = next_rec,
-                    Ok(None) => return,
+                    Ok(None) => return true,
                     Err(err) => {
                         eprintln!("error: {}", err);
-                        return;
+                        return true;
                     }
                 }
             }
-            tx.send(Row::Record(rec)).unwrap();
+
+            tx.send(Row::Record(rec)).is_ok()
         }
 
         pub fn run_agg_pipeline(
