@@ -282,12 +282,12 @@ impl Renderer {
                 if !self.is_tty {
                     if last_row {
                         let output = self.pretty_printer.format_aggregate(aggregate);
-                        write!(self.stdout, "{}", output).unwrap();
+                        write!(self.stdout, "{}", output)?;
                     }
                 } else if self.should_print() || last_row {
                     let output = self.pretty_printer.format_aggregate(aggregate);
                     let num_lines = output.matches('\n').count();
-                    write!(self.stdout, "{}{}", self.reset_sequence, output).unwrap();
+                    write!(self.stdout, "{}{}", self.reset_sequence, output)?;
                     self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines);
                     self.last_print = Some(Instant::now());
                 }
