@@ -259,7 +259,7 @@ named!(e_ident<Span, Expr>,
       map!(ident, |col|Expr::Column(col.to_owned()))
     | map!(value, Expr::Value)
       //expr
-    | ws!(add_return_error!(SyntaxErrors::DelimiterStart.into(), delimited!(
+    | ws!(add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
           tag!("("),
           expr,
           return_error!(SyntaxErrors::MissingParen.into(), tag!(")")))))
@@ -289,6 +289,7 @@ named!(expr<Span, Expr>, ws!(alt!(
     )
     | e_ident
 )));
+
 
 named!(json<Span, InlineOperator>, ws!(do_parse!(
     tag!("json") >>
@@ -321,14 +322,14 @@ named!(total<Span, InlineOperator>, ws!(do_parse!(
 }))));
 
 named!(double_quoted_string <Span, &str>, add_return_error!(
-    SyntaxErrors::DelimiterStart.into(), delimited!(
+    SyntaxErrors::StartOfError.into(), delimited!(
         tag!("\""),
         map!(escaped!(take_while1!(not_escape_dq), '\\', anychar), |ref s|s.fragment.0),
         return_error!(SyntaxErrors::UnterminatedDoubleQuotedString.into(), tag!("\""))
 )));
 
 named!(single_quoted_string <Span, &str>, add_return_error!(
-    SyntaxErrors::DelimiterStart.into(), delimited!(
+    SyntaxErrors::StartOfError.into(), delimited!(
         tag!("'"),
         map!(escaped!(take_while1!(not_escape_sq), '\\', anychar), |ref s|s.fragment.0),
         return_error!(SyntaxErrors::UnterminatedSingleQuotedString.into(), tag!("'"))
@@ -352,26 +353,24 @@ named!(sourced_expr<Span, (String, Expr)>, ws!(
         )
 )));
 
-
-
-
-named!(operator_name<Span, &str>,
-    do_parse!(
-        return_error!(SyntaxErrors::DelimiterStart.into(),
-            alt!(ws!(alt!(tag!("parse") | tag!("where") | tag!("json") | tag!("fields") | tag!("where") | tag!("limit") | tag!("total"))) |
-            // If we exhaust all other possbilities, consume a word and return an error. We won't
-            // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
-            preceded!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a"))))) >>
-        ("abc")
-
-/*
-
-                    tag!("parse") | tag!("where") | tag!("json") | tag!("fields") | tag!("where") | tag!("limit") | tag!("total")
-                    // If we exhaust all other possbilities, consume a word and return an error. We won't
-                    // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
-                    | preceded!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a")))
-                    */
-    )
+named!(verify_operator_name<Span, Span>,
+        preceded!(space0,
+            return_error!(SyntaxErrors::StartOfError.into(),
+                alt!(
+                    // To prevent a prefix from partially matching, require `not!(alpha1)` after the tag is consumed
+                    terminated!(alt!(
+                        // inline
+                        tag!("parse") | tag!("where") | tag!("json") | tag!("fields") | tag!("where") | tag!("limit") | tag!("total") |
+                        // aggregate
+                        tag!("count") | tag!("count_distinct") | tag!("avg") | tag!("average") | tag!("sum") | pct_fn |
+                        // other
+                        tag!("sort")
+                    ), not!(alpha1)
+                    ) |
+                // If we exhaust all other possibilities, consume a word and return an error. We won't
+                // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
+                terminated!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a")))))
+        )
 );
 
 // parse "blah * ... *" [from other_field] as x, y
@@ -414,7 +413,7 @@ named!(fields<Span, InlineOperator>, ws!(do_parse!(
 )));
 
 named!(arg_list<Span, Positioned<Vec<Expr>>>, add_return_error!(
-    SyntaxErrors::DelimiterStart.into(), with_pos!(delimited!(
+    SyntaxErrors::StartOfError.into(), with_pos!(delimited!(
         tag!("("),
         ws!(separated_list!(tag!(","), ws!(expr))),
         return_error!(SyntaxErrors::MissingParen.into(), tag!(")"))))
@@ -446,10 +445,14 @@ fn is_digit_char(digit: char) -> bool {
     is_digit(digit as u8)
 }
 
+named!(pct_fn<Span, Span>, preceded!(
+    alt!(tag!("pct") | tag!("percentile") | tag!("p")),
+    take_while_m_n!(2, 2, is_digit_char)
+));
+
 named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
     with_pos!(do_parse!(
-        alt!(tag!("pct") | tag!("percentile") | tag!("p")) >>
-        pct: take_while_m_n!(2, 2, is_digit_char) >>
+        pct: pct_fn >>
         column: delimited!(tag!("("), expr,tag!(")")) >>
         (AggregateFunction::Percentile{
             column,
@@ -461,7 +464,6 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
 
 named!(inline_operator<Span, Operator>,
    do_parse!(
-        peek!(operator_name) >>
         op: map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline) >>
         (op)
    )
@@ -473,7 +475,12 @@ named!(aggregate_function<Span, Positioned<AggregateFunction>>, alt!(
     sum |
     p_nn));
 
-named!(operator<Span, Operator>, alt_complete!(sort | multi_aggregate_operator | inline_operator));
+named!(operator<Span, Operator>, do_parse!(
+    peek!(verify_operator_name) >>
+    res: alt_complete!(sort | multi_aggregate_operator | inline_operator) >>
+    (res)
+    )
+);
 
 // count by x,y
 // avg(foo) by x
@@ -587,7 +594,7 @@ mod tests {
         ($f:expr, $inp:expr) => {{
             let parse_result = $f(Span::new(CompleteStr($inp)));
             match parse_result {
-                Ok(res) => panic!(format!("Expected parse to fail, but it succeeded")),
+                Ok(_res) => panic!(format!("Expected parse to fail, but it succeeded")),
                 // TODO: enable assertions of specific errors
                 Err(_e) => (),
             }

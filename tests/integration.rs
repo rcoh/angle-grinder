@@ -106,6 +106,13 @@ mod integration {
     }
 
     #[test]
+    fn suggest_alternatives() {
+        structured_test(include_str!("structured_tests/limit_error.toml"));
+        structured_test(include_str!("structured_tests/limit_error_2.toml"));
+        structured_test(include_str!("structured_tests/count_distinct_error_2.toml"));
+    }
+
+    #[test]
     fn no_args() {
         assert_cli::Assert::main_binary()
             .fails()

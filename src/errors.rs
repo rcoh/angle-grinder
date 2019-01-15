@@ -17,7 +17,7 @@ pub struct QueryContainer {
 #[derive(PartialEq, Debug, FromPrimitive, Fail)]
 pub enum SyntaxErrors {
     #[fail(display = "")]
-    DelimiterStart,
+    StartOfError,
     #[fail(display = "unterminated single quoted string")]
     UnterminatedSingleQuotedString,
     #[fail(display = "unterminated double quoted string")]
@@ -29,7 +29,13 @@ pub enum SyntaxErrors {
     NotAnOperator
 }
 
-const VALID_OPERATORS: [&'static str; 3] = ["parse", "limit", "json"];
+// Used to generate suggestions
+const VALID_OPERATORS: [&'static str; 12] = [
+    // inline
+    "parse", "limit", "json", "total", "fields",
+    // aggregates
+    "count", "average", "avg", "average", "sum", "count_distinct",
+    "sort"];
 
 /// Trait that can be used to report errors by the parser and other layers.
 pub trait ErrorBuilder {
@@ -56,7 +62,7 @@ impl QueryContainer {
                 match last_chunk {
                     Some((
                         (ref end_span, ErrorKind::Custom(ref delim_error)),
-                        (ref start_span, ErrorKind::Custom(SyntaxErrors::DelimiterStart)),
+                        (ref start_span, ErrorKind::Custom(SyntaxErrors::StartOfError)),
                     )) => {
                         self.report_error_for(delim_error)
                             .with_code_range((*start_span).into(), (*end_span).into(), "")
@@ -101,7 +107,7 @@ impl ErrorBuilder for QueryContainer {
 impl SyntaxErrors {
     pub fn to_resolution(&self, code_fragment: &str) -> Vec<String> {
         match self {
-            SyntaxErrors::DelimiterStart => Vec::new(),
+            SyntaxErrors::StartOfError => Vec::new(),
             SyntaxErrors::NotAnOperator => {
                 let similarities = VALID_OPERATORS.iter().map(|op| (op, normalized_levenshtein(op, code_fragment)));
                 let mut candidates: Vec<_> = similarities.filter(|(_op, score)|*score > 0.6).collect();

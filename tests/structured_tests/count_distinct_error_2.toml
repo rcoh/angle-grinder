@@ -1,0 +1,16 @@
+query = "* | json | countdistinct(a)"
+input = """
+"""
+output = ""
+error = """
+error: Expected an operator
+  |
+1 | * | json | countdistinct(a)
+  |            ^^^^^^^^^^^^^
+  |
+  = help: countdistinct is not a valid operator
+  = help: Did you mean "count_distinct"?
+Error: Failed to parse query
+
+"""
+succeeds = false

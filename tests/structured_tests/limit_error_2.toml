@@ -1,0 +1,16 @@
+query = "* | limitt 5"
+input = """
+"""
+output = ""
+error = """
+error: Expected an operator
+  |
+1 | * | limitt 5
+  |     ^^^^^^
+  |
+  = help: limitt is not a valid operator
+  = help: Did you mean "limit"?
+Error: Failed to parse query
+"""
+succeeds = false
+notes = "This test validates that prefixes are handled properly"
