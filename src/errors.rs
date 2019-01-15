@@ -5,6 +5,7 @@ use nom::ErrorKind;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::convert::From;
+use strsim::normalized_levenshtein;
 
 /// Container for the query string that can be used to parse and report errors.
 pub struct QueryContainer {
@@ -16,14 +17,35 @@ pub struct QueryContainer {
 #[derive(PartialEq, Debug, FromPrimitive, Fail)]
 pub enum SyntaxErrors {
     #[fail(display = "")]
-    DelimiterStart,
+    StartOfError,
     #[fail(display = "unterminated single quoted string")]
     UnterminatedSingleQuotedString,
     #[fail(display = "unterminated double quoted string")]
     UnterminatedDoubleQuotedString,
     #[fail(display = "expecting close parentheses")]
     MissingParen,
+
+    #[fail(display = "Expected an operator")]
+    NotAnOperator,
 }
+
+// Used to generate suggestions
+const VALID_OPERATORS: [&'static str; 12] = [
+    // inline
+    "parse",
+    "limit",
+    "json",
+    "total",
+    "fields",
+    // aggregates
+    "count",
+    "average",
+    "avg",
+    "average",
+    "sum",
+    "count_distinct",
+    "sort",
+];
 
 /// Trait that can be used to report errors by the parser and other layers.
 pub trait ErrorBuilder {
@@ -50,18 +72,22 @@ impl QueryContainer {
                 match last_chunk {
                     Some((
                         (ref end_span, ErrorKind::Custom(ref delim_error)),
-                        (ref start_span, ErrorKind::Custom(SyntaxErrors::DelimiterStart)),
+                        (ref start_span, ErrorKind::Custom(SyntaxErrors::StartOfError)),
                     )) => {
                         self.report_error_for(delim_error)
                             .with_code_range((*start_span).into(), (*end_span).into(), "")
-                            .with_resolutions(delim_error.to_resolution())
+                            .with_resolutions(
+                                delim_error.to_resolution(
+                                    &(&self.query)[start_span.offset..end_span.offset],
+                                ),
+                            )
                             .send_report();
                     }
                     _ => self.report_error_for(format!("{:?}", list)).send_report(),
                 }
             }
-            Err(nom::Err::Error(nom::Context::Code(span, _))) => {
-                self.report_error_for("Unexpected input")
+            Err(nom::Err::Error(nom::Context::Code(span, ref errors))) => {
+                self.report_error_for(format!("Unexpected input: {:?}", errors))
                     .with_code_range(span.into(), QueryPosition(self.query.len()), "")
                     .send_report();
             }
@@ -93,9 +119,22 @@ impl ErrorBuilder for QueryContainer {
 }
 
 impl SyntaxErrors {
-    pub fn to_resolution(&self) -> Vec<String> {
+    pub fn to_resolution(&self, code_fragment: &str) -> Vec<String> {
         match self {
-            SyntaxErrors::DelimiterStart => Vec::new(),
+            SyntaxErrors::StartOfError => Vec::new(),
+            SyntaxErrors::NotAnOperator => {
+                let similarities = VALID_OPERATORS
+                    .iter()
+                    .map(|op| (op, normalized_levenshtein(op, code_fragment)));
+                let mut candidates: Vec<_> =
+                    similarities.filter(|(_op, score)| *score > 0.6).collect();
+                candidates.sort_by_key(|(_op, score)| (score * 100 as f64) as u16);
+                let mut res = vec![format!("{} is not a valid operator", code_fragment)];
+                if let Some((choice, _)) = candidates.first() {
+                    res.push(format!("Did you mean \"{}\"?", choice));
+                }
+                res
+            }
             SyntaxErrors::UnterminatedSingleQuotedString => {
                 vec!["Insert a single quote (') to terminate this string".to_string()]
             }
