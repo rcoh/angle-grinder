@@ -102,7 +102,7 @@ fn update() -> CliResult {
 
     if cargo_crate_version!() == status.version() {
         println!(
-            "Currently running a newer version than publicly available ({}). No changes",
+            "Currently running the latest version publicly available ({}). No changes",
             status.version()
         );
     } else {
