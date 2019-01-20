@@ -1,0 +1,14 @@
+query = "* | json | count, averag(c) by foo"
+input = ""
+output = ""
+error = """
+error: Not an aggregate operator
+  |
+1 | * | json | count, averag(c) by foo
+  |                   ^^^^^^
+  |
+  = help: averag is not a valid aggregate operator
+  = help: Did you mean "average"?
+Error: Failed to parse query
+"""
+succeeds = false
