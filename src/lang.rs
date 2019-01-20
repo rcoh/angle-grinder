@@ -1,5 +1,5 @@
 use crate::data;
-use crate::errors::SyntaxErrors;
+use crate::errors::{SyntaxErrors, VALID_OPERATORS};
 use nom;
 use nom::types::CompleteStr;
 use nom::*;
@@ -33,6 +33,26 @@ macro_rules! with_pos {
   ($i:expr, $f:expr) => (
     with_pos!($i, call!($f));
   );
+}
+
+/// Dynamic version of `alt` that takes a slice of strings
+fn alternative<T>(input: T, alternatives: &[&'static str]) -> IResult<T, T>
+where
+    T: InputTake,
+    T: Compare<&'static str>,
+    T: InputLength,
+    T: AtEof,
+    T: Clone,
+{
+    let mut last_err = None;
+    for alternative in alternatives {
+        let inp = input.clone();
+        match tag!(inp, &**alternative) {
+            done @ Ok(..) => return done,
+            err @ Err(..) => last_err = Some(err), // continue
+        }
+    }
+    last_err.unwrap()
 }
 
 /// Type used to track the current fragment being parsed and its location in the original input.
@@ -258,7 +278,6 @@ fn not_escape_sq(c: char) -> bool {
 fn not_escape_dq(c: char) -> bool {
     c != '\\' && c != '\"'
 }
-
 named!(value<Span, data::Value>, ws!(
     alt!(
         map!(quoted_string, |s|data::Value::Str(s.to_string()))
@@ -382,20 +401,19 @@ named!(verify_operator_name<Span, Span>,
         preceded!(space0,
             return_error!(SyntaxErrors::StartOfError.into(),
                 alt!(
+                    // Either we find a valid operator name
                     // To prevent a prefix from partially matching, require `not!(alpha1)` after the tag is consumed
-                    terminated!(alt!(
-                        // inline
-                        tag!("parse") | tag!("where") | tag!("json") | tag!("fields") | tag!("where") | tag!("limit") | tag!("total") |
-                        // aggregate
-                        tag!("count") | tag!("count_distinct") | tag!("avg") | tag!("average") | tag!("sum") | pct_fn |
-                        // other
-                        tag!("sort")
-                    ), not!(alpha1)
-                    ) |
-                // If we exhaust all other possibilities, consume a word and return an error. We won't
-                // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
-                terminated!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a")))))
+                    terminated!(alt!(pct_fn | call!(alternative, &VALID_OPERATORS)), not!(alpha1)) |
+
+                    // Or we return an error after consuming a word
+                    // If we exhaust all other possibilities, consume a word and return an error. We won't
+                    // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
+                    terminated!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a")))))
         )
+);
+
+named!(test<Span, Span>,
+    call!(alternative, &["a", "b", "c"])
 );
 
 // parse "blah * ... *" [from other_field] as x, y
@@ -488,12 +506,10 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
 ));
 
 named!(inline_operator<Span, Operator>,
-   do_parse!(
-        op: map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline) >>
-        (op)
-   )
+    map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline)
 );
-named!(aggregate_function<Span, Positioned<AggregateFunction>>, alt!(
+
+named!(aggregate_function<Span, Positioned<AggregateFunction>>, alt_complete!(
     count_distinct |
     count |
     average |

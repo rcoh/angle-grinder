@@ -30,13 +30,14 @@ pub enum SyntaxErrors {
 }
 
 // Used to generate suggestions
-const VALID_OPERATORS: [&'static str; 12] = [
+pub const VALID_OPERATORS: [&'static str; 13] = [
     // inline
     "parse",
     "limit",
     "json",
     "total",
     "fields",
+    "where",
     // aggregates
     "count",
     "average",
