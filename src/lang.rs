@@ -1,5 +1,6 @@
 use crate::data;
-use crate::errors::{SyntaxErrors, VALID_OPERATORS};
+use crate::errors::SyntaxErrors;
+use lazy_static::lazy_static;
 use nom;
 use nom::types::CompleteStr;
 use nom::*;
@@ -53,6 +54,23 @@ where
         }
     }
     last_err.unwrap()
+}
+
+pub const VALID_AGGREGATES: &'static [&str] = &[
+    "count",
+    "average",
+    "avg",
+    "average",
+    "sum",
+    "count_distinct",
+    "sort",
+];
+
+pub const VALID_INLINE: &'static [&str] = &["parse", "limit", "json", "total", "fields", "where"];
+
+lazy_static! {
+    pub static ref VALID_OPERATORS: Vec<&'static str> =
+        { [VALID_INLINE, VALID_AGGREGATES].concat() };
 }
 
 /// Type used to track the current fragment being parsed and its location in the original input.
@@ -397,23 +415,27 @@ named!(sourced_expr<Span, (String, Expr)>, ws!(
         )
 )));
 
-named!(verify_operator_name<Span, Span>,
+named_args!(did_you_mean<'a>(choices: &[&'static str], err: SyntaxErrors)<Span<'a>, Span<'a>>,
         preceded!(space0,
             return_error!(SyntaxErrors::StartOfError.into(),
                 alt!(
                     // Either we find a valid operator name
                     // To prevent a prefix from partially matching, require `not!(alpha1)` after the tag is consumed
-                    terminated!(alt!(pct_fn | call!(alternative, &VALID_OPERATORS)), not!(alpha1)) |
+                    terminated!(alt!(pct_fn | call!(alternative, choices)), not!(alpha1)) |
 
                     // Or we return an error after consuming a word
                     // If we exhaust all other possibilities, consume a word and return an error. We won't
                     // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
-                    terminated!(take_while!(is_ident), return_error!(SyntaxErrors::NotAnOperator.into(), tag!("a")))))
+                    terminated!(take_while!(is_ident), return_error!(err.clone().into(), tag!("a")))))
         )
 );
 
-named!(test<Span, Span>,
-    call!(alternative, &["a", "b", "c"])
+named!(did_you_mean_operator<Span, Span>,
+    call!(did_you_mean, &VALID_OPERATORS, SyntaxErrors::NotAnOperator)
+);
+
+named!(did_you_mean_aggregate<Span, Span>,
+    call!(did_you_mean, &VALID_AGGREGATES, SyntaxErrors::NotAnAggregateOperator)
 );
 
 // parse "blah * ... *" [from other_field] as x, y
@@ -509,19 +531,20 @@ named!(inline_operator<Span, Operator>,
     map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline)
 );
 
-named!(aggregate_function<Span, Positioned<AggregateFunction>>, alt_complete!(
-    count_distinct |
-    count |
-    average |
-    sum |
-    p_nn));
+named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
+    peek!(did_you_mean_aggregate) >>
+    res: alt_complete!(
+        count_distinct |
+        count |
+        average |
+        sum |
+        p_nn) >> (res)
+));
 
 named!(operator<Span, Operator>, do_parse!(
-    peek!(verify_operator_name) >>
-    res: alt_complete!(sort | multi_aggregate_operator | inline_operator) >>
-    (res)
-    )
-);
+    peek!(did_you_mean_operator) >>
+    res: alt_complete!(inline_operator | sort | multi_aggregate_operator) >> (res)
+));
 
 // count by x,y
 // avg(foo) by x
