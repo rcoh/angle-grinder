@@ -1,4 +1,6 @@
-use crate::lang::{query, Positioned, Query, QueryPosition, Span};
+use crate::lang::{
+    query, Positioned, Query, QueryPosition, Span, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS,
+};
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use nom::types::CompleteStr;
 use nom::ErrorKind;
@@ -14,7 +16,7 @@ pub struct QueryContainer {
 }
 
 /// Common syntax errors.
-#[derive(PartialEq, Debug, FromPrimitive, Fail)]
+#[derive(PartialEq, Debug, FromPrimitive, Fail, Clone)]
 pub enum SyntaxErrors {
     #[fail(display = "")]
     StartOfError,
@@ -27,26 +29,10 @@ pub enum SyntaxErrors {
 
     #[fail(display = "Expected an operator")]
     NotAnOperator,
-}
 
-// Used to generate suggestions
-pub const VALID_OPERATORS: [&'static str; 13] = [
-    // inline
-    "parse",
-    "limit",
-    "json",
-    "total",
-    "fields",
-    "where",
-    // aggregates
-    "count",
-    "average",
-    "avg",
-    "average",
-    "sum",
-    "count_distinct",
-    "sort",
-];
+    #[fail(display = "Not an aggregate operator")]
+    NotAnAggregateOperator,
+}
 
 /// Trait that can be used to report errors by the parser and other layers.
 pub trait ErrorBuilder {
@@ -119,23 +105,43 @@ impl ErrorBuilder for QueryContainer {
     }
 }
 
+fn did_you_mean(input: &str, choices: &[&str]) -> Option<String> {
+    let similarities = choices
+        .iter()
+        .map(|choice| (choice, normalized_levenshtein(choice, input)));
+    let mut candidates: Vec<_> = similarities.filter(|(_op, score)| *score > 0.6).collect();
+    candidates.sort_by_key(|(_op, score)| (score * 100 as f64) as u16);
+    candidates
+        .iter()
+        .map(|(choice, _score)| choice.to_string())
+        .next()
+}
+
 impl SyntaxErrors {
     pub fn to_resolution(&self, code_fragment: &str) -> Vec<String> {
         match self {
             SyntaxErrors::StartOfError => Vec::new(),
             SyntaxErrors::NotAnOperator => {
-                let similarities = VALID_OPERATORS
-                    .iter()
-                    .map(|op| (op, normalized_levenshtein(op, code_fragment)));
-                let mut candidates: Vec<_> =
-                    similarities.filter(|(_op, score)| *score > 0.6).collect();
-                candidates.sort_by_key(|(_op, score)| (score * 100 as f64) as u16);
                 let mut res = vec![format!("{} is not a valid operator", code_fragment)];
-                if let Some((choice, _)) = candidates.first() {
+                if let Some(choice) = did_you_mean(code_fragment, &VALID_OPERATORS) {
                     res.push(format!("Did you mean \"{}\"?", choice));
                 }
                 res
             }
+            SyntaxErrors::NotAnAggregateOperator => {
+                let mut res = vec![format!(
+                    "{} is not a valid aggregate operator",
+                    code_fragment
+                )];
+                if let Some(choice) = did_you_mean(code_fragment, &VALID_AGGREGATES) {
+                    res.push(format!("Did you mean \"{}\"?", choice));
+                }
+                if VALID_INLINE.contains(&code_fragment) {
+                    res.push(format!("{} is an inline operator, but only aggregate operators (count, average, egc.) are valid here", code_fragment))
+                }
+                res
+            }
+
             SyntaxErrors::UnterminatedSingleQuotedString => {
                 vec!["Insert a single quote (') to terminate this string".to_string()]
             }
@@ -254,5 +260,32 @@ impl<'a> SnippetBuilder<'a> {
                 })
                 .collect(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn did_you_mean() {
+        assert_eq!(
+            SyntaxErrors::NotAnAggregateOperator.to_resolution("cont"),
+            vec![
+                "cont is not a valid aggregate operator",
+                "Did you mean \"count\"?"
+            ]
+        );
+        assert_eq!(
+            SyntaxErrors::NotAnOperator.to_resolution("cont"),
+            vec!["cont is not a valid operator", "Did you mean \"count\"?"]
+        );
+        assert_eq!(
+            SyntaxErrors::NotAnAggregateOperator.to_resolution("parse"),
+            vec![
+                "parse is not a valid aggregate operator",
+                "parse is an inline operator, but only aggregate operators (count, average, egc.) are valid here"
+            ]
+        );
     }
 }

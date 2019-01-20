@@ -1,0 +1,14 @@
+query = "* | json | count, parse by foo"
+input = ""
+output = ""
+error = """
+error: Not an aggregate operator
+  |
+1 | * | json | count, parse by foo
+  |                   ^^^^^
+  |
+  = help: parse is not a valid aggregate operator
+  = help: parse is an inline operator, but only aggregate operators (count, average, egc.) are valid here
+Error: Failed to parse query
+"""
+succeeds = false
