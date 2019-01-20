@@ -8,7 +8,7 @@ error: Not an aggregate operator
   |                   ^^^^^
   |
   = help: parse is not a valid aggregate operator
-  = help: parse is an inline operator, but only aggregate operators (count, average, egc.) are valid here
+  = help: parse is an inline operator, but only aggregate operators (count, average, etc.) are valid here
 Error: Failed to parse query
 """
 succeeds = false

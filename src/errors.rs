@@ -137,7 +137,7 @@ impl SyntaxErrors {
                     res.push(format!("Did you mean \"{}\"?", choice));
                 }
                 if VALID_INLINE.contains(&code_fragment) {
-                    res.push(format!("{} is an inline operator, but only aggregate operators (count, average, egc.) are valid here", code_fragment))
+                    res.push(format!("{} is an inline operator, but only aggregate operators (count, average, etc.) are valid here", code_fragment))
                 }
                 res
             }
@@ -284,7 +284,7 @@ mod tests {
             SyntaxErrors::NotAnAggregateOperator.to_resolution("parse"),
             vec![
                 "parse is not a valid aggregate operator",
-                "parse is an inline operator, but only aggregate operators (count, average, egc.) are valid here"
+                "parse is an inline operator, but only aggregate operators (count, average, etc.) are valid here"
             ]
         );
     }
