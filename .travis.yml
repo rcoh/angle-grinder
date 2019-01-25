@@ -23,9 +23,8 @@ matrix:
       rust: stable
 
     # Testing other channels
-    # Disabling temporarily because of https://github.com/rust-lang/rust/issues/57488
-    # - env: TARGET=x86_64-unknown-linux-musl
-    #  rust: nightly
+    - env: TARGET=x86_64-unknown-linux-musl
+      rust: nightly
 
 before_install:
   - set -e
@@ -65,6 +64,16 @@ cache: cargo
 before_cache:
   # Travis can't cache files that are not readable by "others"
   - chmod -R a+r $HOME/.cargo
+  - |
+  if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
+    RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin -f
+  fi
+
+after_success: |
+  if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
+    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
+  fi
+
 
 branches:
   only:
