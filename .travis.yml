@@ -32,10 +32,10 @@ before_install:
   - cargo fmt -- --check
   - rustup self update
   - |
-  if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
-    apt install kcov
-    cargo install cargo-kcov
-  fi
+    if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
+      apt install kcov
+      cargo install cargo-kcov
+    fi
 
 install:
   - source ~/.cargo/env || true
