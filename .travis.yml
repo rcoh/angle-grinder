@@ -32,7 +32,7 @@ before_install:
   - rustup self update
   - |
     if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
-      sudo apt install kcov
+      sudo apt update && sudo apt install kcov -y
       cargo install cargo-kcov
     fi
 
