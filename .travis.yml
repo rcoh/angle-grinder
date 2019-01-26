@@ -37,7 +37,7 @@ before_install:
        sudo apt-get install libcurl4-openssl-dev libelf-dev libdw-dev binutils-dev libiberty-dev
        cargo install cargo-kcov -f
        cargo kcov --print-install-kcov-sh | sh
-       cargo kcov
+       cargo kcov --coveralls
     fi
 
 install:
