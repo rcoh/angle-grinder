@@ -64,7 +64,7 @@ These operators have a 1 to 1 correspondence between input data and output data.
 
 ##### JSON
 `json [from other_field]`: Extract json-serialized rows into fields for later use. If the row is _not_ valid JSON, then it is dropped. Optionally, `from other_field` can be 
-specified.
+specified. Embedded JSON isn't natively supported, but you can use the `json from` to reparse nested keys (see examples).
 
 *Examples*:
 ```agrind
@@ -72,6 +72,14 @@ specified.
 ```
 ```agrind
 * | parse "INFO *" as js | json from js
+```
+
+Given input like:
+```
+{"key": "blah", "nested_key": {"this": "that"}}
+```
+```agrind
+* | json | json from nested_key | fields this
 ```
 ![json.gif](/screen_shots/json.gif)
 
