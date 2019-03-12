@@ -243,7 +243,10 @@ pub mod pipeline {
 
             // Drop tx when causes the thread to exit.
             drop(tx);
-            t.join().unwrap();
+            match t.join() {
+                Ok(_) => (),
+                Err(e) => println!("Error: {:?}", e),
+            }
         }
 
         /// Process a record using the pre-agg operators.  The output of the last operator will be

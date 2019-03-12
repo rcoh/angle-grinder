@@ -130,7 +130,6 @@ impl AggregateOperator for PreAggAdapter {
             Row::Record(_) => panic!("PreAgg adaptor should only be used after aggregates"),
             Row::Aggregate(agg) => {
                 let mut op = self.op_builder.build();
-                let columns = agg.columns;
                 let mut processed_records: Vec<data::VMap> = {
                     let records = agg
                         .data
@@ -144,17 +143,27 @@ impl AggregateOperator for PreAggAdapter {
                     records.collect()
                 };
                 processed_records.extend(op.drain().map(|rec| rec.data));
-                let new_keys: Vec<String> = {
+                let resulting_columns: Vec<String> = {
                     processed_records
                         .iter()
                         .flat_map(|vmap| vmap.keys())
-                        .filter(|col| !columns.contains(col))
                         .unique()
                         .cloned()
                 }
                 .collect();
-                let mut columns = columns;
-                columns.extend(new_keys);
+                let output_column_set: HashSet<String> =
+                    HashSet::from_iter(resulting_columns.iter().cloned());
+                let input_column_set = HashSet::from_iter(agg.columns.iter().cloned());
+                let new_columns: Vec<String> = output_column_set
+                    .difference(&input_column_set)
+                    .cloned()
+                    .collect();
+                let mut columns = agg.columns;
+                columns.extend(new_columns);
+                let mut columns: Vec<String> = columns
+                    .into_iter()
+                    .filter(|col| output_column_set.contains(col))
+                    .collect();
                 self.state = Aggregate {
                     data: processed_records,
                     columns,
