@@ -160,7 +160,7 @@ impl AggregateOperator for PreAggAdapter {
                     .collect();
                 let mut columns = agg.columns;
                 columns.extend(new_columns);
-                let mut columns: Vec<String> = columns
+                let columns: Vec<String> = columns
                     .into_iter()
                     .filter(|col| output_column_set.contains(col))
                     .collect();
