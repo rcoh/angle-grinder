@@ -1,0 +1,10 @@
+query = ' * | parse ":* (" as port | count by port | fields port'
+input = ": 45 ("
+output = """
+port
+------------
+45
+"""
+error = """
+"""
+succeeds = true

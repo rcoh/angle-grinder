@@ -102,6 +102,11 @@ mod integration {
     }
 
     #[test]
+    fn fields_after_agg_bug() {
+        structured_test(include_str!("structured_tests/fields_after_agg.toml"));
+    }
+
+    #[test]
     fn limit() {
         structured_test(include_str!("structured_tests/limit.toml"));
         structured_test(include_str!("structured_tests/limit_tail.toml"));
