@@ -38,12 +38,12 @@ macro_rules! with_pos {
 
 /// Dynamic version of `alt` that takes a slice of strings
 fn alternative<T>(input: T, alternatives: &[&'static str]) -> IResult<T, T>
-where
-    T: InputTake,
-    T: Compare<&'static str>,
-    T: InputLength,
-    T: AtEof,
-    T: Clone,
+    where
+        T: InputTake,
+        T: Compare<&'static str>,
+        T: InputLength,
+        T: AtEof,
+        T: Clone,
 {
     let mut last_err = None;
     for alternative in alternatives {
@@ -183,6 +183,14 @@ impl Keyword {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum Search {
+    And(Vec<Search>),
+    Or(Vec<Search>),
+    Not(Box<Search>),
+    Keyword(Keyword),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Operator {
     Inline(Positioned<InlineOperator>),
     MultiAggregate(MultiAggregateOperator),
@@ -262,9 +270,10 @@ pub struct SortOperator {
     pub direction: SortMode,
 }
 
+
 #[derive(Debug, PartialEq)]
 pub struct Query {
-    pub search: Vec<Keyword>,
+    pub search: Search,
     pub operators: Vec<Operator>,
 }
 
@@ -611,6 +620,15 @@ named!(filter_cond<Span, Keyword>, alt!(
     map!(keyword, |s| Keyword::new_wildcard(s.trim_matches('*').to_string()))
 ));
 
+named!(filter_expr<Span, Search>, map!(
+    separated_nonempty_list!(multispace, filter_cond),
+    // An empty keyword would match everything, so there's no reason to
+    |mut v| {
+        v.retain( | k | ! k.is_empty());
+        Search::And(v.into_iter().map(|keyword|Search::Keyword(keyword)).collect())
+    }
+));
+
 named!(filter<Span, Vec<Keyword>>, map!(
     separated_nonempty_list!(multispace, filter_cond),
     // An empty keyword would match everything, so there's no reason to
@@ -621,7 +639,7 @@ named!(filter<Span, Vec<Keyword>>, map!(
 ));
 
 named!(pub query<Span, Query, SyntaxErrors>, fix_error!(SyntaxErrors, exact!(ws!(do_parse!(
-    filter: filter >>
+    filter: filter_expr >>
     operators: opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator)))) >>
     (Query{
         search: filter,
@@ -909,7 +927,7 @@ mod tests {
             query,
             " * ",
             Query {
-                search: vec![],
+                search: Search::And(vec![]),
                 operators: vec![],
             }
         );
@@ -917,7 +935,7 @@ mod tests {
             query,
             " filter ",
             Query {
-                search: vec![Keyword::new_wildcard("filter".to_string())],
+                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard("filter".to_string()))]),
                 operators: vec![],
             }
         );
@@ -925,7 +943,7 @@ mod tests {
             query,
             " *abc* ",
             Query {
-                search: vec![Keyword::new_wildcard("abc".to_string())],
+                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard("abc".to_string()))]),
                 operators: vec![],
             }
         );
@@ -933,11 +951,11 @@ mod tests {
             query,
             " abc def \"*ghi*\" ",
             Query {
-                search: vec![
-                    Keyword::new_wildcard("abc".to_string()),
-                    Keyword::new_wildcard("def".to_string()),
-                    Keyword::new_exact("*ghi*".to_string()),
-                ],
+                search: Search::And(vec![
+                    Search::Keyword(Keyword::new_wildcard("abc".to_string())),
+                    Search::Keyword(Keyword::new_wildcard("def".to_string())),
+                    Search::Keyword(Keyword::new_exact("*ghi*".to_string())),
+                ]),
                 operators: vec![],
             }
         );
@@ -951,7 +969,7 @@ mod tests {
             query,
             query_str,
             Query {
-                search: vec![],
+                search: Search::And(vec![]),
                 operators: vec![
                     Operator::Inline(Positioned {
                         start_pos: QueryPosition(4),
