@@ -91,6 +91,11 @@ mod integration {
     }
 
     #[test]
+    fn filters() {
+        structured_test(include_str!("structured_tests/filters.toml"));
+    }
+
+    #[test]
     fn sort_order() {
         structured_test(include_str!("structured_tests/sort_order.toml"));
     }
