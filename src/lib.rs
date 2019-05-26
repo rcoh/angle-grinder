@@ -10,18 +10,18 @@ extern crate crossbeam_channel;
 
 mod data;
 mod errors;
+mod filter;
 mod lang;
 mod operator;
 mod render;
 mod typecheck;
-mod filter;
 
 pub mod pipeline {
     use crate::data::{Record, Row};
     pub use crate::errors::{ErrorReporter, QueryContainer};
+    use crate::filter;
     use crate::lang::*;
     use crate::operator;
-    use crate::filter;
     use crate::render::{RenderConfig, Renderer};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
@@ -97,10 +97,16 @@ pub mod pipeline {
 
         fn convert_filter(filter: Search) -> filter::Filter {
             match filter {
-                Search::And(vec) => filter::Filter::And(vec.into_iter().map(Pipeline::convert_filter).collect()),
-                Search::Or(vec) => filter::Filter::Or(vec.into_iter().map(Pipeline::convert_filter).collect()),
-                Search::Not(search) => filter::Filter::Not(Box::new(Pipeline::convert_filter(*search))),
-                Search::Keyword(keyword) => filter::Filter::Keyword(keyword.to_regex())
+                Search::And(vec) => {
+                    filter::Filter::And(vec.into_iter().map(Pipeline::convert_filter).collect())
+                }
+                Search::Or(vec) => {
+                    filter::Filter::Or(vec.into_iter().map(Pipeline::convert_filter).collect())
+                }
+                Search::Not(search) => {
+                    filter::Filter::Not(Box::new(Pipeline::convert_filter(*search)))
+                }
+                Search::Keyword(keyword) => filter::Filter::Keyword(keyword.to_regex()),
             }
         }
 
@@ -132,9 +138,9 @@ pub mod pipeline {
 
                             let needs_sort = match op_iter.peek() {
                                 Some(Operator::Inline(Positioned {
-                                                          value: InlineOperator::Limit { .. },
-                                                          ..
-                                                      })) => true,
+                                    value: InlineOperator::Limit { .. },
+                                    ..
+                                })) => true,
                                 None => true,
                                 _ => false,
                             };

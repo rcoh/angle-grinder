@@ -38,12 +38,12 @@ macro_rules! with_pos {
 
 /// Dynamic version of `alt` that takes a slice of strings
 fn alternative<T>(input: T, alternatives: &[&'static str]) -> IResult<T, T>
-    where
-        T: InputTake,
-        T: Compare<&'static str>,
-        T: InputLength,
-        T: AtEof,
-        T: Clone,
+where
+    T: InputTake,
+    T: Compare<&'static str>,
+    T: InputLength,
+    T: AtEof,
+    T: Clone,
 {
     let mut last_err = None;
     for alternative in alternatives {
@@ -73,11 +73,7 @@ lazy_static! {
         { [VALID_INLINE, VALID_AGGREGATES].concat() };
 }
 
-pub const RESERVED_FILTER_WORDS: &'static [&str] = &[
-    "AND",
-    "OR",
-    "NOT"
-];
+pub const RESERVED_FILTER_WORDS: &'static [&str] = &["AND", "OR", "NOT"];
 
 /// Type used to track the current fragment being parsed and its location in the original input.
 pub type Span<'a> = LocatedSpan<CompleteStr<'a>>;
@@ -200,7 +196,7 @@ impl Search {
     fn no_op(&self) -> bool {
         match self {
             Search::Keyword(Keyword(k, _)) => k.is_empty(),
-            _ => false
+            _ => false,
         }
     }
 }
@@ -284,7 +280,6 @@ pub struct SortOperator {
     pub sort_cols: Vec<String>,
     pub direction: SortMode,
 }
-
 
 #[derive(Debug, PartialEq)]
 pub struct Query {
@@ -994,7 +989,9 @@ mod tests {
             query,
             " filter ",
             Query {
-                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard("filter".to_string()))]),
+                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard(
+                    "filter".to_string()
+                ))]),
                 operators: vec![],
             }
         );
@@ -1002,7 +999,9 @@ mod tests {
             query,
             " *abc* ",
             Query {
-                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard("abc".to_string()))]),
+                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard(
+                    "abc".to_string()
+                ))]),
                 operators: vec![],
             }
         );
@@ -1048,29 +1047,43 @@ mod tests {
             filter_expr,
             "abc OR (def OR xyz)",
             Search::Or(vec![
-                    Search::Keyword(Keyword::new_wildcard("abc".to_string())),
-                    Search::Or(vec![
-                        Search::Keyword(Keyword::new_wildcard("def".to_string())),
-                        Search::Keyword(Keyword::new_wildcard("xyz".to_string()))
-                    ])
+                Search::Keyword(Keyword::new_wildcard("abc".to_string())),
+                Search::Or(vec![
+                    Search::Keyword(Keyword::new_wildcard("def".to_string())),
+                    Search::Keyword(Keyword::new_wildcard("xyz".to_string()))
+                ])
             ])
         );
     }
 
     #[test]
     fn not_filter() {
-        expect!(filter_not, "NOT abc", Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard("abc".to_string())))));
-        expect!(filter_expr, "NOT abc", Search::And(
-            vec![Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard("abc".to_string()))))]
-        ));
-        expect!(filter_expr, "(error OR warn) AND NOT hide",
-               Search::And(vec![
-                   Search::Or(vec![
-                       Search::Keyword(Keyword::new_wildcard("error".to_string())),
-                       Search::Keyword(Keyword::new_wildcard("warn".to_string()))
-                   ]),
-                   Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard("hide".to_string())))),
-               ])
+        expect!(
+            filter_not,
+            "NOT abc",
+            Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard(
+                "abc".to_string()
+            ))))
+        );
+        expect!(
+            filter_expr,
+            "NOT abc",
+            Search::And(vec![Search::Not(Box::new(Search::Keyword(
+                Keyword::new_wildcard("abc".to_string())
+            )))])
+        );
+        expect!(
+            filter_expr,
+            "(error OR warn) AND NOT hide",
+            Search::And(vec![
+                Search::Or(vec![
+                    Search::Keyword(Keyword::new_wildcard("error".to_string())),
+                    Search::Keyword(Keyword::new_wildcard("warn".to_string()))
+                ]),
+                Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard(
+                    "hide".to_string()
+                )))),
+            ])
         );
     }
 

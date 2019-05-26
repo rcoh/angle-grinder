@@ -12,7 +12,7 @@ impl Filter {
             Filter::Keyword(regex) => regex.is_match(inp),
             Filter::And(clauses) => clauses.iter().all(|clause| clause.matches(inp)),
             Filter::Or(clauses) => clauses.iter().any(|clause| clause.matches(inp)),
-            Filter::Not(clause) => !clause.matches(inp)
+            Filter::Not(clause) => !clause.matches(inp),
         }
     }
 }
@@ -65,6 +65,5 @@ mod tests {
         assert_eq!(filt.matches("abc"), false);
         assert_eq!(filt.matches("123 456"), true);
         assert_eq!(filt.matches("123 cde"), false);
-
     }
 }
