@@ -73,6 +73,8 @@ lazy_static! {
         { [VALID_INLINE, VALID_AGGREGATES].concat() };
 }
 
+pub const RESERVED_FILTER_WORDS: &'static [&str] = &["AND", "OR", "NOT"];
+
 /// Type used to track the current fragment being parsed and its location in the original input.
 pub type Span<'a> = LocatedSpan<CompleteStr<'a>>;
 
@@ -183,6 +185,23 @@ impl Keyword {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum Search {
+    And(Vec<Search>),
+    Or(Vec<Search>),
+    Not(Box<Search>),
+    Keyword(Keyword),
+}
+
+impl Search {
+    fn no_op(&self) -> bool {
+        match self {
+            Search::Keyword(Keyword(k, _)) => k.is_empty(),
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Operator {
     Inline(Positioned<InlineOperator>),
     MultiAggregate(MultiAggregateOperator),
@@ -264,7 +283,7 @@ pub struct SortOperator {
 
 #[derive(Debug, PartialEq)]
 pub struct Query {
-    pub search: Vec<Keyword>,
+    pub search: Search,
     pub operators: Vec<Operator>,
 }
 
@@ -319,10 +338,14 @@ named!(e_ident<Span, Expr>,
           return_error!(SyntaxErrors::MissingParen.into(), tag!(")")))))
 )));
 
-named!(keyword<Span, String>, do_parse!(
-    start: take_while1!(is_keyword) >>
-    rest: take_while!(is_keyword) >>
-    (start.fragment.0.to_owned() + rest.fragment.0)
+named!(raw_keyword<Span, Span>,
+   take_while1!(is_keyword)
+);
+
+named!(keyword<Span, String>, map!(
+    verify!(raw_keyword, |k: Span|!RESERVED_FILTER_WORDS.contains(&k.fragment.0)),
+    |span|span.fragment.0.to_owned()
+
 ));
 
 named!(comp_op<Span, ComparisonOp>, ws!(alt!(
@@ -606,22 +629,71 @@ named!(sort<Span, Operator>, ws!(do_parse!(
      })))
 ));
 
-named!(filter_cond<Span, Keyword>, alt!(
-    map!(quoted_string, |s| Keyword::new_exact(s.to_string())) |
-    map!(keyword, |s| Keyword::new_wildcard(s.trim_matches('*').to_string()))
-));
+named!(filter_explicit_and<Span, Search>, ws!(do_parse!(
+   left: low_filter >>
+   tag!("AND") >>
+   right: low_filter >>
+   (Search::And(vec![left, right]))
+)));
 
-named!(filter<Span, Vec<Keyword>>, map!(
-    separated_nonempty_list!(multispace, filter_cond),
+// Top level:
+// Look for OR
+// Look for AND
+// Implicit AND
+
+named!(filter_explicit_or<Span, Search>, ws!(do_parse!(
+    left: mid_filter >>
+    tag!("OR") >>
+    right: mid_filter >>
+    (Search::Or(vec![left, right]))
+)));
+
+/* A list of things is implicitly ANDed together */
+named!(filter_implicit_and<Span, Search>, map!(
+    separated_nonempty_list!(multispace, low_filter),
     // An empty keyword would match everything, so there's no reason to
     |mut v| {
-        v.retain(|k| !k.is_empty());
-        v
+        v.retain( | k | ! k.no_op());
+        Search::And(v)
     }
 ));
 
+named!(filter_atom<Span, Search>, alt!(
+    map!(quoted_string, |s| Search::Keyword(Keyword::new_exact(s.to_string()))) |
+    map!(keyword, |s| Search::Keyword(Keyword::new_wildcard(s.trim_matches('*').to_string())))
+));
+
+named!(high_filter<Span, Search>, alt!(
+  filter_explicit_or |
+  mid_filter
+));
+
+named!(mid_filter<Span, Search>, alt!(
+  filter_explicit_and |
+  low_filter
+));
+
+named!(low_filter<Span, Search>, alt!(
+  filter_not |
+  filter_atom |
+  delimited!(tag!("("), high_filter, tag!(")"))
+));
+
+named!(filter_not<Span, Search>, map!(
+        ws!(preceded!(tag!("NOT"), low_filter)),
+        |k|Search::Not(Box::new(k))
+    )
+);
+
+named!(filter_expr<Span, Search>,
+    ws!(alt!(
+        filter_explicit_or |
+        filter_explicit_and |
+        filter_implicit_and
+)));
+
 named!(pub query<Span, Query, SyntaxErrors>, fix_error!(SyntaxErrors, exact!(ws!(do_parse!(
-    filter: filter >>
+    filter: filter_expr >>
     operators: opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator)))) >>
     (Query{
         search: filter,
@@ -909,7 +981,7 @@ mod tests {
             query,
             " * ",
             Query {
-                search: vec![],
+                search: Search::And(vec![]),
                 operators: vec![],
             }
         );
@@ -917,7 +989,9 @@ mod tests {
             query,
             " filter ",
             Query {
-                search: vec![Keyword::new_wildcard("filter".to_string())],
+                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard(
+                    "filter".to_string()
+                ))]),
                 operators: vec![],
             }
         );
@@ -925,7 +999,9 @@ mod tests {
             query,
             " *abc* ",
             Query {
-                search: vec![Keyword::new_wildcard("abc".to_string())],
+                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard(
+                    "abc".to_string()
+                ))]),
                 operators: vec![],
             }
         );
@@ -933,13 +1009,81 @@ mod tests {
             query,
             " abc def \"*ghi*\" ",
             Query {
-                search: vec![
-                    Keyword::new_wildcard("abc".to_string()),
-                    Keyword::new_wildcard("def".to_string()),
-                    Keyword::new_exact("*ghi*".to_string()),
-                ],
+                search: Search::And(vec![
+                    Search::Keyword(Keyword::new_wildcard("abc".to_string())),
+                    Search::Keyword(Keyword::new_wildcard("def".to_string())),
+                    Search::Keyword(Keyword::new_exact("*ghi*".to_string())),
+                ]),
                 operators: vec![],
             }
+        );
+    }
+
+    #[test]
+    fn complex_filters() {
+        expect!(
+            filter_expr,
+            "(abc AND def) OR xyz",
+            Search::Or(vec![
+                Search::And(vec![
+                    Search::Keyword(Keyword::new_wildcard("abc".to_string())),
+                    Search::Keyword(Keyword::new_wildcard("def".to_string()))
+                ]),
+                Search::Keyword(Keyword::new_wildcard("xyz".to_string()))
+            ])
+        );
+    }
+
+    #[test]
+    fn invalid_filters() {
+        expect_fail!(query, "abc AND \"");
+        // Would be nice to support this
+        expect_fail!(query, "a OR b OR C");
+    }
+
+    #[test]
+    fn or_filter() {
+        expect!(
+            filter_expr,
+            "abc OR (def OR xyz)",
+            Search::Or(vec![
+                Search::Keyword(Keyword::new_wildcard("abc".to_string())),
+                Search::Or(vec![
+                    Search::Keyword(Keyword::new_wildcard("def".to_string())),
+                    Search::Keyword(Keyword::new_wildcard("xyz".to_string()))
+                ])
+            ])
+        );
+    }
+
+    #[test]
+    fn not_filter() {
+        expect!(
+            filter_not,
+            "NOT abc",
+            Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard(
+                "abc".to_string()
+            ))))
+        );
+        expect!(
+            filter_expr,
+            "NOT abc",
+            Search::And(vec![Search::Not(Box::new(Search::Keyword(
+                Keyword::new_wildcard("abc".to_string())
+            )))])
+        );
+        expect!(
+            filter_expr,
+            "(error OR warn) AND NOT hide",
+            Search::And(vec![
+                Search::Or(vec![
+                    Search::Keyword(Keyword::new_wildcard("error".to_string())),
+                    Search::Keyword(Keyword::new_wildcard("warn".to_string()))
+                ]),
+                Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard(
+                    "hide".to_string()
+                )))),
+            ])
         );
     }
 
@@ -951,7 +1095,7 @@ mod tests {
             query,
             query_str,
             Query {
-                search: vec![],
+                search: Search::And(vec![]),
                 operators: vec![
                     Operator::Inline(Positioned {
                         start_pos: QueryPosition(4),

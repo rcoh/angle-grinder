@@ -10,6 +10,7 @@ extern crate crossbeam_channel;
 
 mod data;
 mod errors;
+mod filter;
 mod lang;
 mod operator;
 mod render;
@@ -18,6 +19,7 @@ mod typecheck;
 pub mod pipeline {
     use crate::data::{Record, Row};
     pub use crate::errors::{ErrorReporter, QueryContainer};
+    use crate::filter;
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
@@ -40,7 +42,7 @@ pub mod pipeline {
     }
 
     pub struct Pipeline {
-        filter: Vec<regex::Regex>,
+        filter: filter::Filter,
         pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
         aggregators: Vec<Box<operator::AggregateOperator>>,
         renderer: Renderer,
@@ -93,10 +95,25 @@ pub mod pipeline {
             }
         }
 
+        fn convert_filter(filter: Search) -> filter::Filter {
+            match filter {
+                Search::And(vec) => {
+                    filter::Filter::And(vec.into_iter().map(Pipeline::convert_filter).collect())
+                }
+                Search::Or(vec) => {
+                    filter::Filter::Or(vec.into_iter().map(Pipeline::convert_filter).collect())
+                }
+                Search::Not(search) => {
+                    filter::Filter::Not(Box::new(Pipeline::convert_filter(*search)))
+                }
+                Search::Keyword(keyword) => filter::Filter::Keyword(keyword.to_regex()),
+            }
+        }
+
         pub fn new(pipeline: &QueryContainer) -> Result<Self, Error> {
             let parsed = pipeline.parse().map_err(|_pos| CompileError::Parse);
             let query = parsed?;
-            let filters = query.search.iter().map(Keyword::to_regex).collect();
+            let filters = Pipeline::convert_filter(query.search);
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
@@ -222,7 +239,7 @@ pub mod pipeline {
             // after we match (staying as Vec<u8> until then)
             let mut line = String::with_capacity(1024);
             while buf.read_line(&mut line).unwrap() > 0 {
-                if self.filter.iter().all(|re| re.is_match(&line)) {
+                if self.filter.matches(&line) {
                     if !Pipeline::proc_preagg(Record::new(&line), &mut preaggs, &tx) {
                         break;
                     }

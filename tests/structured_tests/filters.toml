@@ -1,0 +1,14 @@
+query = """(error OR warn) AND NOT hide | count"""
+input = """
+ERROR this is bad
+ERROR
+WARN
+WARN hide
+ERROR hide
+INFO everything is fine
+"""
+output = """
+_count
+--------------
+3
+"""
