@@ -54,7 +54,11 @@ agrind '* | json | count by log_level'
 
 ### Filters
 
-Filters may be `*`, `filter-me`, or `"filter me!"`. Only lines that match all filters will be passed to the subsequent operators. `*` matches all lines.
+Filters may be things like `*`, `filter-me`, or `"filter me!"`. Filters can be combined with `AND`, `OR` and `NOT`:
+```agrind
+("ERROR" OR "WARN") AND kafka | count
+```
+Only lines that match all filters will be passed to the subsequent operators. `*` matches all lines.
 ![filter.gif](/screen_shots/filter.gif)
 
 ### Operators
