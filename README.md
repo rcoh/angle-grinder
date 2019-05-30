@@ -54,7 +54,19 @@ agrind '* | json | count by log_level'
 
 ### Filters
 
-Filters may be `*`, `filter-me`, or `"filter me!"`. Only lines that match all filters will be passed to the subsequent operators. `*` matches all lines.
+There are three basic filters:
+
+- `*`: Match all logs
+- `filter-me*` (with no quotes) is a case-insensitive match that can include wildcards
+- "filter-me" (in quotes) is a case-sensitive match (no wildcards, `*` matches literal `*`
+, `filter-me`, or `"filter me!"`. 
+
+Filters can be combined with `AND`, `OR` and `NOT` 
+```agrind
+("ERROR" or WARN*) AND NOT staging | count
+```
+
+Sub-expressions _must_ be grouped in parenthesis. Only lines that match all filters will be passed to the subsequent operators.
 ![filter.gif](/screen_shots/filter.gif)
 
 ### Operators
