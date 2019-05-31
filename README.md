@@ -63,7 +63,7 @@ There are three basic filters:
 
 Filters can be combined with `AND`, `OR` and `NOT` 
 ```agrind
-("ERROR" or WARN*) AND NOT staging | count
+("ERROR" OR WARN*) AND NOT staging | count
 ```
 
 Sub-expressions _must_ be grouped in parenthesis. Only lines that match all filters will be passed to the subsequent operators.
