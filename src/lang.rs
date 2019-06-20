@@ -771,8 +771,8 @@ mod tests {
 
     #[test]
     fn empty_query_is_query() {
-        expect!(prelexed_query, " * |", Span::new(CompleteStr(" * ")));
-        expect!(prelexed_query, "|", Span::new(CompleteStr("|")));
+        expect!(prelexed_query, " * ", Search::And(vec![]));
+        expect!(prelexed_query, "*", Search::And(vec![]));
         expect!(
             prelexed_query,
             "abc ",
