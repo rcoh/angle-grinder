@@ -19,7 +19,7 @@ extended-description = """Angle-grinder allows you to parse, aggregate, sum, ave
 [dependencies]
 serde_json = "1.0.33"
 itertools = "0.8.0"
-nom = { version = "4.1.1", features = ["verbose-errors"] }
+nom = { version = "4.2.3", features = ["verbose-errors"] }
 nom_locate = { version = "0.3.1", features = ["verbose-errors"] }
 strsim = "0.8.0"
 quicli = "0.4.0"

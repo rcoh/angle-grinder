@@ -328,7 +328,7 @@ named!(ident<Span, String>, do_parse!(
 ));
 
 named!(e_ident<Span, Expr>,
-    ws!(alt!(
+    ws!(alt_complete!(
       map!(ident, |col|Expr::Column(col.to_owned()))
     | map!(value, Expr::Value)
       //expr
@@ -348,7 +348,7 @@ named!(keyword<Span, String>, map!(
 
 ));
 
-named!(comp_op<Span, ComparisonOp>, ws!(alt!(
+named!(comp_op<Span, ComparisonOp>, ws!(alt_complete!(
     map!(tag!("=="), |_|ComparisonOp::Eq)
     | map!(tag!("<="), |_|ComparisonOp::Lte)
     | map!(tag!(">="), |_|ComparisonOp::Gte)
@@ -357,11 +357,11 @@ named!(comp_op<Span, ComparisonOp>, ws!(alt!(
     | map!(tag!("<"), |_|ComparisonOp::Lt)
 )));
 
-named!(unary_op<Span, UnaryOp>, ws!(alt!(
+named!(unary_op<Span, UnaryOp>, ws!(alt_complete!(
     map!(tag!("!"), |_|UnaryOp::Not)
 )));
 
-named!(expr<Span, Expr>, ws!(alt!(
+named!(expr<Span, Expr>, ws!(alt_complete!(
     do_parse!(
         l: e_ident >>
         comp: comp_op >>
@@ -420,7 +420,7 @@ named!(single_quoted_string <Span, &str>, add_return_error!(
         return_error!(SyntaxErrors::UnterminatedSingleQuotedString.into(), tag!("'"))
 )));
 
-named!(quoted_string<Span, &str>, alt!(double_quoted_string | single_quoted_string));
+named!(quoted_string<Span, &str>, alt_complete!(double_quoted_string | single_quoted_string));
 
 named!(var_list<Span, Vec<String> >, ws!(separated_nonempty_list!(
     tag!(","), ws!(ident)
@@ -441,10 +441,10 @@ named!(sourced_expr<Span, (String, Expr)>, ws!(
 named_args!(did_you_mean<'a>(choices: &[&'static str], err: SyntaxErrors)<Span<'a>, Span<'a>>,
         preceded!(space0,
             return_error!(SyntaxErrors::StartOfError.into(),
-                alt!(
+                alt_complete!(
                     // Either we find a valid operator name
                     // To prevent a prefix from partially matching, require `not!(alpha1)` after the tag is consumed
-                    terminated!(alt!(pct_fn | call!(alternative, choices)), not!(alpha1)) |
+                    terminated!(alt_complete!(pct_fn | call!(alternative, choices)), not!(alpha1)) |
 
                     // Or we return an error after consuming a word
                     // If we exhaust all other possibilities, consume a word and return an error. We won't
@@ -477,13 +477,13 @@ named!(parse<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
         } )
 ))));
 
-named!(fields_mode<Span, FieldMode>, alt!(
+named!(fields_mode<Span, FieldMode>, alt_complete!(
     map!(
-        alt!(tag!("+") | tag!("only") | tag!("include")),
+        alt_complete!(tag!("+") | tag!("only") | tag!("include")),
         |_|FieldMode::Only
     ) |
     map!(
-        alt!(tag!("-") | tag!("except") | tag!("drop")),
+        alt_complete!(tag!("-") | tag!("except") | tag!("drop")),
         |_|FieldMode::Except
     )
 ));
@@ -512,7 +512,7 @@ named!(count<Span, Positioned<AggregateFunction>>, with_pos!(map!(tag!("count"),
 );
 
 named!(average<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
-    alt!(tag!("avg") | tag!("average")) >>
+    alt_complete!(tag!("avg") | tag!("average")) >>
     column: delimited!(tag!("("), expr ,tag!(")")) >>
     (AggregateFunction::Average{column})
 ))));
@@ -534,7 +534,7 @@ fn is_digit_char(digit: char) -> bool {
 }
 
 named!(pct_fn<Span, Span>, preceded!(
-    alt!(tag!("pct") | tag!("percentile") | tag!("p")),
+    alt_complete!(tag!("pct") | tag!("percentile") | tag!("p")),
     take_while_m_n!(2, 2, is_digit_char)
 ));
 
@@ -551,7 +551,7 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
 ));
 
 named!(inline_operator<Span, Operator>,
-    map!(alt!(parse | json | fields | whre | limit | total), Operator::Inline)
+    map!(alt_complete!(parse | json | fields | whre | limit | total), Operator::Inline)
 );
 
 named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
@@ -608,13 +608,13 @@ named!(multi_aggregate_operator<Span, Operator>, ws!(do_parse!(
      })))
 ));
 
-named!(sort_mode<Span, SortMode>, alt!(
+named!(sort_mode<Span, SortMode>, alt_complete!(
     map!(
-        alt!(tag!("asc") | tag!("ascending")),
+        alt_complete!(tag!("asc") | tag!("ascending")),
         |_|SortMode::Ascending
     ) |
     map!(
-        alt!(tag!("desc") | tag!("dsc") | tag!("descending")),
+        alt_complete!(tag!("desc") | tag!("dsc") | tag!("descending")),
         |_|SortMode::Descending
     )
 ));
@@ -629,24 +629,30 @@ named!(sort<Span, Operator>, ws!(do_parse!(
      })))
 ));
 
-named!(filter_explicit_and<Span, Search>, ws!(do_parse!(
-   left: low_filter >>
-   tag!("AND") >>
-   right: low_filter >>
-   (Search::And(vec![left, right]))
-)));
+named!(filter_explicit_and<Span, Search>, do_parse!(
+    peek!(ws!(pair!(low_filter, alt!(tag!("AND") | tag!("and"))))) >>
+    res: map!(
+        return_error!(SyntaxErrors::InvalidBooleanExpression.into(),
+            separated_pair!(ws!(low_filter),
+            ws!(tag!("AND")),
+            ws!(low_filter))), |(l,r)|Search::And(vec![l, r])
+    ) >> (res)
+));
+
+named!(filter_explicit_or<Span, Search>, do_parse!(
+    peek!(ws!(pair!(low_filter, alt!(tag!("OR") | tag!("or"))))) >>
+    res: map!(
+        return_error!(SyntaxErrors::InvalidBooleanExpression.into(),
+            separated_pair!(ws!(mid_filter),
+            ws!(tag!("OR")),
+            ws!(mid_filter))), |(l,r)|Search::Or(vec![l, r])
+    ) >> (res)
+));
 
 // Top level:
 // Look for OR
 // Look for AND
 // Implicit AND
-
-named!(filter_explicit_or<Span, Search>, ws!(do_parse!(
-    left: mid_filter >>
-    tag!("OR") >>
-    right: mid_filter >>
-    (Search::Or(vec![left, right]))
-)));
 
 /* A list of things is implicitly ANDed together */
 named!(filter_implicit_and<Span, Search>, map!(
@@ -658,25 +664,25 @@ named!(filter_implicit_and<Span, Search>, map!(
     }
 ));
 
-named!(filter_atom<Span, Search>, alt!(
+named!(filter_atom<Span, Search>, alt_complete!(
     map!(quoted_string, |s| Search::Keyword(Keyword::new_exact(s.to_string()))) |
     map!(keyword, |s| Search::Keyword(Keyword::new_wildcard(s.trim_matches('*').to_string())))
 ));
 
-named!(high_filter<Span, Search>, alt!(
+named!(high_filter<Span, Search>, alt_complete!(
   filter_explicit_or |
   mid_filter
 ));
 
-named!(mid_filter<Span, Search>, alt!(
+named!(mid_filter<Span, Search>, alt_complete!(
   filter_explicit_and |
   low_filter
 ));
 
-named!(low_filter<Span, Search>, alt!(
-  filter_not |
-  filter_atom |
-  delimited!(tag!("("), high_filter, tag!(")"))
+named!(low_filter<Span, Search>, alt_complete!(
+  filter_not
+  | filter_atom
+  | delimited!(ws!(tag!("(")), high_filter, ws!(tag!(")")))
 ));
 
 named!(filter_not<Span, Search>, map!(
@@ -686,15 +692,41 @@ named!(filter_not<Span, Search>, map!(
 );
 
 named!(filter_expr<Span, Search>,
-    ws!(alt!(
+    ws!(exact!(alt_complete!(
         filter_explicit_or |
         filter_explicit_and |
-        filter_implicit_and
+        ws!(filter_implicit_and)
+))));
+
+named!(query_component<Span, Span>, alt_complete!(
+        recognize!(quoted_string) |
+        tag!("AND") |
+        tag!("NOT") |
+        tag!("OR") |
+        tag!("(") |
+        tag!(")") |
+        recognize!(keyword)
+    )
+);
+
+named!(end_of_query<Span, Span>, alt!(
+    ws!(tag!("|")) | ws!(eof!())
+));
+
+named!(query_section<Span, Span>, recognize!(ws!(
+    many_till!(ws!(query_component), peek!(ws!(end_of_query))))
+));
+
+named!(erroring_filter<Span, Search>, add_return_error!(SyntaxErrors::InvalidFilter.into(), filter_expr));
+
+named!(prelexed_query<Span, Search>, ws!(do_parse!(
+    res_tuple: flat_map!(query_section, erroring_filter) >>
+    (res_tuple)
 )));
 
 named!(pub query<Span, Query, SyntaxErrors>, fix_error!(SyntaxErrors, exact!(ws!(do_parse!(
-    filter: filter_expr >>
-    operators: opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator)))) >>
+    filter: prelexed_query >>
+    operators: ws!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
     (Query{
         search: filter,
         operators: operators.unwrap_or_default()
@@ -735,6 +767,26 @@ mod tests {
                 Err(_e) => (),
             }
         }};
+    }
+
+    #[test]
+    fn empty_query_is_query() {
+        expect!(prelexed_query, " * |", Span::new(CompleteStr(" * ")));
+        expect!(prelexed_query, "|", Span::new(CompleteStr("|")));
+        expect!(
+            prelexed_query,
+            "abc ",
+            Search::And(vec![Search::Keyword(Keyword::new_wildcard(
+                "abc".to_string()
+            ))])
+        );
+        expect!(
+            prelexed_query,
+            "(abc )",
+            Search::And(vec![Search::Keyword(Keyword::new_wildcard(
+                "abc".to_string()
+            ))])
+        );
     }
 
     #[test]

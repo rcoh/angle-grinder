@@ -32,6 +32,12 @@ pub enum SyntaxErrors {
 
     #[fail(display = "Not an aggregate operator")]
     NotAnAggregateOperator,
+
+    #[fail(display = "Invalid filter")]
+    InvalidFilter,
+
+    #[fail(display = "Invalid boolean expression")]
+    InvalidBooleanExpression,
 }
 
 /// Trait that can be used to report errors by the parser and other layers.
@@ -49,8 +55,13 @@ impl QueryContainer {
     pub fn parse(&self) -> Result<Query, QueryPosition> {
         let parse_result = query(Span::new(CompleteStr(&self.query)));
 
-        match parse_result {
-            Err(nom::Err::Failure(nom::Context::List(ref list))) => {
+        let errors = match parse_result {
+            Err(nom::Err::Failure(nom::Context::List(ref list))) => Some(list),
+            Err(nom::Err::Error(nom::Context::List(ref list))) => Some(list),
+            _ => None,
+        };
+        match errors {
+            Some(ref list) => {
                 // Check for an error from a delimited!() parser.  The error list will contain
                 // the location of the start as the last item and the location of the end as the
                 // penultimate item.
@@ -70,13 +81,23 @@ impl QueryContainer {
                             )
                             .send_report();
                     }
-                    _ => self.report_error_for(format!("{:?}", list)).send_report(),
+                    _ => {
+                        list.iter().for_each(|(span, error)| match error {
+                            ErrorKind::Custom(ref custom_error) => self
+                                .report_error_for(custom_error)
+                                .with_code_range(
+                                    QueryPosition(span.offset),
+                                    QueryPosition(span.offset + span.fragment.len()),
+                                    "",
+                                )
+                                .with_resolutions(custom_error.to_resolution(
+                                    &(&self.query)[span.offset..span.offset + span.fragment.len()],
+                                ))
+                                .send_report(),
+                            _other => (),
+                        });
+                    }
                 }
-            }
-            Err(nom::Err::Error(nom::Context::Code(span, ref errors))) => {
-                self.report_error_for(format!("Unexpected input: {:?}", errors))
-                    .with_code_range(span.into(), QueryPosition(self.query.len()), "")
-                    .send_report();
             }
             _ => (),
         }
@@ -120,6 +141,7 @@ fn did_you_mean(input: &str, choices: &[&str]) -> Option<String> {
 impl SyntaxErrors {
     pub fn to_resolution(&self, code_fragment: &str) -> Vec<String> {
         match self {
+            SyntaxErrors::InvalidFilter => vec!["Filter was invalid".to_string()],
             SyntaxErrors::StartOfError => Vec::new(),
             SyntaxErrors::NotAnOperator => {
                 let mut res = vec![format!("{} is not a valid operator", code_fragment)];
@@ -150,6 +172,16 @@ impl SyntaxErrors {
             }
             SyntaxErrors::MissingParen => {
                 vec!["Insert a right parenthesis to terminate this expression".to_string()]
+            }
+            SyntaxErrors::InvalidBooleanExpression => {
+                let mut base = vec![format!(
+                    "The boolean expression {} is invalid",
+                    code_fragment
+                )];
+                if code_fragment.contains("and") || code_fragment.contains("or") {
+                    base.push("AND and OR must be in UPPER CASE".to_string());
+                }
+                base
             }
         }
     }
