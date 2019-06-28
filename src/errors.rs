@@ -1,9 +1,7 @@
 use crate::lang::{
-    query, Positioned, Query, QueryPosition, Span, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS,
+    Positioned, Query, QueryPosition, Span, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS,
 };
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
-use nom::types::CompleteStr;
-use nom::ErrorKind;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::convert::From;
@@ -53,7 +51,8 @@ impl QueryContainer {
 
     /// Parse the contained query string.
     pub fn parse(&self) -> Result<Query, QueryPosition> {
-        let parse_result = query(Span::new(CompleteStr(&self.query)));
+        /*
+        let parse_result = query(Span::new(&self.query));
 
         let errors = match parse_result {
             Err(nom::Err::Failure(nom::Context::List(ref list))) => Some(list),
@@ -103,12 +102,17 @@ impl QueryContainer {
         }
         // Return the parsed value or the last position of valid syntax
         parse_result.map(|x| x.1).map_err(|e| match e {
+            // We shouldn't get incompletes -- this is probably a parser bug
             nom::Err::Incomplete(_) => QueryPosition(0),
             nom::Err::Error(context) | nom::Err::Failure(context) => match context {
-                nom::Context::Code(span, _) => span.into(),
-                nom::Context::List(list) => list.first().unwrap().0.into(),
+                //nom::Context::Code(span, _) => span.into(),
+                //nom::Context::List(list) => list.first().unwrap().0.into(),
             },
         })
+    }*/
+        // TODO: fix this entire function
+        Err(QueryPosition(0))
+
     }
 }
 
@@ -195,11 +199,12 @@ impl From<u32> for SyntaxErrors {
     }
 }
 
+/*
 impl From<SyntaxErrors> for ErrorKind {
     fn from(e: SyntaxErrors) -> Self {
         ErrorKind::Custom(e as u32)
     }
-}
+}*/
 
 /// Callback for handling error Snippets.
 pub trait ErrorReporter {

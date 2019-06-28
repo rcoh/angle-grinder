@@ -1,14 +1,16 @@
 use crate::data;
 use crate::errors::SyntaxErrors;
 use lazy_static::lazy_static;
+use nom_locate::LocatedSpan;
+/*
 use nom;
 use nom::types::CompleteStr;
 use nom::*;
-use nom::{digit1, double, is_alphabetic, is_alphanumeric, is_digit, multispace};
-use nom_locate::LocatedSpan;
 use std::convert::From;
 use std::str;
+*/
 
+/*
 /// Wraps the result of the child parser in a Positioned and sets the start_pos and end_pos
 /// accordingly.
 macro_rules! with_pos {
@@ -34,8 +36,9 @@ macro_rules! with_pos {
   ($i:expr, $f:expr) => (
     with_pos!($i, call!($f));
   );
-}
+}*/
 
+/*
 /// Dynamic version of `alt` that takes a slice of strings
 fn alternative<T>(input: T, alternatives: &[&'static str]) -> IResult<T, T>
 where
@@ -54,7 +57,7 @@ where
         }
     }
     last_err.unwrap()
-}
+}*/
 
 pub const VALID_AGGREGATES: &'static [&str] = &[
     "count",
@@ -76,7 +79,7 @@ lazy_static! {
 pub const RESERVED_FILTER_WORDS: &'static [&str] = &["AND", "OR", "NOT"];
 
 /// Type used to track the current fragment being parsed and its location in the original input.
-pub type Span<'a> = LocatedSpan<CompleteStr<'a>>;
+pub type Span<'a> = LocatedSpan<&'a str>;
 
 /// Container for the position of some syntax in the input string.  This is similar to the Span,
 /// but it only contains the offset.
@@ -287,6 +290,7 @@ pub struct Query {
     pub operators: Vec<Operator>,
 }
 
+/*
 fn is_ident(c: char) -> bool {
     is_alphanumeric(c as u8) || c == '_'
 }
@@ -1194,3 +1198,4 @@ mod tests {
         );
     }
 }
+*/
