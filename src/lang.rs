@@ -141,14 +141,6 @@ pub enum Expr {
     Value(data::Value),
 }
 
-impl Expr {
-    fn column(key: &str) -> Expr {
-        Expr::NestedColumn {
-            head: key.to_owned(),
-            rest: vec![],
-        }
-    }
-}
 
 /// The KeywordType determines how a keyword string should be interpreted.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -755,6 +747,14 @@ named!(pub query<Span, Query, SyntaxErrors>, fix_error!(SyntaxErrors, exact!(ws!
 #[cfg(test)]
 mod tests {
     use super::*;
+    impl Expr {
+        fn column(key: &str) -> Expr {
+            Expr::NestedColumn {
+                head: key.to_owned(),
+                rest: vec![],
+            }
+        }
+    }
 
     macro_rules! expect {
         ($f:expr, $inp:expr, $res:expr) => {{
