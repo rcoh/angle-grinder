@@ -141,7 +141,6 @@ pub enum Expr {
     Value(data::Value),
 }
 
-
 /// The KeywordType determines how a keyword string should be interpreted.
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum KeywordType {
