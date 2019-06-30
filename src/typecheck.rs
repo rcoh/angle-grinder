@@ -37,7 +37,13 @@ impl From<lang::ComparisonOp> for operator::BoolExpr {
 impl From<lang::Expr> for operator::Expr {
     fn from(inp: lang::Expr) -> Self {
         match inp {
-            lang::Expr::Column(s) => operator::Expr::Column(s),
+            lang::Expr::NestedColumn { head, rest } => operator::Expr::NestedColumn {
+                head,
+                rest: rest
+                    .iter()
+                    .map(|s| operator::ValueRef::Field(s.to_string()))
+                    .collect(),
+            },
             lang::Expr::Unary { op, operand } => match op {
                 lang::UnaryOp::Not => operator::Expr::BoolUnary(operator::UnaryExpr {
                     operator: operator::BoolUnaryExpr::Not,
@@ -107,14 +113,6 @@ impl lang::Positioned<lang::InlineOperator> {
                 Ok(Box::new(operator::Fields::new(&fields, omode)))
             }
             lang::InlineOperator::Where { expr: Some(expr) } => match expr.value.into() {
-                operator::Expr::Comparison(binop) => Ok(Box::new(operator::Where::new(binop))),
-                operator::Expr::BoolUnary(
-                    unop @ operator::UnaryExpr {
-                        operator: operator::BoolUnaryExpr::Not,
-                        ..
-                    },
-                ) => Ok(Box::new(operator::Where::new(unop))),
-                operator::Expr::Column(name) => Ok(Box::new(operator::Where::new(name))),
                 operator::Expr::Value(constant) => {
                     if let Value::Bool(bool_value) = constant {
                         Ok(Box::new(operator::Where::new(*bool_value)))
@@ -133,6 +131,7 @@ impl lang::Positioned<lang::InlineOperator> {
                         Err(e)
                     }
                 }
+                generic_expr => Ok(Box::new(operator::Where::new(generic_expr))),
             },
             lang::InlineOperator::Where { expr: None } => {
                 let e = TypeError::ExpectedExpr;

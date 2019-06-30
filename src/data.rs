@@ -33,6 +33,7 @@ pub enum Value {
     Int(i64),
     Float(OrderedFloat<f64>),
     Bool(bool),
+    Obj(im::HashMap<String, Value>),
     None,
 }
 
@@ -55,17 +56,9 @@ impl Ord for Value {
             (&Value::Int(ref l), &Value::Int(ref r)) => l.cmp(r),
             (&Value::Str(ref l), &Value::Str(ref r)) => l.cmp(r),
             (&Value::Bool(l), &Value::Bool(r)) => l.cmp(&r),
-            // None is less than everything
-            (&Value::None, _any) => Ordering::Less,
-            (_any, &Value::None) => Ordering::Greater,
-            (&Value::Str(..), _any) => Ordering::Greater,
-            (_any, &Value::Str(..)) => Ordering::Less,
-
-            // Bool is in the middle
-            (&Value::Bool(_), &Value::Int(_)) => Ordering::Greater,
-            (&Value::Int(_), &Value::Bool(_)) => Ordering::Less,
-            (&Value::Bool(_), &Value::Float(_)) => Ordering::Greater,
-            (&Value::Float(_), &Value::Bool(_)) => Ordering::Less,
+            (&Value::Obj(ref l), &Value::Obj(ref r)) => l.cmp(r),
+            // All these remaining cases aren't directly comparable
+            (unrelated_l, unrelated_r) => unrelated_l.rank().cmp(&unrelated_r.rank()),
         }
     }
 }
@@ -83,19 +76,39 @@ impl Display for Value {
             Value::Int(ref s) => write!(f, "{}", s),
             Value::Float(ref s) => write!(f, "{}", s),
             Value::Bool(ref s) => write!(f, "{}", s),
-            Value::None => write!(f, "$None$"),
+            Value::Obj(ref o) => write!(f, "{:?}", o),
+            Value::None => write!(f, "None"),
         }
     }
 }
 
 impl Value {
+    pub fn rank(&self) -> u8 {
+        match self {
+            Value::None => 0,
+            Value::Bool(_) => 1,
+            Value::Int(_) => 2,
+            Value::Float(_) => 2,
+            Value::Str(_) => 3,
+            Value::Obj(_) => 4,
+        }
+    }
+
     pub fn render(&self, render_config: &render::RenderConfig) -> String {
         match *self {
             Value::Str(ref s) => s.to_string(),
             Value::Int(ref s) => format!("{}", s),
-            Value::None => "$None$".to_string(),
+            Value::None => "None".to_string(),
             Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
             Value::Bool(ref s) => format!("{}", s),
+            Value::Obj(ref o) => {
+                // todo: this is pretty janky...
+                let rendered: Vec<String> = o
+                    .iter()
+                    .map(|(k, v)| format!("{}:{}", k, v.render(render_config)))
+                    .collect();
+                format!("{{{}}}", rendered.join(","))
+            }
         }
     }
 
@@ -117,9 +130,9 @@ impl Value {
     }
 
     pub fn from_string(s: &str) -> Value {
-        let int_value = s.parse::<i64>();
-        let float_value = s.parse::<f64>();
-        let bool_value = s.parse::<bool>();
+        let int_value = s.trim().parse::<i64>();
+        let float_value = s.trim().parse::<f64>();
+        let bool_value = s.trim().parse::<bool>();
         int_value
             .map(Value::Int)
             .or_else(|_| float_value.map(Value::from_float))
@@ -185,8 +198,9 @@ impl Record {
             for col in &columns {
                 let l_val = rec_l.get(col);
                 let r_val = rec_r.get(col);
-                if l_val != r_val {
-                    return l_val.cmp(&r_val);
+                let cmp = l_val.cmp(&r_val);
+                if cmp != Ordering::Equal {
+                    return cmp;
                 }
             }
             Ordering::Equal
@@ -247,10 +261,19 @@ mod tests {
             Value::from_string("not a number"),
             Value::Str("not a number".to_string())
         );
+        assert_eq!(Value::from_string("1 "), Value::Int(1));
     }
 
     #[test]
-    fn ordering() {
+    fn value_ordering() {
+        assert_eq!(
+            Value::from_string("hello").cmp(&Value::Int(0)),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn record_ordering() {
         let mut r1 = HashMap::<String, Value>::new();
         r1.insert("k1".to_string(), Value::Int(5));
         r1.insert("k3".to_string(), Value::from_float(0.1));
@@ -276,5 +299,19 @@ mod tests {
         assert_eq!(ord4(&r1, &r2), Ordering::Greater);
         assert_eq!(ord4(&r1, &r1), Ordering::Equal);
         assert_eq!(ord4(&r2, &r1), Ordering::Less);
+    }
+
+    #[test]
+    fn record_ordering_matching_prefix() {
+        let mut r1 = HashMap::<String, Value>::new();
+        r1.insert("k1".to_string(), Value::Int(5));
+        r1.insert("k2".to_string(), Value::from_float(6.0));
+
+        let mut r2 = HashMap::<String, Value>::new();
+        r2.insert("k1".to_string(), Value::from_float(5.0));
+        r2.insert("k2".to_string(), Value::Int(7));
+
+        let ord = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
+        assert_eq!(ord(&r1, &r2), Ordering::Less);
     }
 }

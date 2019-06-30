@@ -18,7 +18,7 @@ use std::iter::FromIterator;
 
 type Data = HashMap<String, data::Value>;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Fail, PartialEq)]
 pub enum EvalError {
     #[fail(display = "No value for key {}", key)]
     NoValueForKey { key: String },
@@ -168,8 +168,6 @@ impl AggregateOperator for PreAggAdapter {
                     data: processed_records,
                     columns,
                 };
-
-                //self.state = Aggregate { }
             }
         }
     }
@@ -187,8 +185,16 @@ pub trait AggregateFunction: Send + Sync {
 }
 
 #[derive(Debug, Clone)]
+pub enum ValueRef {
+    Field(String),
+    //IndexAt(usize),
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Column(String),
+    // First record can only be a String, after that, you can do things like `[0]` in addition to `.foo`
+    NestedColumn { head: String, rest: Vec<ValueRef> },
     BoolUnary(UnaryExpr<BoolUnaryExpr>),
     Comparison(BinaryExpr<BoolExpr>),
     Value(&'static data::Value),
@@ -258,16 +264,12 @@ impl Evaluatable<bool> for UnaryExpr<BoolUnaryExpr> {
     }
 }
 
-impl Evaluatable<bool> for String {
+impl Evaluatable<bool> for Expr {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
-        let bool_res = record
-            .get(self)
-            .ok_or_else(|| EvalError::NoValueForKey { key: self.clone() })?;
-
-        match bool_res {
+        match self.eval_borrowed(record)? {
             data::Value::Bool(bool_value) => Ok(*bool_value),
-            _ => Err(EvalError::ExpectedBoolean {
-                found: bool_res.to_string(),
+            other => Err(EvalError::ExpectedBoolean {
+                found: other.to_string(),
             }),
         }
     }
@@ -282,6 +284,27 @@ impl EvaluatableBorrowed<data::Value> for Expr {
             Expr::Column(ref col) => record
                 .get(col)
                 .ok_or_else(|| EvalError::NoValueForKey { key: col.clone() }),
+            Expr::NestedColumn { ref head, ref rest } => {
+                let mut root_record: &data::Value = record
+                    .get(head)
+                    .ok_or_else(|| EvalError::NoValueForKey { key: head.clone() })?;
+
+                // TODO: probably a nice way to do this with a fold
+                for value_reference in rest.iter() {
+                    match (value_reference, root_record) {
+                        (ValueRef::Field(ref key), data::Value::Obj(map)) => {
+                            root_record = map
+                                .get(key)
+                                .ok_or_else(|| EvalError::NoValueForKey { key: key.clone() })?
+                        }
+                        (ValueRef::Field(ref key), _other) => {
+                            // TODO: object was not a value
+                            return Err(EvalError::NoValueForKey { key: key.clone() });
+                        }
+                    }
+                }
+                Ok(root_record)
+            }
             Expr::BoolUnary(
                 ref unary_op @ UnaryExpr {
                     operator: BoolUnaryExpr::Not,
@@ -493,6 +516,7 @@ pub enum SortDirection {
 
 pub struct Sorter {
     columns: Vec<String>,
+    initial_columns: Vec<String>,
     state: Vec<Data>,
     ordering: Box<Fn(&Data, &Data) -> Ordering + Send + Sync>,
     direction: SortDirection,
@@ -504,6 +528,7 @@ impl Sorter {
             state: Vec::new(),
             columns: Vec::new(),
             direction,
+            initial_columns: columns.clone(),
             ordering: Box::new(Record::ordering(columns)),
         }
     }
@@ -521,8 +546,26 @@ impl Sorter {
 
 impl AggregateOperator for Sorter {
     fn emit(&self) -> data::Aggregate {
+        let mut sorted_data = self.state.to_vec();
+        let order = &self.ordering;
+        // potential hotspot with large numbers of columns
+        let additional_columns: Vec<String> = self
+            .columns
+            .iter()
+            .filter(|c| !self.initial_columns.contains(c))
+            .cloned()
+            .collect();
+        // To produce a deterministic sort, we should also sort by the non-key columns
+
+        let second_ordering = Record::ordering(additional_columns);
+
+        if self.direction == SortDirection::Ascending {
+            sorted_data.sort_by(|l, r| (order)(l, r).then(second_ordering(l, r)));
+        } else {
+            sorted_data.sort_by(|l, r| (order)(r, l).then(second_ordering(l, r)));
+        }
         Aggregate {
-            data: self.state.to_vec(),
+            data: sorted_data,
             columns: self.columns.clone(),
         }
     }
@@ -533,11 +576,6 @@ impl AggregateOperator for Sorter {
             Row::Aggregate(agg) => {
                 self.columns = agg.columns;
                 self.state = agg.data;
-                if self.direction == SortDirection::Ascending {
-                    self.state.sort_by(|l, r| (order)(l, r));
-                } else {
-                    self.state.sort_by(|l, r| (order)(r, l));
-                }
             }
             Row::Record(rec) => {
                 let new_cols = self.new_columns(&rec.data);
@@ -820,6 +858,27 @@ impl ParseJson {
 
 impl UnaryPreAggFunction for ParseJson {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        fn json_to_value(v: &JsonValue) -> data::Value {
+            match v {
+                &JsonValue::Number(ref num) => {
+                    if num.is_i64() {
+                        data::Value::Int(num.as_i64().unwrap())
+                    } else {
+                        data::Value::from_float(num.as_f64().unwrap())
+                    }
+                }
+                &JsonValue::String(ref s) => data::Value::Str(s.to_string()),
+                &JsonValue::Null => data::Value::None,
+                &JsonValue::Bool(b) => data::Value::Bool(b),
+                &JsonValue::Object(ref map) => data::Value::Obj(
+                    map.iter()
+                        .map(|(k, v)| (k.to_string(), json_to_value(v)))
+                        .collect::<HashMap<String, data::Value>>()
+                        .into(),
+                ),
+                _other => data::Value::Str(_other.to_string()),
+            }
+        };
         let json: JsonValue = {
             let inp = get_input(&rec, &self.input_column)?;
             serde_json::from_str(&inp).map_err(|_| EvalError::ExpectedJson {
@@ -827,26 +886,13 @@ impl UnaryPreAggFunction for ParseJson {
             })?
         };
         let res = match json {
-            JsonValue::Object(map) => map.iter().fold(Some(rec), |record_opt, (k, v)| {
-                record_opt.and_then(|record| match v {
-                    &JsonValue::Number(ref num) => {
-                        if num.is_i64() {
-                            Some(record.put(k, data::Value::Int(num.as_i64().unwrap())))
-                        } else {
-                            Some(record.put(k, data::Value::from_float(num.as_f64().unwrap())))
-                        }
-                    }
-                    &JsonValue::String(ref s) => {
-                        Some(record.put(k, data::Value::Str(s.to_string())))
-                    }
-                    &JsonValue::Null => Some(record.put(k, data::Value::None)),
-                    &JsonValue::Bool(b) => Some(record.put(k, data::Value::Bool(b))),
-                    _other => Some(record.put(k, data::Value::Str(_other.to_string()))),
-                })
-            }),
-            _other => Some(rec),
+            JsonValue::Object(map) => map
+                .iter()
+                .fold(rec, |record, (k, v)| record.put(k, json_to_value(v))),
+            // TODO: we'll implicitly drop non-object root values. Maybe we should produce an EvalError here
+            _other => rec,
         };
-        Ok(res)
+        Ok(Some(res))
     }
 }
 
@@ -948,6 +994,44 @@ mod tests {
     }
 
     #[test]
+    fn test_nested_eval() {
+        let rec = Record::new(
+            &(r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n"),
+        );
+        let parser = ParseJson::new(None);
+        let rec = parser.process(rec).unwrap().unwrap();
+        let expr = Expr::NestedColumn {
+            head: "k1".to_string(),
+            rest: vec![ValueRef::Field("k2".to_string())],
+        };
+        let data: &data::Value = expr.eval_borrowed(&rec.data).unwrap();
+        assert_eq!(data, &data::Value::from_float(5.5));
+    }
+
+    #[test]
+    fn test_nested_eval_error() {
+        let rec = Record::new(
+            &(r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n"),
+        );
+        let parser = ParseJson::new(None);
+        let rec = parser.process(rec).unwrap().unwrap();
+        let expr = Expr::NestedColumn {
+            head: "k1".to_string(),
+            rest: vec![ValueRef::Field("k11".to_string())],
+        };
+        let res: Result<&data::Value, EvalError> = expr.eval_borrowed(&rec.data);
+        match res {
+            Ok(_) => assert_eq!(false, true),
+            Err(eval_error) => assert_eq!(
+                eval_error,
+                EvalError::NoValueForKey {
+                    key: "k11".to_string()
+                }
+            ),
+        }
+    }
+
+    #[test]
     fn json() {
         let rec = Record::new(
             &(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n"),
@@ -962,6 +1046,28 @@ mod tests {
                 "k3".to_string() => Value::Str("str".to_string()),
                 "k4".to_string() => Value::None,
                 "k5".to_string() => Value::Str("[1,2,3]".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn nested_json() {
+        let rec = Record::new(
+            &(r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n"),
+        );
+        let parser = ParseJson::new(None);
+        let rec = parser.process(rec).unwrap().unwrap();
+        assert_eq!(
+            rec.data,
+            hashmap! {
+                "k1".to_string() => Value::Obj(
+                    hashmap! {
+                        "k2".to_string() => Value::from_float(5.5),
+                        "k3".to_string() => Value::Str("str".to_string()),
+                        "k4".to_string() => Value::None,
+                        "k5".to_string() => Value::Str("[1,2,3]".to_string())
+                    }.into()
+                 )
             }
         );
     }

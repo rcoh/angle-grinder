@@ -11,7 +11,7 @@ input = """
 output = """
 message                  num_things                 _count
 ------------------------------------------------------------------
-$None$                   $None$                     1
+None                     None                       1
 A different event        0.20                       1
 A thing happened         2                          1
 A different event        2.00                       1

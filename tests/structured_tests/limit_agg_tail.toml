@@ -20,8 +20,8 @@ input = """
 {"level": null}
 """
 output = """
-level         _count
-----------------------------
-$None$        1
+level        _count
+---------------------------
+None         1
 """
 notes = "If the implicit sort operator isn't added after the count, the output will be `error` and not `info`"

@@ -125,7 +125,10 @@ pub enum UnaryOp {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
-    Column(String),
+    NestedColumn {
+        head: String,
+        rest: Vec<String>,
+    },
     Unary {
         op: UnaryOp,
         operand: Box<Expr>,
@@ -136,6 +139,15 @@ pub enum Expr {
         right: Box<Expr>,
     },
     Value(data::Value),
+}
+
+impl Expr {
+    fn column(key: &str) -> Expr {
+        Expr::NestedColumn {
+            head: key.to_owned(),
+            rest: vec![],
+        }
+    }
 }
 
 /// The KeywordType determines how a keyword string should be interpreted.
@@ -321,6 +333,13 @@ named!(value<Span, data::Value>, ws!(
         | map!(digit1, |s|data::Value::from_string(s.fragment.0))
     )
 ));
+
+named!(column_ref<Span, Expr>, do_parse!(
+    head: ident >>
+    rest: opt!(preceded!(tag!("."), separated_list!(tag!("."), ident))) >> 
+    (Expr::NestedColumn { head, rest: rest.unwrap_or_else(||vec![]) })
+));
+
 named!(ident<Span, String>, do_parse!(
     start: take_while1!(starts_ident) >>
     rest: take_while!(is_ident) >>
@@ -329,7 +348,7 @@ named!(ident<Span, String>, do_parse!(
 
 named!(e_ident<Span, Expr>,
     ws!(alt_complete!(
-      map!(ident, |col|Expr::Column(col.to_owned()))
+      column_ref
     | map!(value, Expr::Value)
       //expr
     | ws!(add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
@@ -810,8 +829,8 @@ mod tests {
             "a == b",
             Expr::Binary {
                 op: BinaryOp::Comparison(ComparisonOp::Eq),
-                left: Box::new(Expr::Column("a".to_string())),
-                right: Box::new(Expr::Column("b".to_string())),
+                left: Box::new(Expr::column("a")),
+                right: Box::new(Expr::column("b")),
             }
         );
     }
@@ -823,7 +842,7 @@ mod tests {
             "a <= \"b\"",
             Expr::Binary {
                 op: BinaryOp::Comparison(ComparisonOp::Lte),
-                left: Box::new(Expr::Column("a".to_string())),
+                left: Box::new(Expr::column("a")),
                 right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
             }
         );
@@ -831,7 +850,15 @@ mod tests {
 
     #[test]
     fn parse_expr_ident() {
-        expect!(expr, "foo", Expr::Column("foo".to_string()));
+        expect!(expr, "foo", Expr::column("foo"));
+        expect!(
+            expr,
+            "foo.bar.baz",
+            Expr::NestedColumn {
+                head: "foo".to_owned(),
+                rest: vec!["bar".to_owned(), "baz".to_owned()]
+            }
+        )
     }
 
     #[test]
@@ -922,7 +949,7 @@ mod tests {
                 value: InlineOperator::Parse {
                     pattern: Keyword::new_wildcard("[key=*]".to_string()),
                     fields: vec!["v".to_string()],
-                    input_column: Some(Expr::Column("field".to_string())),
+                    input_column: Some(Expr::column("field")),
                     no_drop: false
                 },
             })
@@ -993,7 +1020,7 @@ mod tests {
             multi_aggregate_operator,
             "count as renamed by x, y",
             Operator::MultiAggregate(MultiAggregateOperator {
-                key_cols: vec![Expr::Column("x".to_string()), Expr::Column("y".to_string())],
+                key_cols: vec![Expr::column("x"), Expr::column("y")],
                 key_col_headers: vec!["x".to_string(), "y".to_string()],
                 aggregate_functions: vec![(
                     "renamed".to_string(),
@@ -1016,7 +1043,7 @@ mod tests {
                 "p50".to_string(),
                 Positioned {
                     value: AggregateFunction::Percentile {
-                        column: Expr::Column("x".to_string()),
+                        column: Expr::column("x"),
                         percentile: 0.5,
                         percentile_str: "50".to_string(),
                     },
@@ -1169,10 +1196,10 @@ mod tests {
                     Operator::MultiAggregate(MultiAggregateOperator {
                         key_col_headers: vec!["foo".to_string(), "foo == 123".to_string()],
                         key_cols: vec![
-                            Expr::Column("foo".to_string()),
+                            Expr::column("foo"),
                             Expr::Binary {
                                 op: BinaryOp::Comparison(ComparisonOp::Eq),
-                                left: Box::new(Expr::Column("foo".to_string())),
+                                left: Box::new(Expr::column("foo")),
                                 right: Box::new(Expr::Value(data::Value::Int(123))),
                             },
                         ],
