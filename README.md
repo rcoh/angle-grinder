@@ -95,6 +95,22 @@ Given input like:
 ```
 ![json.gif](/screen_shots/json.gif)
 
+##### Logfmt
+`logfmt [from other_field]`: Extract logfmt-serialized rows into fields for later use. If the row is _not_ valid logfmt, then it is dropped. Optionally, `from other_field` can be specified. Logfmt is a an output format commonly used by Heroku and Splunk, described at https://www.brandur.org/logfmt.
+
+*Examples*:
+```agrind
+* | logfmt
+```
+
+Given input like:
+```
+{"key": "blah", "nested_key": "some=logfmt data=more"}
+```
+```agrind
+* | json | logfmt from nested_key | fields some
+```
+
 ##### Parse
 `parse "* pattern * otherpattern *" [from field] as a,b,c [nodrop]`: Parse text that matches the pattern into variables. Lines that don't match the pattern will be dropped unless `nodrop` is specified. `*` is equivalent to regular expression `.*` and is greedy.
 By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.

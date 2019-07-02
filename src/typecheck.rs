@@ -81,6 +81,9 @@ impl lang::Positioned<lang::InlineOperator> {
             lang::InlineOperator::Json { input_column } => {
                 Ok(Box::new(operator::ParseJson::new(input_column)))
             }
+            lang::InlineOperator::Logfmt { input_column } => {
+                Ok(Box::new(operator::ParseLogfmt::new(input_column)))
+            }
             lang::InlineOperator::Parse {
                 pattern,
                 fields,

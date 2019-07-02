@@ -66,7 +66,9 @@ pub const VALID_AGGREGATES: &'static [&str] = &[
     "sort",
 ];
 
-pub const VALID_INLINE: &'static [&str] = &["parse", "limit", "json", "total", "fields", "where"];
+pub const VALID_INLINE: &'static [&str] = &[
+    "parse", "limit", "json", "logfmt", "total", "fields", "where",
+];
 
 lazy_static! {
     pub static ref VALID_OPERATORS: Vec<&'static str> =
@@ -214,6 +216,9 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Clone)]
 pub enum InlineOperator {
     Json {
+        input_column: Option<String>,
+    },
+    Logfmt {
         input_column: Option<String>,
     },
     Parse {
@@ -392,6 +397,12 @@ named!(json<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     (InlineOperator::Json { input_column: from_column_opt.map(|s|s.to_string()) })
 ))));
 
+named!(logfmt<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
+    tag!("logfmt") >>
+    from_column_opt: opt!(ws!(preceded!(tag!("from"), ident))) >>
+    (InlineOperator::Logfmt { input_column: from_column_opt.map(|s|s.to_string()) })
+))));
+
 named!(whre<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("where") >>
     ex: opt!(with_pos!(expr)) >>
@@ -561,7 +572,7 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
 ));
 
 named!(inline_operator<Span, Operator>,
-    map!(alt_complete!(parse | json | fields | whre | limit | total), Operator::Inline)
+    map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total), Operator::Inline)
 );
 
 named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
@@ -941,6 +952,15 @@ mod tests {
         );
         expect!(
             operator,
+            "  logfmt",
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(2),
+                end_pos: QueryPosition(8),
+                value: InlineOperator::Logfmt { input_column: None }
+            })
+        );
+        expect!(
+            operator,
             r#" parse "[key=*]" from field as v "#,
             Operator::Inline(Positioned {
                 start_pos: QueryPosition(1),
@@ -1210,6 +1230,31 @@ mod tests {
                                 end_pos: QueryPosition(48),
                             }
                         ),],
+                    }),
+                    Operator::Sort(SortOperator {
+                        sort_cols: vec!["foo".to_string()],
+                        direction: SortMode::Descending,
+                    }),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn logfmt_operator() {
+        let query_str = r#"* | logfmt from col | sort by foo dsc "#;
+        expect!(
+            query,
+            query_str,
+            Query {
+                search: Search::And(vec![]),
+                operators: vec![
+                    Operator::Inline(Positioned {
+                        start_pos: QueryPosition(4),
+                        end_pos: QueryPosition(20),
+                        value: InlineOperator::Logfmt {
+                            input_column: Some("col".to_string()),
+                        }
                     }),
                     Operator::Sort(SortOperator {
                         sort_cols: vec!["foo".to_string()],

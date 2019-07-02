@@ -2,6 +2,7 @@ extern crate itertools;
 extern crate quantiles;
 extern crate regex;
 //extern crate regex_syntax;
+extern crate logfmt;
 extern crate serde_json;
 
 use self::quantiles::ckms::CKMS;
@@ -896,6 +897,37 @@ impl UnaryPreAggFunction for ParseJson {
     }
 }
 
+#[derive(Clone)]
+pub struct ParseLogfmt {
+    input_column: Option<Expr>,
+}
+
+impl ParseLogfmt {
+    pub fn new(input_column: Option<String>) -> ParseLogfmt {
+        ParseLogfmt {
+            input_column: input_column.map(Expr::Column),
+        }
+    }
+}
+
+impl UnaryPreAggFunction for ParseLogfmt {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        let pairs = {
+            let inp = get_input(&rec, &self.input_column)?;
+            // Record includes the trailing newline, while logfmt considers that part of the
+            // message if present. Trim any trailing whitespace.
+            logfmt::parse(&inp.trim_end())
+        };
+        let res = {
+            pairs.into_iter().fold(rec, |record, pair| match &pair.val {
+                None => record.put(&pair.key, data::Value::None),
+                Some(val) => record.put(&pair.key, data::Value::from_string(val)),
+            })
+        };
+        Ok(Some(res))
+    }
+}
+
 /// The definition for a limit operator, which is a positive number used to specify whether
 /// the first N rows should be passed through to the downstream operators.  Negative limits are
 /// not supported at this time.
@@ -1068,6 +1100,22 @@ mod tests {
                         "k5".to_string() => Value::Str("[1,2,3]".to_string())
                     }.into()
                  )
+            }
+        );
+    }
+
+    #[test]
+    fn logfmt() {
+        let rec = Record::new(&(r#"k1=5 k2=5.5 k3="a str" k4="#.to_string() + "\n"));
+        let parser = ParseLogfmt::new(None);
+        let rec = parser.process(rec).unwrap().unwrap();
+        assert_eq!(
+            rec.data,
+            hashmap! {
+                "k1".to_string() => Value::Int(5),
+                "k2".to_string() => Value::from_float(5.5),
+                "k3".to_string() => Value::Str("a str".to_string()),
+                "k4".to_string() => Value::Str("".to_string())
             }
         );
     }

@@ -1,0 +1,3 @@
+level=info msg="Stopping all fetchers" tag=stopping_fetchers id=ConsumerFetcherManager-1382721708341 module=kafka.consumer.ConsumerFetcherManager
+level=info msg="Starting all fetchers" tag=starting_fetchers id=ConsumerFetcherManager-1382721708342 module=kafka.consumer.ConsumerFetcherManager
+level=warn msg="Fetcher failed to start" tag=errored_fetchers id=ConsumerFetcherManager-1382721708342 module=kafka.consumer.ConsumerFetcherManager

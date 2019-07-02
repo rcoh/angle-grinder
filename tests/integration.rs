@@ -75,6 +75,11 @@ mod integration {
     }
 
     #[test]
+    fn logfmt_operator() {
+        structured_test(include_str!("structured_tests/logfmt.toml"));
+    }
+
+    #[test]
     fn sum_operator() {
         structured_test(include_str!("structured_tests/sum.toml"));
     }
