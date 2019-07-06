@@ -88,6 +88,7 @@ mod integration {
         structured_test(include_str!("structured_tests/where-5.toml"));
         structured_test(include_str!("structured_tests/where-6.toml"));
         structured_test(include_str!("structured_tests/where-7.toml"));
+        structured_test(include_str!("structured_tests/where-8.toml"));
     }
 
     #[test]
@@ -126,6 +127,15 @@ mod integration {
         structured_test(include_str!("structured_tests/count_distinct_error_2.toml"));
         structured_test(include_str!("structured_tests/not_an_agg.toml"));
         structured_test(include_str!("structured_tests/not_an_agg_2.toml"))
+    }
+
+    #[test]
+    fn test_nested_values() {
+        structured_test(include_str!("structured_tests/nested_values_1.toml"));
+        structured_test(include_str!("structured_tests/nested_values_2.toml"));
+        structured_test(include_str!("structured_tests/nested_values_3.toml"));
+        structured_test(include_str!("structured_tests/nested_values_3.toml"));
+        structured_test(include_str!("structured_tests/nested_values_3.toml"));
     }
 
     #[test]
@@ -201,7 +211,7 @@ mod integration {
 ---------------------------
 info         3
 error        2
-$None$       1")
+None         1")
             .unwrap();
     }
 
@@ -231,7 +241,7 @@ $None$       1")
 ---------------------------
 info         3
 error        2
-$None$       1")
+None         1")
             .unwrap();
     }
 

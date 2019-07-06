@@ -1,0 +1,16 @@
+query = """* | json | sum(thing_a.x)"""
+input = """
+{"thing_a": {"x": 5 }, "thing_b": {"y": 5}}
+{"thing_a": {"x": 6 }, "thing_b": {"y": 5}}
+{"thing_a": {"z": 6 }, "thing_b": {"z": 5}}
+{"thing_a": {"x": {"a": 5} }, "thing_b": {"y": {"a": 5}}}
+{"thing_a": {"x": "blue" }, "thing_b": {"y": "blue"}}
+"""
+output = """
+_sum
+------------
+11
+"""
+
+error = """
+"""

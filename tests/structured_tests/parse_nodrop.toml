@@ -7,5 +7,5 @@ name=Jim
 output = """
 [name=Jarrad]        [words=Hi]
 [name=Ella]          [words=Bye]
-[name=$None$]        [words=$None$]
+[name=None]          [words=None]
 """

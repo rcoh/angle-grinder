@@ -37,6 +37,7 @@ num-traits = "0.2.6"
 annotate-snippets = { version = "0.5.0", features = ["ansi_term"] }
 atty = "0.2.0"
 lazy_static = "1.2.0"
+im = "13.0.0"
 
 [dev-dependencies]
 assert_cli = "0.6.3"

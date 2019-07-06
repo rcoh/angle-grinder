@@ -12,5 +12,5 @@ level        _count        _countDistinct
 -------------------------------------------------
 info         3             2
 error        2             2
-$None$       1             0
+None         1             0
 """

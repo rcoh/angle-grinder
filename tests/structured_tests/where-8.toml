@@ -1,0 +1,17 @@
+query = """* | json | where bval"""
+input = """
+{"thing_a": 5, "bval": true}
+{"thing_a": 6, "bval": false}
+{"thing_a": 0, "bval": true}
+{"thing_a": 0}
+{"thing_a": 0, "bval": 1}
+"""
+output = """
+[bval=true]        [thing_a=5]
+[bval=true]        [thing_a=0]
+"""
+error = """
+error: No value for key bval
+error: Expected boolean, found 1
+"""
+
