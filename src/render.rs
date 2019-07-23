@@ -4,6 +4,9 @@ use std;
 use std::collections::HashMap;
 use std::io::{stdout, Write};
 
+extern crate strfmt;
+use strfmt::strfmt;
+
 extern crate terminal_size;
 
 use self::terminal_size::{terminal_size, Height, Width};
@@ -13,6 +16,7 @@ pub struct RenderConfig {
     pub floating_points: usize,
     pub min_buffer: usize,
     pub max_buffer: usize,
+    pub format: Option<String>,
 }
 
 struct TerminalSize {
@@ -104,7 +108,7 @@ impl PrettyPrinter {
         }
     }
 
-    fn format_record(&mut self, record: &data::Record) -> String {
+    fn format_record_as_columns(&mut self, record: &data::Record) -> String {
         let new_column_widths = self.compute_column_widths(&(record.data));
         self.column_widths.extend(new_column_widths);
         let new_columns = self.new_columns(&(record.data));
@@ -146,6 +150,17 @@ impl PrettyPrinter {
             })
             .collect();
         strs.join("").trim().to_string()
+    }
+
+    fn format_record_as_format(&self, format: &String, record: &data::Record) -> String {
+        strfmt(format, &record.data).unwrap()
+    }
+
+    fn format_record(&mut self, record: &data::Record) -> String {
+        match self.render_config.format {
+            Some(ref format) => self.format_record_as_format(format, record),
+            None => self.format_record_as_columns(record),
+        }
     }
 
     fn max_width(&self) -> u16 {
@@ -328,6 +343,7 @@ mod tests {
                 floating_points: 2,
                 min_buffer: 1,
                 max_buffer: 4,
+                format: None,
             },
             None,
         );
@@ -344,6 +360,7 @@ mod tests {
                 floating_points: 2,
                 min_buffer: 1,
                 max_buffer: 4,
+                format: None,
             },
             None,
         );
@@ -371,6 +388,36 @@ mod tests {
     }
 
     #[test]
+    fn pretty_print_record_formatted() {
+        let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
+        let parser = ParseJson::new(None);
+        let rec = parser.process(rec).unwrap().unwrap();
+        let mut pp = PrettyPrinter::new(
+            RenderConfig {
+                floating_points: 2,
+                min_buffer: 1,
+                max_buffer: 4,
+                format: Some("{k1:>3} k2={k2:<10.3} k3[{k3}]".to_string()),
+            },
+            None,
+        );
+        assert_eq!(pp.format_record(&rec), "  5 k2=5.5        k3[str]");
+        let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
+        let parser = ParseJson::new(None);
+        let rec = parser.process(rec).unwrap().unwrap();
+        assert_eq!(pp.format_record(&rec), "955 k2=5.5        k3[str3]");
+        let rec = Record::new(
+            r#"{"k1": "here is a amuch longer stsring", "k2": 5.5000001, "k3": "str3"}"#,
+        );
+        let parser = ParseJson::new(None);
+        let rec = parser.process(rec).unwrap().unwrap();
+        assert_eq!(
+            pp.format_record(&rec),
+            "here is a amuch longer stsring k2=5.5        k3[str3]"
+        );
+    }
+
+    #[test]
     fn pretty_print_record_too_long() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
         let parser = ParseJson::new(None);
@@ -380,6 +427,7 @@ mod tests {
                 floating_points: 2,
                 min_buffer: 1,
                 max_buffer: 4,
+                format: None,
             },
             Some(TerminalSize {
                 width: 10,
@@ -417,6 +465,7 @@ mod tests {
                 floating_points: 2,
                 min_buffer: 2,
                 max_buffer: 4,
+                format: None,
             },
             Some(TerminalSize {
                 width: 100,
@@ -465,6 +514,7 @@ mod tests {
                 floating_points: 2,
                 min_buffer: 2,
                 max_buffer: 4,
+                format: None,
             },
             Some(TerminalSize {
                 width: max_width as u16,

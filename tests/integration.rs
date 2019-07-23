@@ -311,9 +311,28 @@ None         1")
             .unwrap();
     }
 
+    #[test]
+    fn custom_format() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                "* | logfmt",
+                "--format",
+                "{level} | {msg:<30} module={module}",
+                "--file",
+                "test_files/test_logfmt.log",
+            ])
+            .stdout()
+            .is(
+                "info | Stopping all fetchers          module=kafka.consumer.ConsumerFetcherManager
+info | Starting all fetchers          module=kafka.consumer.ConsumerFetcherManager
+warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManager",
+            )
+            .unwrap();
+    }
+
     fn ensure_parses(query: &str) {
         let query_container = QueryContainer::new(query.to_string(), Box::new(EmptyErrorReporter));
-        Pipeline::new(&query_container).expect(&format!(
+        Pipeline::new(&query_container, None).expect(&format!(
             "Query: `{}` from the README should have parsed",
             query
         ));

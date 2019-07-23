@@ -39,6 +39,7 @@ atty = "0.2.0"
 lazy_static = "1.2.0"
 im = "13.0.0"
 logfmt = { git = "https://github.com/brandur/logfmt", tag = "v0.0.2" }
+strfmt = "0.1.6"
 
 [dev-dependencies]
 assert_cli = "0.6.3"
