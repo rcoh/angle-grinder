@@ -110,7 +110,7 @@ pub mod pipeline {
             }
         }
 
-        pub fn new(pipeline: &QueryContainer) -> Result<Self, Error> {
+        pub fn new(pipeline: &QueryContainer, format: Option<String>) -> Result<Self, Error> {
             let parsed = pipeline.parse().map_err(|_pos| CompileError::Parse);
             let query = parsed?;
             let filters = Pipeline::convert_filter(query.search);
@@ -166,6 +166,7 @@ pub mod pipeline {
                         floating_points: 2,
                         min_buffer: 4,
                         max_buffer: 8,
+                        format: format,
                     },
                     Duration::from_millis(50),
                 ),

@@ -297,6 +297,13 @@ tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" a
 [dest=111.221.29.254.https]        [length=310]      [src=21:50:18.458527 IP 10.0.2.243.47152]
 ```
 
+Alternate rendering formats can be provided with the `--format` flag. This flag uses the formatting syntax defined in https://doc.rust-lang.org/std/fmt/#syntax. For example
+```
+tail -f live_pcap | agrind --format '{src} => {dst} | length={length}' '* | parse "* > *:" as src, dest | parse "length *" as length'
+21:50:18.458331 IP 10.0.2.243.47152 => 111.221.29.254.https | length=0
+21:50:18.458527 IP 10.0.2.243.47152 => 111.221.29.254.https | length=310
+```
+
 Aggregate data is written to the terminal and will live-update until the stream ends:
 ```noformat
 k2                  avg         

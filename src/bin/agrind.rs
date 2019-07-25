@@ -35,6 +35,11 @@ struct Cli {
     /// Optionally reads from a file instead of Stdin
     #[structopt(long = "file", short = "f")]
     file: Option<String>,
+
+    /// Provide a Rust std::fmt string to format output
+    #[structopt(long = "format", short = "m")]
+    format: Option<String>,
+
     #[structopt(flatten)]
     verbosity: Verbosity,
 }
@@ -73,7 +78,7 @@ fn main() -> CliResult {
         }),
     );
     args.verbosity.setup_env_logger("agrind")?;
-    let pipeline = Pipeline::new(&query)?;
+    let pipeline = Pipeline::new(&query, args.format)?;
     match args.file {
         Some(file_name) => {
             let f = File::open(file_name)?;
