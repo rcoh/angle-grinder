@@ -194,8 +194,14 @@ impl lang::Positioned<lang::AggregateFunction> {
     ) -> Result<Box<operator::AggregateFunction>, ()> {
         match self.value {
             lang::AggregateFunction::Count => Ok(Box::new(operator::Count::new())),
+            lang::AggregateFunction::Min { column } => {
+                Ok(Box::new(operator::Min::empty(column)))
+            }
             lang::AggregateFunction::Average { column } => {
                 Ok(Box::new(operator::Average::empty(column)))
+            }
+            lang::AggregateFunction::Max { column } => {
+                Ok(Box::new(operator::Max::empty(column)))
             }
             lang::AggregateFunction::Sum { column } => Ok(Box::new(operator::Sum::empty(column))),
             lang::AggregateFunction::Percentile {

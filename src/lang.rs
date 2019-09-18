@@ -58,9 +58,10 @@ where
 
 pub const VALID_AGGREGATES: &'static [&str] = &[
     "count",
+    "min",
     "average",
     "avg",
-    "average",
+    "max",
     "sum",
     "count_distinct",
     "sort",
@@ -263,7 +264,13 @@ pub enum AggregateFunction {
     Sum {
         column: Expr,
     },
+    Min {
+        column: Expr,
+    },
     Average {
+        column: Expr,
+    },
+    Max {
         column: Expr,
     },
     Percentile {
@@ -532,10 +539,22 @@ named!(count<Span, Positioned<AggregateFunction>>, with_pos!(map!(tag!("count"),
     |_s|AggregateFunction::Count{}))
 );
 
+named!(min<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
+    tag!("min") >>
+    column: delimited!(tag!("("), expr,tag!(")")) >>
+    (AggregateFunction::Min{column})
+))));
+
 named!(average<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
     alt_complete!(tag!("avg") | tag!("average")) >>
     column: delimited!(tag!("("), expr ,tag!(")")) >>
     (AggregateFunction::Average{column})
+))));
+
+named!(max<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
+    tag!("max") >>
+    column: delimited!(tag!("("), expr,tag!(")")) >>
+    (AggregateFunction::Max{column})
 ))));
 
 named!(count_distinct<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
@@ -580,7 +599,9 @@ named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
     res: alt_complete!(
         count_distinct |
         count |
+        min |
         average |
+        max |
         sum |
         p_nn) >> (res)
 ));
@@ -597,7 +618,9 @@ fn default_output(func: &Positioned<AggregateFunction>) -> String {
     match func.into() {
         AggregateFunction::Count { .. } => "_count".to_string(),
         AggregateFunction::Sum { .. } => "_sum".to_string(),
+        AggregateFunction::Min { .. } => "_min".to_string(),
         AggregateFunction::Average { .. } => "_average".to_string(),
+        AggregateFunction::Max { .. } => "_max".to_string(),
         AggregateFunction::CountDistinct { .. } => "_countDistinct".to_string(),
         AggregateFunction::Percentile {
             ref percentile_str, ..

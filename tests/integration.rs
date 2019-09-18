@@ -85,6 +85,12 @@ mod integration {
     }
 
     #[test]
+    fn min_max_operators() {
+        structured_test(include_str!("structured_tests/min_max.toml"));
+        structured_test(include_str!("structured_tests/min_max_none.toml"));
+    }
+
+    #[test]
     fn where_operator() {
         structured_test(include_str!("structured_tests/where-1.toml"));
         structured_test(include_str!("structured_tests/where-2.toml"));
