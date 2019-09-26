@@ -335,7 +335,9 @@ The renderer will do its best to keep the data nicely formatted as it changes an
 it has a refresh rate of about 20hz.
 
 ### Contributing
-`angle-grinder` builds with Rust >= 1.26. There are a number of ways you can contribute:
+`angle-grinder` builds with Rust >= 1.26. `rustfmt` is required when submitting PRs (`rustup component add rustfmt`). 
+
+There are a number of ways you can contribute:
 - Adding new special purpose operators
 - Improve documentation of existing operators + providing more usage examples
 - Provide more test cases of real queries on real world data
@@ -345,7 +347,14 @@ cargo build
 cargo test
 cargo install --path .
 agrind --help
+... write some code!
+
+cargo fmt
+
+git commit ... etc.
 ```
+
+**When submitting PRs, please run `cargo fmt` -- this is necessary for the CI suite to pass.** You can install `cargo fmt` with: `rustup component add rustfmt` if it's not already in your toolchain.
 
 See the following projects and open issues for specific potential improvements/bugs.
 
