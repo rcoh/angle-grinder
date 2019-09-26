@@ -455,7 +455,7 @@ impl AggregateFunction for Min {
     fn process(&mut self, data: &Data) -> Result<(), EvalError> {
         let value: f64 = self.column.eval(data)?;
         if value < self.min {
-            self.min= value;
+            self.min = value;
         }
         Ok(())
     }
