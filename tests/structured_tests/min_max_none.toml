@@ -1,0 +1,9 @@
+query = "* | json | min(num_things), max(num_things)"
+input = """
+{"level": "error", "message": "Oh now an error!"}
+"""
+output = """
+_min        _max
+------------------------
+None        None
+"""

@@ -437,6 +437,42 @@ impl AggregateFunction for CountDistinct {
     }
 }
 
+pub struct Min {
+    min: f64,
+    column: Expr,
+}
+
+impl Min {
+    pub fn empty<T: Into<Expr>>(column: T) -> Min {
+        Min {
+            min: std::f64::INFINITY,
+            column: column.into(),
+        }
+    }
+}
+
+impl AggregateFunction for Min {
+    fn process(&mut self, data: &Data) -> Result<(), EvalError> {
+        let value: f64 = self.column.eval(data)?;
+        if value < self.min {
+            self.min = value;
+        }
+        Ok(())
+    }
+
+    fn emit(&self) -> data::Value {
+        if self.min.is_finite() {
+            data::Value::from_float(self.min)
+        } else {
+            data::Value::None
+        }
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Min::empty(self.column.clone()))
+    }
+}
+
 pub struct Average {
     total: f64,
     count: i64,
@@ -467,6 +503,42 @@ impl AggregateFunction for Average {
 
     fn empty_box(&self) -> Box<AggregateFunction> {
         Box::new(Average::empty(self.column.clone()))
+    }
+}
+
+pub struct Max {
+    max: f64,
+    column: Expr,
+}
+
+impl Max {
+    pub fn empty<T: Into<Expr>>(column: T) -> Max {
+        Max {
+            max: std::f64::NEG_INFINITY,
+            column: column.into(),
+        }
+    }
+}
+
+impl AggregateFunction for Max {
+    fn process(&mut self, data: &Data) -> Result<(), EvalError> {
+        let value: f64 = self.column.eval(data)?;
+        if value > self.max {
+            self.max = value;
+        }
+        Ok(())
+    }
+
+    fn emit(&self) -> data::Value {
+        if self.max.is_finite() {
+            data::Value::from_float(self.max)
+        } else {
+            data::Value::None
+        }
+    }
+
+    fn empty_box(&self) -> Box<AggregateFunction> {
+        Box::new(Max::empty(self.column.clone()))
     }
 }
 
@@ -1287,6 +1359,8 @@ mod tests {
         let ops: Vec<(String, Box<AggregateFunction>)> = vec![
             ("_count".to_string(), Box::new(Count::new())),
             ("_sum".to_string(), Box::new(Sum::empty("v1"))),
+            ("_min".to_string(), Box::new(Min::empty("v1"))),
+            ("_max".to_string(), Box::new(Max::empty("v1"))),
             (
                 "_distinct".to_string(),
                 Box::new(CountDistinct::empty("v1")),
@@ -1334,18 +1408,24 @@ mod tests {
                     "_count".to_string() => data::Value::Int(25),
                     "_distinct".to_string() => data::Value::Int(25),
                     "_sum".to_string() => data::Value::Int(300),
+                    "_min".to_string() => data::Value::Int(0),
+                    "_max".to_string() => data::Value::Int(24),
                 },
                 hashmap! {
                     "k1".to_string() => data::Value::Str("ok".to_string()),
                     "_count".to_string() => data::Value::Int(20),
                     "_distinct".to_string() => data::Value::Int(10),
-                    "_sum".to_string() => data::Value::Int(90)
+                    "_sum".to_string() => data::Value::Int(90),
+                    "_min".to_string() => data::Value::Int(0),
+                    "_max".to_string() => data::Value::Int(9),
                 },
                 hashmap! {
                     "k1".to_string() => data::Value::None,
                     "_count".to_string() => data::Value::Int(3),
                     "_distinct".to_string() => data::Value::Int(3),
-                    "_sum".to_string() => data::Value::Int(3)
+                    "_sum".to_string() => data::Value::Int(3),
+                    "_min".to_string() => data::Value::Int(0),
+                    "_max".to_string() => data::Value::Int(2),
                 },
             ]
         );

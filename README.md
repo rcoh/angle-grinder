@@ -1,7 +1,7 @@
 # angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/angle-grinder/Lobby)
 Slice and dice log files on the command line. 
 
-Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
+Angle-grinder allows you to parse, aggregate, sum, average, min/max, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
 
 Angle grinder can process well above 1M rows per second (simple pipelines as high as 5M), so it's usable for fairly meaty aggregation. The results will live update in your terminal as data is processed. Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI.
 
@@ -213,12 +213,28 @@ Count number of source_hosts:
 * | json | sum(num_records) by action
 ```
 
+##### Min
+`min(column) [as min_column] [by a, b] `: Compute the min of values in `column`. If the value in `column` is non-numeric, the row will be ignored.
+
+*Examples*:
+```agrind
+* | json | min(response_time)
+```
+
 ##### Average
 `average(column) [as average_column] [by a, b] `: Average values in `column`. If the value in `column` is non-numeric, the row will be ignored.
 
 *Examples*:
 ```agrind
 * | json | average(response_time)
+```
+
+##### Max
+`max(column) [as max_column] [by a, b] `: Compute the max of values in `column`. If the value in `column` is non-numeric, the row will be ignored.
+
+*Examples*:
+```agrind
+* | json | max(response_time)
 ```
 
 ##### Percentile
