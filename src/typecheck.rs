@@ -76,7 +76,7 @@ impl lang::Positioned<lang::InlineOperator> {
     pub fn semantic_analysis<T: ErrorBuilder>(
         self,
         error_builder: &T,
-    ) -> Result<Box<operator::OperatorBuilder + Send + Sync>, TypeError> {
+    ) -> Result<Box<dyn operator::OperatorBuilder + Send + Sync>, TypeError> {
         match self.value {
             lang::InlineOperator::Json { input_column } => {
                 Ok(Box::new(operator::ParseJson::new(input_column)))
@@ -191,7 +191,7 @@ impl lang::Positioned<lang::AggregateFunction> {
     pub fn semantic_analysis<T: ErrorBuilder>(
         self,
         error_builder: &T,
-    ) -> Result<Box<operator::AggregateFunction>, ()> {
+    ) -> Result<Box<dyn operator::AggregateFunction>, ()> {
         match self.value {
             lang::AggregateFunction::Count => Ok(Box::new(operator::Count::new())),
             lang::AggregateFunction::Min { column } => Ok(Box::new(operator::Min::empty(column))),

@@ -12,7 +12,7 @@ use strsim::normalized_levenshtein;
 /// Container for the query string that can be used to parse and report errors.
 pub struct QueryContainer {
     query: String,
-    reporter: Box<ErrorReporter>,
+    reporter: Box<dyn ErrorReporter>,
 }
 
 /// Common syntax errors.
@@ -47,7 +47,7 @@ pub trait ErrorBuilder {
 }
 
 impl QueryContainer {
-    pub fn new(query: String, reporter: Box<ErrorReporter>) -> QueryContainer {
+    pub fn new(query: String, reporter: Box<dyn ErrorReporter>) -> QueryContainer {
         QueryContainer { query, reporter }
     }
 

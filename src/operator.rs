@@ -69,7 +69,7 @@ pub trait UnaryPreAggOperator: Send + Sync {
     fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError>;
     /// Return any remaining records that may have been gathered by the operator.  This method
     /// will be called when there are no more new input records.
-    fn drain(self: Box<Self>) -> Box<Iterator<Item = Record>> {
+    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item = Record>> {
         Box::new(iter::empty())
     }
 }
@@ -77,7 +77,7 @@ pub trait UnaryPreAggOperator: Send + Sync {
 /// Trait used to instantiate an operator from its definition.  If an operator does not maintain
 /// state, the operator definition value can be cloned and returned.
 pub trait OperatorBuilder: Send + Sync {
-    fn build(&self) -> Box<UnaryPreAggOperator>;
+    fn build(&self) -> Box<dyn UnaryPreAggOperator>;
 }
 
 /// A trivial OperatorBuilder implementation for functional traits since they don't need to
@@ -86,7 +86,7 @@ impl<T> OperatorBuilder for T
 where
     T: 'static + UnaryPreAggFunction + Clone,
 {
-    fn build(&self) -> Box<UnaryPreAggOperator> {
+    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
         // TODO: eliminate the clone since a functional operator definition could be shared.
         Box::new((*self).clone())
     }
@@ -94,12 +94,12 @@ where
 
 /// Adapter for pre-aggregate operators to be used on the output of aggregate operators.
 pub struct PreAggAdapter {
-    op_builder: Box<OperatorBuilder>,
+    op_builder: Box<dyn OperatorBuilder>,
     state: Aggregate,
 }
 
 impl PreAggAdapter {
-    pub fn new(op_builder: Box<OperatorBuilder>) -> Self {
+    pub fn new(op_builder: Box<dyn OperatorBuilder>) -> Self {
         PreAggAdapter {
             op_builder,
             state: Aggregate {
@@ -182,7 +182,7 @@ pub trait AggregateOperator: Send + Sync {
 pub trait AggregateFunction: Send + Sync {
     fn process(&mut self, rec: &Data) -> Result<(), EvalError>;
     fn emit(&self) -> data::Value;
-    fn empty_box(&self) -> Box<AggregateFunction>;
+    fn empty_box(&self) -> Box<dyn AggregateFunction>;
 }
 
 #[derive(Debug, Clone)]
@@ -372,7 +372,7 @@ impl AggregateFunction for Count {
         data::Value::Int(self.count)
     }
 
-    fn empty_box(&self) -> Box<AggregateFunction> {
+    fn empty_box(&self) -> Box<dyn AggregateFunction> {
         Box::new(Count::new())
     }
 }
@@ -402,7 +402,7 @@ impl AggregateFunction for Sum {
         data::Value::from_float(self.total)
     }
 
-    fn empty_box(&self) -> Box<AggregateFunction> {
+    fn empty_box(&self) -> Box<dyn AggregateFunction> {
         Box::new(Sum::empty(self.column.clone()))
     }
 }
@@ -432,7 +432,7 @@ impl AggregateFunction for CountDistinct {
         data::Value::Int(self.state.len() as i64)
     }
 
-    fn empty_box(&self) -> Box<AggregateFunction> {
+    fn empty_box(&self) -> Box<dyn AggregateFunction> {
         Box::new(CountDistinct::empty(self.column.clone()))
     }
 }
@@ -468,7 +468,7 @@ impl AggregateFunction for Min {
         }
     }
 
-    fn empty_box(&self) -> Box<AggregateFunction> {
+    fn empty_box(&self) -> Box<dyn AggregateFunction> {
         Box::new(Min::empty(self.column.clone()))
     }
 }
@@ -501,7 +501,7 @@ impl AggregateFunction for Average {
         data::Value::from_float(self.total / self.count as f64)
     }
 
-    fn empty_box(&self) -> Box<AggregateFunction> {
+    fn empty_box(&self) -> Box<dyn AggregateFunction> {
         Box::new(Average::empty(self.column.clone()))
     }
 }
@@ -537,7 +537,7 @@ impl AggregateFunction for Max {
         }
     }
 
-    fn empty_box(&self) -> Box<AggregateFunction> {
+    fn empty_box(&self) -> Box<dyn AggregateFunction> {
         Box::new(Max::empty(self.column.clone()))
     }
 }
@@ -576,7 +576,7 @@ impl AggregateFunction for Percentile {
             .unwrap_or(data::Value::None)
     }
 
-    fn empty_box(&self) -> Box<AggregateFunction> {
+    fn empty_box(&self) -> Box<dyn AggregateFunction> {
         Box::new(Percentile::empty(self.column.clone(), self.percentile))
     }
 }
@@ -591,7 +591,7 @@ pub struct Sorter {
     columns: Vec<String>,
     initial_columns: Vec<String>,
     state: Vec<Data>,
-    ordering: Box<Fn(&Data, &Data) -> Ordering + Send + Sync>,
+    ordering: Box<dyn Fn(&Data, &Data) -> Ordering + Send + Sync>,
     direction: SortDirection,
 }
 
@@ -663,16 +663,16 @@ impl AggregateOperator for Sorter {
 pub struct MultiGrouper {
     key_cols: Vec<Expr>,
     key_col_headers: Vec<String>,
-    agg_col: Vec<(String, Box<AggregateFunction>)>,
+    agg_col: Vec<(String, Box<dyn AggregateFunction>)>,
     // key-column values -> (agg_columns -> builders)
-    state: HashMap<Vec<data::Value>, HashMap<String, Box<AggregateFunction>>>,
+    state: HashMap<Vec<data::Value>, HashMap<String, Box<dyn AggregateFunction>>>,
 }
 
 impl MultiGrouper {
     pub fn new(
         key_cols: &[Expr],
         key_col_headers: Vec<String>,
-        aggregators: Vec<(String, Box<AggregateFunction>)>,
+        aggregators: Vec<(String, Box<dyn AggregateFunction>)>,
     ) -> Self {
         MultiGrouper {
             key_cols: key_cols.to_vec(),
@@ -846,7 +846,7 @@ impl TotalDef {
 }
 
 impl OperatorBuilder for TotalDef {
-    fn build(&self) -> Box<UnaryPreAggOperator> {
+    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
         Box::new(Total::new(self.column.clone(), self.output_column.clone()))
     }
 }
@@ -1032,7 +1032,7 @@ pub enum Limit {
 }
 
 impl OperatorBuilder for LimitDef {
-    fn build(&self) -> Box<UnaryPreAggOperator> {
+    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
         Box::new(if self.limit > 0 {
             Limit::Head {
                 index: 0,
@@ -1076,7 +1076,7 @@ impl UnaryPreAggOperator for Limit {
         }
     }
 
-    fn drain(self: Box<Self>) -> Box<Iterator<Item = Record>> {
+    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item = Record>> {
         match *self {
             Limit::Head { .. } => Box::new(iter::empty()),
             Limit::Tail { queue, .. } => Box::new(queue.into_iter()),
@@ -1333,7 +1333,7 @@ mod tests {
 
     #[test]
     fn count_no_groups() {
-        let ops: Vec<(String, Box<AggregateFunction>)> =
+        let ops: Vec<(String, Box<dyn AggregateFunction>)> =
             vec![("_count".to_string(), Box::new(Count::new()))];
         let mut count_agg = MultiGrouper::new(&[], vec![], ops);
         (0..10)
@@ -1356,7 +1356,7 @@ mod tests {
 
     #[test]
     fn multi_grouper() {
-        let ops: Vec<(String, Box<AggregateFunction>)> = vec![
+        let ops: Vec<(String, Box<dyn AggregateFunction>)> = vec![
             ("_count".to_string(), Box::new(Count::new())),
             ("_sum".to_string(), Box::new(Sum::empty("v1"))),
             ("_min".to_string(), Box::new(Min::empty("v1"))),
@@ -1433,7 +1433,7 @@ mod tests {
 
     #[test]
     fn count_groups() {
-        let ops: Vec<(String, Box<AggregateFunction>)> =
+        let ops: Vec<(String, Box<dyn AggregateFunction>)> =
             vec![("_count".to_string(), Box::new(Count::new()))];
         let mut count_agg = MultiGrouper::new(
             &[Expr::Column("k1".to_string())],
@@ -1517,7 +1517,7 @@ mod tests {
     fn test_agg_adapter() {
         let where_op = Where::new(true);
         let adapted = PreAggAdapter::new(Box::new(where_op));
-        let mut adapted: Box<AggregateOperator> = Box::new(adapted);
+        let mut adapted: Box<dyn AggregateOperator> = Box::new(adapted);
         let agg = Aggregate::new(
             &["kc1".to_string(), "kc2".to_string()],
             "count".to_string(),
