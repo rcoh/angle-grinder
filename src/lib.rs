@@ -2,10 +2,14 @@
 extern crate failure;
 #[macro_use]
 extern crate include_dir;
+#[macro_use]
+extern crate serde_derive;
 extern crate atty;
 extern crate nom_locate;
 extern crate num_derive;
 extern crate num_traits;
+extern crate serde;
+extern crate toml;
 
 extern crate annotate_snippets;
 extern crate crossbeam_channel;

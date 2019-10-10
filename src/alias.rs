@@ -15,28 +15,21 @@ lazy_static! {
         .files()
         .iter()
         .map(|file| {
-            AliasConfig {
-                from: file
-                    .path()
-                    .file_stem()
-                    .expect("file stem exists")
-                    .to_str()
-                    .expect("str conversion"),
-                to: file.contents_utf8().expect("load string"),
-            }
+            toml::from_str(file.contents_utf8().expect("load string")).expect("toml valid")
         })
         .collect();
 }
 
+#[derive(Debug, Deserialize)]
 struct AliasConfig {
-    from: &'static str,
-    to: &'static str,
+    keyword: String,
+    template: String,
 }
 
 pub fn substitute_aliases(v: &str) -> String {
     let mut v = v.to_string();
     for alias in LOADED_ALIASES.iter() {
-        v = v.replace(alias.from, alias.to);
+        v = v.replace(&alias.keyword, &alias.template);
     }
     v
 }
