@@ -223,6 +223,7 @@ impl Record {
 mod tests {
     use super::*;
     use maplit::hashmap;
+    use render::RenderConfig;
 
     #[test]
     fn record_put_get() {
@@ -247,6 +248,12 @@ mod tests {
             )],
         );
         assert_eq!(agg.data.len(), 1);
+    }
+
+    #[test]
+    fn serialize_vec() {
+        let rec = Value::Array(vec![Value::Bool(false), Value::from_string("123.5"), Value::Array(vec![])]);
+        assert_eq!(rec.render(&RenderConfig::default()), "[false, 123.50, []]");
     }
 
     #[test]
