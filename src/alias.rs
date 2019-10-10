@@ -26,8 +26,7 @@ struct AliasConfig {
     template: String,
 }
 
-pub fn substitute_aliases(v: &str) -> String {
-    let mut v = v.to_string();
+pub fn substitute_aliases(mut v: String) -> String {
     for alias in LOADED_ALIASES.iter() {
         v = v.replace(&alias.keyword, &alias.template);
     }

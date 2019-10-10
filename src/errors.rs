@@ -49,13 +49,15 @@ pub trait ErrorBuilder {
 
 impl QueryContainer {
     pub fn new(query: String, reporter: Box<dyn ErrorReporter>) -> QueryContainer {
-        QueryContainer { query, reporter }
+        QueryContainer {
+            query: alias::substitute_aliases(query),
+            reporter,
+        }
     }
 
     /// Parse the contained query string.
     pub fn parse(&self) -> Result<Query, QueryPosition> {
-        let query_string = alias::substitute_aliases(&self.query);
-        let parse_result = query(Span::new(CompleteStr(&query_string)));
+        let parse_result = query(Span::new(CompleteStr(&self.query)));
 
         let errors = match parse_result {
             Err(nom::Err::Failure(nom::Context::List(ref list))) => Some(list),

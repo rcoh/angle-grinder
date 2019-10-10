@@ -1,0 +1,14 @@
+query = """* | apache | foo"""
+input = ""
+output = ""
+error = """
+error: Expected an operator
+  |
+1 | * | parse "* - * [*] \\"* * *\\" * *" as ip, name, timestamp, method, url, protocol, status, contentlength
+2 |  | foo
+  |   ^^^
+  |
+  = help: foo is not a valid operator
+Error: Failed to parse query
+"""
+succeeds = false
