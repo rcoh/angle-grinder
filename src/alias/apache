@@ -1,0 +1,1 @@
+parse "* - * [*] \"* * *\" * *" as ip, name, ts, method, url, protocol, status, cl

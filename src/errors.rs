@@ -1,3 +1,4 @@
+use crate::alias;
 use crate::lang::{
     query, Positioned, Query, QueryPosition, Span, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS,
 };
@@ -53,7 +54,8 @@ impl QueryContainer {
 
     /// Parse the contained query string.
     pub fn parse(&self) -> Result<Query, QueryPosition> {
-        let parse_result = query(Span::new(CompleteStr(&self.query)));
+        let query_string = alias::substitute_aliases(&self.query);
+        let parse_result = query(Span::new(CompleteStr(&query_string)));
 
         let errors = match parse_result {
             Err(nom::Err::Failure(nom::Context::List(ref list))) => Some(list),

@@ -8,6 +8,7 @@ extern crate num_traits;
 extern crate annotate_snippets;
 extern crate crossbeam_channel;
 
+mod alias;
 mod data;
 mod errors;
 mod filter;

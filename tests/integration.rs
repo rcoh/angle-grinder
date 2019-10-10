@@ -167,6 +167,11 @@ mod integration {
     }
 
     #[test]
+    fn test_aliases() {
+        structured_test(include_str!("structured_tests/aliases/apache.toml"));
+    }
+
+    #[test]
     fn no_args() {
         assert_cli::Assert::main_binary()
             .fails()
