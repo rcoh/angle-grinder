@@ -34,6 +34,7 @@ pub enum Value {
     Float(OrderedFloat<f64>),
     Bool(bool),
     Obj(im::HashMap<String, Value>),
+    Array(Vec<Value>),
     None,
 }
 
@@ -77,12 +78,14 @@ impl Display for Value {
             Value::Float(ref s) => write!(f, "{}", s),
             Value::Bool(ref s) => write!(f, "{}", s),
             Value::Obj(ref o) => write!(f, "{:?}", o),
+            Value::Array(ref o) => write!(f, "{:?}", o),
             Value::None => write!(f, "None"),
         }
     }
 }
 
 impl Value {
+    /// Used to sort mixed values
     pub fn rank(&self) -> u8 {
         match self {
             Value::None => 0,
@@ -90,7 +93,8 @@ impl Value {
             Value::Int(_) => 2,
             Value::Float(_) => 2,
             Value::Str(_) => 3,
-            Value::Obj(_) => 4,
+            Value::Array(_) => 4,
+            Value::Obj(_) => 5,
         }
     }
 
@@ -107,7 +111,14 @@ impl Value {
                     .iter()
                     .map(|(k, v)| format!("{}:{}", k, v.render(render_config)))
                     .collect();
-                format!("{{{}}}", rendered.join(","))
+                format!("{{{}}}", rendered.join(", "))
+            },
+            Value::Array(ref o) => {
+                let rendered: Vec<String> = o
+                    .iter()
+                    .map(|v| format!("{}", v.render(render_config)))
+                    .collect();
+                format!("[{}]", rendered.join(", "))
             }
         }
     }
