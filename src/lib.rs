@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate failure;
+#[macro_use]
+extern crate include_dir;
 extern crate atty;
 extern crate nom_locate;
 extern crate num_derive;
