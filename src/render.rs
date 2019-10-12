@@ -19,6 +19,17 @@ pub struct RenderConfig {
     pub format: Option<String>,
 }
 
+impl RenderConfig {
+    pub fn default() -> Self {
+        RenderConfig {
+            floating_points: 2,
+            min_buffer: 1,
+            max_buffer: 4,
+            format: None,
+        }
+    }
+}
+
 struct TerminalSize {
     height: u16,
     width: u16,

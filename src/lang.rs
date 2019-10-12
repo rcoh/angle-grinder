@@ -127,10 +127,16 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum DataAccessAtom {
+    Key(String),
+    Index(i64),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
-    NestedColumn {
-        head: String,
-        rest: Vec<String>,
+    Column {
+        head: DataAccessAtom,
+        rest: Vec<DataAccessAtom>,
     },
     Unary {
         op: UnaryOp,
@@ -337,10 +343,26 @@ named!(value<Span, data::Value>, ws!(
     )
 ));
 
+named!(dot_property<Span, DataAccessAtom>, do_parse!(
+    field: preceded!(tag!("."), ident) >>
+    (DataAccessAtom::Key(field.to_owned()))
+));
+
+named!(i64_parser<Span, i64>,
+    map_res!(
+        recognize!(tuple!(opt!(char!('-')), digit)),
+        |s: Span|s.fragment.0.parse::<i64>())
+);
+
+named!(index_access<Span, DataAccessAtom>, do_parse!(
+    index: delimited!(tag!("["), i64_parser, tag!("]"))  >>
+    (DataAccessAtom::Index(index))
+));
+
 named!(column_ref<Span, Expr>, do_parse!(
     head: ident >>
-    rest: opt!(preceded!(tag!("."), separated_list!(tag!("."), ident))) >> 
-    (Expr::NestedColumn { head, rest: rest.unwrap_or_else(||vec![]) })
+    rest: many0!(alt!(dot_property | index_access)) >>
+    (Expr::Column { head: DataAccessAtom::Key(head), rest: rest })
 ));
 
 named!(ident<Span, String>, do_parse!(
@@ -782,8 +804,8 @@ mod tests {
     use super::*;
     impl Expr {
         fn column(key: &str) -> Expr {
-            Expr::NestedColumn {
-                head: key.to_owned(),
+            Expr::Column {
+                head: DataAccessAtom::Key(key.to_owned()),
                 rest: vec![],
             }
         }
@@ -886,10 +908,14 @@ mod tests {
         expect!(expr, "foo", Expr::column("foo"));
         expect!(
             expr,
-            "foo.bar.baz",
-            Expr::NestedColumn {
-                head: "foo".to_owned(),
-                rest: vec!["bar".to_owned(), "baz".to_owned()]
+            "foo.bar.baz[-10]",
+            Expr::Column {
+                head: DataAccessAtom::Key("foo".to_owned()),
+                rest: vec![
+                    DataAccessAtom::Key("bar".to_owned()),
+                    DataAccessAtom::Key("baz".to_owned()),
+                    DataAccessAtom::Index(-10)
+                ]
             }
         )
     }

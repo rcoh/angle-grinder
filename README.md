@@ -76,7 +76,7 @@ These operators have a 1 to 1 correspondence between input data and output data.
 
 ##### JSON
 `json [from other_field]`: Extract json-serialized rows into fields for later use. If the row is _not_ valid JSON, then it is dropped. Optionally, `from other_field` can be 
-specified. Embedded JSON isn't natively supported, but you can use the `json from` to reparse nested keys (see examples).
+specified. Nested JSON structures are supported out of the box. Simply access nested values with `.key[index]`, for example, `.servers[6]`. Negative indexing is also supported.
 
 *Examples*:
 ```agrind
@@ -91,7 +91,7 @@ Given input like:
 {"key": "blah", "nested_key": {"this": "that"}}
 ```
 ```agrind
-* | json | json from nested_key | fields this
+* | json | count_distinct(nested_key.this)
 ```
 ![json.gif](/screen_shots/json.gif)
 
