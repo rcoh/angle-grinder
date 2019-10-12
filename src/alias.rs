@@ -11,24 +11,38 @@ use include_dir::Dir;
 const ALIASES_DIR: Dir = include_dir!("aliases");
 
 lazy_static! {
-    static ref LOADED_ALIASES: Vec<AliasConfig> = ALIASES_DIR
+    pub static ref LOADED_ALIASES: Vec<AliasConfig> = ALIASES_DIR
         .files()
         .iter()
         .map(|file| {
             toml::from_str(file.contents_utf8().expect("load string")).expect("toml valid")
         })
         .collect();
+    pub static ref LOADED_KEYWORDS: Vec<&'static str> =
+        LOADED_ALIASES.iter().map(|a| a.keyword.as_str()).collect();
 }
 
-#[derive(Debug, Deserialize)]
-struct AliasConfig {
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct AliasConfig {
     keyword: String,
     template: String,
 }
 
-pub fn substitute_aliases(mut v: String) -> String {
-    for alias in LOADED_ALIASES.iter() {
-        v = v.replace(&alias.keyword, &alias.template);
+impl AliasConfig {
+    pub fn matching_string(s: String) -> Result<&'static AliasConfig, ()> {
+        for alias in LOADED_ALIASES.iter() {
+            if alias.keyword != s {
+                continue;
+            }
+
+            return Ok(alias);
+        }
+
+        Err(())
     }
-    v
+
+    /// Render the alias as a string that should parse into a valid operator.
+    pub fn render(&self) -> String {
+        self.template.clone()
+    }
 }

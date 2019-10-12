@@ -1,4 +1,3 @@
-use crate::alias;
 use crate::lang::{
     query, Positioned, Query, QueryPosition, Span, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS,
 };
@@ -33,6 +32,8 @@ pub enum SyntaxErrors {
 
     #[fail(display = "Not an aggregate operator")]
     NotAnAggregateOperator,
+    #[fail(display = "Not an alias operator")]
+    NotAnAliasOperator,
 
     #[fail(display = "Invalid filter")]
     InvalidFilter,
@@ -49,10 +50,7 @@ pub trait ErrorBuilder {
 
 impl QueryContainer {
     pub fn new(query: String, reporter: Box<dyn ErrorReporter>) -> QueryContainer {
-        QueryContainer {
-            query: alias::substitute_aliases(query),
-            reporter,
-        }
+        QueryContainer { query, reporter }
     }
 
     /// Parse the contained query string.
@@ -150,6 +148,13 @@ impl SyntaxErrors {
             SyntaxErrors::NotAnOperator => {
                 let mut res = vec![format!("{} is not a valid operator", code_fragment)];
                 if let Some(choice) = did_you_mean(code_fragment, &VALID_OPERATORS) {
+                    res.push(format!("Did you mean \"{}\"?", choice));
+                }
+                res
+            }
+            SyntaxErrors::NotAnAliasOperator => {
+                let mut res = vec![format!("{} is not a valid alias operator", code_fragment)];
+                if let Some(choice) = did_you_mean(code_fragment, &crate::alias::LOADED_KEYWORDS) {
                     res.push(format!("Did you mean \"{}\"?", choice));
                 }
                 res

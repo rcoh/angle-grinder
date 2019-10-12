@@ -1,3 +1,4 @@
+use crate::alias::{self, AliasConfig};
 use crate::data;
 use crate::errors::SyntaxErrors;
 use lazy_static::lazy_static;
@@ -37,10 +38,10 @@ macro_rules! with_pos {
 }
 
 /// Dynamic version of `alt` that takes a slice of strings
-fn alternative<T>(input: T, alternatives: &[&'static str]) -> IResult<T, T>
+fn alternative<'a, T>(input: T, alternatives: &[&'a str]) -> IResult<T, T>
 where
     T: InputTake,
-    T: Compare<&'static str>,
+    T: Compare<&'a str>,
     T: InputLength,
     T: AtEof,
     T: Clone,
@@ -48,7 +49,7 @@ where
     let mut last_err = None;
     for alternative in alternatives {
         let inp = input.clone();
-        match tag!(inp, &**alternative) {
+        match tag!(inp, alternative) {
             done @ Ok(..) => return done,
             err @ Err(..) => last_err = Some(err), // continue
         }
@@ -215,6 +216,7 @@ impl Search {
 
 #[derive(Debug, PartialEq)]
 pub enum Operator {
+    RenderedAlias(Positioned<String>),
     Inline(Positioned<InlineOperator>),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
@@ -512,7 +514,7 @@ named!(sourced_expr<Span, (String, Expr)>, ws!(
         )
 )));
 
-named_args!(did_you_mean<'a>(choices: &[&'static str], err: SyntaxErrors)<Span<'a>, Span<'a>>,
+named_args!(did_you_mean<'a>(choices: &[&'a str], err: SyntaxErrors)<Span<'a>, Span<'a>>,
         preceded!(space0,
             return_error!(SyntaxErrors::StartOfError.into(),
                 alt_complete!(
@@ -533,6 +535,10 @@ named!(did_you_mean_operator<Span, Span>,
 
 named!(did_you_mean_aggregate<Span, Span>,
     call!(did_you_mean, &VALID_AGGREGATES, SyntaxErrors::NotAnAggregateOperator)
+);
+
+named!(did_you_mean_alias<Span, Span>,
+    call!(did_you_mean, alias::LOADED_KEYWORDS.as_slice(), SyntaxErrors::NotAnAliasOperator)
 );
 
 // parse "blah * ... *" [from other_field] as x, y
@@ -636,6 +642,24 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
     ))
 ));
 
+fn string_from_located_span(
+    span: LocatedSpan<impl nom::AsBytes>,
+) -> Result<String, std::string::FromUtf8Error> {
+    String::from_utf8(span.fragment.as_bytes().to_vec())
+}
+
+named!(alias<Span, Operator>, do_parse!(
+    peek!(did_you_mean_alias) >>
+    op: map!(
+        with_pos!(ws!(do_parse!(
+            config: map_res!(map_res!(nom::alpha, string_from_located_span), AliasConfig::matching_string) >>
+            (config.render())
+        ))),
+        Operator::RenderedAlias
+    ) >>
+    (op)
+));
+
 named!(inline_operator<Span, Operator>,
     map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split), Operator::Inline)
 );
@@ -654,7 +678,7 @@ named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
 
 named!(operator<Span, Operator>, do_parse!(
     peek!(did_you_mean_operator) >>
-    res: alt_complete!(inline_operator | sort | multi_aggregate_operator) >> (res)
+    res: alt_complete!(inline_operator | sort | multi_aggregate_operator | alias) >> (res)
 ));
 
 // count by x,y

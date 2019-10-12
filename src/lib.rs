@@ -125,6 +125,11 @@ pub mod pipeline {
             let mut has_errors = false;
             while let Some(op) = op_iter.next() {
                 match op {
+                    Operator::RenderedAlias(rendered_alias) => {
+                        // TODO: create a new QueryContainer here and parse the templated string
+                        // -> expecting only Inline operators?
+                        // let inner_query = QueryContainer::new(rendered_alias.value, ???);
+                    }
                     Operator::Inline(inline_op) => {
                         let op_builder = inline_op.type_check(pipeline)?;
 
