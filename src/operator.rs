@@ -10,10 +10,12 @@ use self::serde_json::Value as JsonValue;
 use crate::data;
 use crate::data::{Aggregate, Record, Row};
 use crate::operator::itertools::Itertools;
+use crate::render::RenderConfig;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::convert::TryInto;
 use std::iter;
 use std::iter::FromIterator;
 
@@ -23,6 +25,12 @@ type Data = HashMap<String, data::Value>;
 pub enum EvalError {
     #[fail(display = "No value for key {}", key)]
     NoValueForKey { key: String },
+
+    #[fail(display = "Expected {}, found {}", expected, found)]
+    ExpectedXYZ { expected: String, found: String },
+
+    #[fail(display = "Index {} out of range", index)]
+    IndexOutOfRange { index: i64 },
 
     #[fail(display = "Found None, expected {}", tpe)]
     UnexpectedNone { tpe: String },
@@ -188,7 +196,7 @@ pub trait AggregateFunction: Send + Sync {
 #[derive(Debug, Clone)]
 pub enum ValueRef {
     Field(String),
-    //IndexAt(usize),
+    IndexAt(i64),
 }
 
 #[derive(Debug, Clone)]
@@ -298,9 +306,28 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                                 .get(key)
                                 .ok_or_else(|| EvalError::NoValueForKey { key: key.clone() })?
                         }
-                        (ValueRef::Field(ref key), _other) => {
+                        (ValueRef::Field(_), other) => {
                             // TODO: object was not a value
-                            return Err(EvalError::NoValueForKey { key: key.clone() });
+                            return Err(EvalError::ExpectedXYZ {
+                                expected: "object".to_string(),
+                                found: other.render(&RenderConfig::default()),
+                            });
+                        }
+                        (ValueRef::IndexAt(index), data::Value::Array(vec)) => {
+                            let vec_len: i64 = vec.len().try_into().unwrap();
+                            let real_index = if *index < 0 { *index + vec_len } else { *index };
+
+                            if real_index < 0 || real_index > vec_len {
+                                return Err(EvalError::IndexOutOfRange { index: *index });
+                            }
+                            root_record = &vec[real_index as usize];
+                        }
+                        (ValueRef::IndexAt(_), other) => {
+                            // TODO: object was not a value
+                            return Err(EvalError::ExpectedXYZ {
+                                expected: "array".to_string(),
+                                found: other.render(&RenderConfig::default()),
+                            });
                         }
                     }
                 }
@@ -949,7 +976,9 @@ impl UnaryPreAggFunction for ParseJson {
                         .collect::<HashMap<String, data::Value>>()
                         .into(),
                 ),
-                _other => data::Value::Str(_other.to_string()),
+                &JsonValue::Array(ref vec) => {
+                    data::Value::Array(vec.iter().map(json_to_value).collect::<Vec<data::Value>>())
+                }
             }
         };
         let json: JsonValue = {
@@ -1149,7 +1178,7 @@ mod tests {
                 "k2".to_string() => Value::from_float(5.5),
                 "k3".to_string() => Value::Str("str".to_string()),
                 "k4".to_string() => Value::None,
-                "k5".to_string() => Value::Str("[1,2,3]".to_string())
+                "k5".to_string() => Value::Array(vec![Value::Int(1),Value::Int(2),Value::Int(3)])
             }
         );
     }
@@ -1169,7 +1198,7 @@ mod tests {
                         "k2".to_string() => Value::from_float(5.5),
                         "k3".to_string() => Value::Str("str".to_string()),
                         "k4".to_string() => Value::None,
-                        "k5".to_string() => Value::Str("[1,2,3]".to_string())
+                "k5".to_string() => Value::Array(vec![Value::Int(1),Value::Int(2),Value::Int(3)])
                     }.into()
                  )
             }

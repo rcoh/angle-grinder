@@ -25,7 +25,7 @@ impl RenderConfig {
             floating_points: 2,
             min_buffer: 1,
             max_buffer: 4,
-            format: None
+            format: None,
         }
     }
 }

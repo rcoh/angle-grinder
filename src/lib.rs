@@ -18,12 +18,12 @@ mod typecheck;
 
 pub mod pipeline {
     use crate::data::{Record, Row};
-    use crate::typecheck::{TypeCheck, TypeError};
     pub use crate::errors::{ErrorReporter, QueryContainer};
     use crate::filter;
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
+    use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
     use std::io::BufRead;
@@ -68,8 +68,11 @@ pub mod pipeline {
                 let operator_function = agg.1.type_check(pipeline)?;
                 agg_functions.push((agg.0, operator_function));
             }
-            let key_cols: Vec<operator::Expr> =
-                op.key_cols.into_iter().map(|expr| expr.type_check(pipeline)).collect::<Result<Vec<_>,_>>()?;
+            let key_cols: Vec<operator::Expr> = op
+                .key_cols
+                .into_iter()
+                .map(|expr| expr.type_check(pipeline))
+                .collect::<Result<Vec<_>, _>>()?;
             Ok(Box::new(operator::MultiGrouper::new(
                 &(key_cols)[..],
                 op.key_col_headers,

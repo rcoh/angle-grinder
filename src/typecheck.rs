@@ -41,14 +41,21 @@ impl From<lang::ComparisonOp> for operator::BoolExpr {
 impl TypeCheck<operator::Expr> for lang::Expr {
     fn type_check<E: ErrorBuilder>(self, error_builder: &E) -> Result<operator::Expr, TypeError> {
         match self {
-            lang::Expr::Column { head, rest } => panic!(),
-            lang::Expr::NestedColumn { head, rest } => Ok(operator::Expr::NestedColumn {
-                head,
-                rest: rest
+            lang::Expr::Column { head, rest } => {
+                let head = match head {
+                    lang::DataAccessAtom::Key(s) => s,
+                    lang::DataAccessAtom::Index(_) => return Err(TypeError::ExpectedExpr),
+                };
+                let rest = rest
                     .iter()
-                    .map(|s| operator::ValueRef::Field(s.to_string()))
-                    .collect(),
-            }),
+                    .map(|s| match s {
+                        lang::DataAccessAtom::Key(s) => operator::ValueRef::Field(s.to_string()),
+                        lang::DataAccessAtom::Index(i) => operator::ValueRef::IndexAt(*i),
+                    })
+                    .collect();
+
+                Ok(operator::Expr::NestedColumn { head, rest })
+            }
             lang::Expr::Unary { op, operand } => match op {
                 lang::UnaryOp::Not => Ok(operator::Expr::BoolUnary(operator::UnaryExpr {
                     operator: operator::BoolUnaryExpr::Not,
@@ -57,7 +64,9 @@ impl TypeCheck<operator::Expr> for lang::Expr {
             },
             lang::Expr::Binary { op, left, right } => match op {
                 lang::BinaryOp::Comparison(com_op) => {
-                    Ok(operator::Expr::Comparison(operator::BinaryExpr::<operator::BoolExpr> {
+                    Ok(operator::Expr::Comparison(operator::BinaryExpr::<
+                        operator::BoolExpr,
+                    > {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
                         operator: com_op.into(),
@@ -75,7 +84,9 @@ impl TypeCheck<operator::Expr> for lang::Expr {
 
 const DEFAULT_LIMIT: i64 = 10;
 
-impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>> for lang::Positioned<lang::InlineOperator> {
+impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
+    for lang::Positioned<lang::InlineOperator>
+{
     /// Convert the operator syntax to a builder that can instantiate an operator for the
     /// pipeline.  Any semantic errors in the operator syntax should be detected here.
     fn type_check<T: ErrorBuilder>(
@@ -106,7 +117,9 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>> for lang::Posit
                     Ok(Box::new(operator::Parse::new(
                         regex,
                         fields,
-                        input_column.map(|e| e.type_check(error_builder)).transpose()?,
+                        input_column
+                            .map(|e| e.type_check(error_builder))
+                            .transpose()?,
                         operator::ParseOptions {
                             drop_nonmatching: !no_drop,
                         },
@@ -120,7 +133,10 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>> for lang::Posit
                 };
                 Ok(Box::new(operator::Fields::new(&fields, omode)))
             }
-            lang::InlineOperator::Where { expr: Some(expr) } => match expr.value.type_check(error_builder)? {
+            lang::InlineOperator::Where { expr: Some(expr) } => match expr
+                .value
+                .type_check(error_builder)?
+            {
                 operator::Expr::Value(constant) => {
                     if let Value::Bool(bool_value) = constant {
                         Ok(Box::new(operator::Where::new(*bool_value)))
@@ -199,18 +215,29 @@ impl TypeCheck<Box<dyn operator::AggregateFunction>> for lang::Positioned<lang::
     ) -> Result<Box<dyn operator::AggregateFunction>, TypeError> {
         match self.value {
             lang::AggregateFunction::Count => Ok(Box::new(operator::Count::new())),
-            lang::AggregateFunction::Min { column } => Ok(Box::new(operator::Min::empty(column.type_check(error_builder)?))),
-            lang::AggregateFunction::Average { column } => {
-                Ok(Box::new(operator::Average::empty(column.type_check(error_builder)?)))
-            }
-            lang::AggregateFunction::Max { column } => Ok(Box::new(operator::Max::empty(column.type_check(error_builder)?))),
-            lang::AggregateFunction::Sum { column } => Ok(Box::new(operator::Sum::empty(column.type_check(error_builder)?))),
+            lang::AggregateFunction::Min { column } => Ok(Box::new(operator::Min::empty(
+                column.type_check(error_builder)?,
+            ))),
+            lang::AggregateFunction::Average { column } => Ok(Box::new(operator::Average::empty(
+                column.type_check(error_builder)?,
+            ))),
+            lang::AggregateFunction::Max { column } => Ok(Box::new(operator::Max::empty(
+                column.type_check(error_builder)?,
+            ))),
+            lang::AggregateFunction::Sum { column } => Ok(Box::new(operator::Sum::empty(
+                column.type_check(error_builder)?,
+            ))),
             lang::AggregateFunction::Percentile {
                 column, percentile, ..
-            } => Ok(Box::new(operator::Percentile::empty(column.type_check(error_builder)?, percentile))),
+            } => Ok(Box::new(operator::Percentile::empty(
+                column.type_check(error_builder)?,
+                percentile,
+            ))),
             lang::AggregateFunction::CountDistinct { column: Some(pos) } => {
                 match pos.value.as_slice() {
-                    [column] => Ok(Box::new(operator::CountDistinct::empty(column.clone().type_check(error_builder)?))),
+                    [column] => Ok(Box::new(operator::CountDistinct::empty(
+                        column.clone().type_check(error_builder)?,
+                    ))),
                     _ => {
                         error_builder
                             .report_error_for("Expecting a single expression to count")

@@ -112,7 +112,7 @@ impl Value {
                     .map(|(k, v)| format!("{}:{}", k, v.render(render_config)))
                     .collect();
                 format!("{{{}}}", rendered.join(", "))
-            },
+            }
             Value::Array(ref o) => {
                 let rendered: Vec<String> = o
                     .iter()
@@ -252,7 +252,11 @@ mod tests {
 
     #[test]
     fn serialize_vec() {
-        let rec = Value::Array(vec![Value::Bool(false), Value::from_string("123.5"), Value::Array(vec![])]);
+        let rec = Value::Array(vec![
+            Value::Bool(false),
+            Value::from_string("123.5"),
+            Value::Array(vec![]),
+        ]);
         assert_eq!(rec.render(&RenderConfig::default()), "[false, 123.50, []]");
     }
 

@@ -1,17 +1,17 @@
-query = """* | json | where thing_a.x == thing_b.y"""
+query = """* | json | where thing_a.x == thing_b.y[-1]"""
 input = """
-{"thing_a": {"x": 5 }, "thing_b": {"y": 5}}
-{"thing_a": {"x": 6 }, "thing_b": {"y": 5}}
+{"thing_a": {"x": 5 }, "thing_b": {"y": [6, 7, 5]}}
+{"thing_a": {"x": 6 }, "thing_b": {"y": [5]}}
 {"thing_a": {"z": 6 }, "thing_b": {"z": 5}}
 {"thing_a": {"x": {"a": 5} }, "thing_b": {"y": {"a": 5}}}
-{"thing_a": {"x": "blue" }, "thing_b": {"y": "blue"}}
+{"thing_a": {"x": "blue" }, "thing_b": {"y": ["blue"]}}
 """
 output = """
-[thing_a={x:5}]          [thing_b={y:5}]
-[thing_a={x:{a:5}}]      [thing_b={y:{a:5}}]
-[thing_a={x:blue}]       [thing_b={y:blue}]
+[thing_a={x:5}]          [thing_b={y:[6, 7, 5]}]
+[thing_a={x:blue}]       [thing_b={y:[blue]}]
 """
 
 error = """
 error: No value for key x
+error: Expected array, found {a:5}
 """
