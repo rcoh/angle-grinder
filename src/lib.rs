@@ -18,6 +18,7 @@ mod typecheck;
 
 pub mod pipeline {
     use crate::data::{Record, Row};
+    use crate::typecheck::{TypeCheck, TypeError};
     pub use crate::errors::{ErrorReporter, QueryContainer};
     use crate::filter;
     use crate::lang::*;
@@ -60,24 +61,17 @@ pub mod pipeline {
         fn convert_multi_agg(
             op: MultiAggregateOperator,
             pipeline: &QueryContainer,
-        ) -> Result<Box<dyn operator::AggregateOperator>, ()> {
+        ) -> Result<Box<dyn operator::AggregateOperator>, TypeError> {
             let mut agg_functions = Vec::with_capacity(op.aggregate_functions.len());
-            let mut has_errors = false;
 
             for agg in op.aggregate_functions {
-                if let Ok(operator_function) = agg.1.semantic_analysis(pipeline) {
-                    agg_functions.push((agg.0, operator_function));
-                } else {
-                    has_errors = true;
-                }
-            }
-            if has_errors {
-                return Err(());
+                let operator_function = agg.1.type_check(pipeline)?;
+                agg_functions.push((agg.0, operator_function));
             }
             let key_cols: Vec<operator::Expr> =
-                op.key_cols.into_iter().map(|expr| expr.into()).collect();
+                op.key_cols.into_iter().map(|expr| expr.type_check(pipeline)).collect::<Result<Vec<_>,_>>()?;
             Ok(Box::new(operator::MultiGrouper::new(
-                &key_cols[..],
+                &(key_cols)[..],
                 op.key_col_headers,
                 agg_functions,
             )))
@@ -122,7 +116,7 @@ pub mod pipeline {
             while let Some(op) = op_iter.next() {
                 match op {
                     Operator::Inline(inline_op) => {
-                        let op_builder = inline_op.semantic_analysis(pipeline)?;
+                        let op_builder = inline_op.type_check(pipeline)?;
 
                         if !in_agg {
                             pre_agg.push(op_builder.build());

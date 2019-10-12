@@ -127,10 +127,20 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum DataAccessAtom {
+    Key(String),
+    Index(i64)
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     NestedColumn {
         head: String,
         rest: Vec<String>,
+    },
+    Column {
+        head: DataAccessAtom,
+        rest: Vec<DataAccessAtom>
     },
     Unary {
         op: UnaryOp,
