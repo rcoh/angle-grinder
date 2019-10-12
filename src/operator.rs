@@ -307,7 +307,6 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                                 .ok_or_else(|| EvalError::NoValueForKey { key: key.clone() })?
                         }
                         (ValueRef::Field(_), other) => {
-                            // TODO: object was not a value
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "object".to_string(),
                                 found: other.render(&RenderConfig::default()),
@@ -323,7 +322,6 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                             root_record = &vec[real_index as usize];
                         }
                         (ValueRef::IndexAt(_), other) => {
-                            // TODO: object was not a value
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "array".to_string(),
                                 found: other.render(&RenderConfig::default()),
