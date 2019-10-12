@@ -23,6 +23,7 @@ pub mod pipeline {
     use crate::lang::*;
     use crate::operator;
     use crate::render::{RenderConfig, Renderer};
+    use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
     use std::io::BufRead;
@@ -43,13 +44,13 @@ pub mod pipeline {
 
     pub struct Pipeline {
         filter: filter::Filter,
-        pre_aggregates: Vec<Box<operator::UnaryPreAggOperator>>,
-        aggregators: Vec<Box<operator::AggregateOperator>>,
+        pre_aggregates: Vec<Box<dyn operator::UnaryPreAggOperator>>,
+        aggregators: Vec<Box<dyn operator::AggregateOperator>>,
         renderer: Renderer,
     }
 
     impl Pipeline {
-        fn convert_sort(op: SortOperator) -> Box<operator::AggregateOperator> {
+        fn convert_sort(op: SortOperator) -> Box<dyn operator::AggregateOperator> {
             let mode = match op.direction {
                 SortMode::Ascending => operator::SortDirection::Ascending,
                 SortMode::Descending => operator::SortDirection::Descending,
@@ -60,24 +61,20 @@ pub mod pipeline {
         fn convert_multi_agg(
             op: MultiAggregateOperator,
             pipeline: &QueryContainer,
-        ) -> Result<Box<operator::AggregateOperator>, ()> {
+        ) -> Result<Box<dyn operator::AggregateOperator>, TypeError> {
             let mut agg_functions = Vec::with_capacity(op.aggregate_functions.len());
-            let mut has_errors = false;
 
             for agg in op.aggregate_functions {
-                if let Ok(operator_function) = agg.1.semantic_analysis(pipeline) {
-                    agg_functions.push((agg.0, operator_function));
-                } else {
-                    has_errors = true;
-                }
+                let operator_function = agg.1.type_check(pipeline)?;
+                agg_functions.push((agg.0, operator_function));
             }
-            if has_errors {
-                return Err(());
-            }
-            let key_cols: Vec<operator::Expr> =
-                op.key_cols.into_iter().map(|expr| expr.into()).collect();
+            let key_cols: Vec<operator::Expr> = op
+                .key_cols
+                .into_iter()
+                .map(|expr| expr.type_check(pipeline))
+                .collect::<Result<Vec<_>, _>>()?;
             Ok(Box::new(operator::MultiGrouper::new(
-                &key_cols[..],
+                &(key_cols)[..],
                 op.key_col_headers,
                 agg_functions,
             )))
@@ -115,14 +112,14 @@ pub mod pipeline {
             let query = parsed?;
             let filters = Pipeline::convert_filter(query.search);
             let mut in_agg = false;
-            let mut pre_agg: Vec<Box<operator::UnaryPreAggOperator>> = Vec::new();
-            let mut post_agg: Vec<Box<operator::AggregateOperator>> = Vec::new();
+            let mut pre_agg: Vec<Box<dyn operator::UnaryPreAggOperator>> = Vec::new();
+            let mut post_agg: Vec<Box<dyn operator::AggregateOperator>> = Vec::new();
             let mut op_iter = query.operators.into_iter().peekable();
             let mut has_errors = false;
             while let Some(op) = op_iter.next() {
                 match op {
                     Operator::Inline(inline_op) => {
-                        let op_builder = inline_op.semantic_analysis(pipeline)?;
+                        let op_builder = inline_op.type_check(pipeline)?;
 
                         if !in_agg {
                             pre_agg.push(op_builder.build());
@@ -192,8 +189,8 @@ pub mod pipeline {
         }
 
         fn render_aggregate(
-            mut head: Box<operator::AggregateOperator>,
-            mut rest: Vec<Box<operator::AggregateOperator>>,
+            mut head: Box<dyn operator::AggregateOperator>,
+            mut rest: Vec<Box<dyn operator::AggregateOperator>>,
             mut renderer: Renderer,
             rx: &Receiver<Row>,
         ) {
@@ -271,7 +268,7 @@ pub mod pipeline {
         /// sent to `tx`.
         fn proc_preagg(
             mut rec: Record,
-            pre_aggs: &mut [Box<operator::UnaryPreAggOperator>],
+            pre_aggs: &mut [Box<dyn operator::UnaryPreAggOperator>],
             tx: &Sender<Row>,
         ) -> bool {
             for pre_agg in pre_aggs {
@@ -289,8 +286,8 @@ pub mod pipeline {
         }
 
         pub fn run_agg_pipeline(
-            head: &Box<operator::AggregateOperator>,
-            rest: &mut [Box<operator::AggregateOperator>],
+            head: &Box<dyn operator::AggregateOperator>,
+            rest: &mut [Box<dyn operator::AggregateOperator>],
         ) -> Row {
             let mut row = Row::Aggregate((*head).emit());
             for agg in (*rest).iter_mut() {
