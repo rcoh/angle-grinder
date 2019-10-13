@@ -1,5 +1,5 @@
 query = """
-* | json | split raw.nested on "-"
+* | json | split(raw.nested) on "-"
 """
 input = """
 {"level": "INFO", "raw": { "nested": "a---b---c" }}

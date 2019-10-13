@@ -451,51 +451,6 @@ named!(limit<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     })
 ))));
 
-/// HACK: work-around to get around the incompatibility of verify! with non-Copy objects
-/// This is solved in nom 5.0 (https://github.com/Geal/nom/issues/510)
-/// TODO: remove after updating to nom 5.0
-macro_rules! verify_ref {
-  // Internal parser, do not use directly
-  (__impl $i:expr, $submac:ident!( $($args:tt)* ), $submac2:ident!( $($args2:tt)* )) => (
-    {
-      use nom::lib::std::result::Result::*;
-      use nom::{Err,ErrorKind};
-
-      let i_ = $i.clone();
-      match $submac!(i_, $($args)*) {
-        Err(e)     => Err(e),
-        Ok((i, o)) => if $submac2!(&o, $($args2)*) {
-          Ok((i, o))
-        } else {
-          Err(Err::Error(error_position!($i, ErrorKind::Verify)))
-        }
-      }
-    }
-  );
-  ($i:expr, $submac:ident!( $($args:tt)* ), $g:expr) => (
-    verify_ref!(__impl $i, $submac!($($args)*), call!($g));
-  );
-  ($i:expr, $submac:ident!( $($args:tt)* ), $submac2:ident!( $($args2:tt)* )) => (
-    verify_ref!(__impl $i, $submac!($($args)*), $submac2!($($args2)*));
-  );
-  ($i:expr, $f:expr, $g:expr) => (
-    verify_ref!(__impl $i, call!($f), call!($g));
-  );
-  ($i:expr, $f:expr, $submac:ident!( $($args:tt)* )) => (
-    verify_ref!(__impl $i, call!($f), $submac!($($args)*));
-  );
-}
-
-fn expr_not_on_or_as(e: &Expr) -> bool {
-    match e {
-        Expr::Column {
-            head: DataAccessAtom::Key(s),
-            rest: _,
-        } => s != "on" && s != "as",
-        _ => false,
-    }
-}
-
 fn expr_as_output_column(e: Option<Expr>) -> Option<String> {
     e.and_then(|expr| match expr {
         Expr::Column {
@@ -508,9 +463,10 @@ fn expr_as_output_column(e: Option<Expr>) -> Option<String> {
 
 named!(split<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("split") >>
-    from_column_opt: opt!(verify_ref!(
+    from_column_opt: opt!(delimited!(
+        tag!("("),
         expr,
-        expr_not_on_or_as
+        tag!(")")
     )) >>
     separator_opt: opt!(ws!(preceded!(tag!("on"), quoted_string))) >>
     rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>

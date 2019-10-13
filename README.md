@@ -112,7 +112,7 @@ Given input like:
 ```
 
 ##### Split
-`split [input_field] [on separator] [as new_field]`: Split the input via the separator (default is `,`). Output is an array type. If no `input_field` or `new_field`, the contents will be put in the key `_split`.
+`split[(input_field)] [on separator] [as new_field]`: Split the input via the separator (default is `,`). Output is an array type. If no `input_field` or `new_field`, the contents will be put in the key `_split`.
 
 *Examples*:
 ```agrind
@@ -129,13 +129,26 @@ Output:
 [_split=[INFO, web-001, influxd[188053]:, 127.0.0.1, POST /write HTTP/1.0, 204]]
 ```
 
-Other possible usages:
+If `input_field` is used, and there is no `new_field` specified, then the `input_field` will be overridden with the split data-structure. For example:
 ```agrind
-* | parse "* *" as level, csv | split csv | count by csv[2]
+* | parse "* *" as level, csv | split(csv)
 ```
 
+Given input like:
+```
+INFO darren,hello,50
+WARN jonathon,good-bye,100
+```
+
+Will output:
+```
+[csv=[darren, hello, 50]]        [level=INFO]
+[csv=[jonathon, good-bye, 100]]        [level=WARN]
+```
+
+Other examples:
 ```agrind
-* | logfmt | split raw on "blah" as tokens | sum(tokens[1])
+* | logfmt | split(raw) on "blah" as tokens | sum(tokens[1])
 ```
 
 ##### Parse

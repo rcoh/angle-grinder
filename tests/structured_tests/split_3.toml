@@ -1,5 +1,5 @@
 query = """
-* | parse "* *" as level, rest | split rest on '...' as new_rest
+* | parse "* *" as level, rest | split(rest) on '...' as new_rest
 """
 input = """
 INFO name...power...over_9000

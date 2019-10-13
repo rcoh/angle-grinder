@@ -1,5 +1,5 @@
 query = """
-* | logfmt | split raw on "blah" as tokens | sum(tokens[-2])
+* | logfmt | split(raw) on "blah" as tokens | sum(tokens[-2])
 """
 input = """
 level=INFO raw="ablah10blahcblah"
