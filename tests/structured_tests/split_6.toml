@@ -1,4 +1,6 @@
-query = "* | logfmt | split raw with \"blah\" as tokens | sum(tokens[-2])"
+query = """
+* | logfmt | split raw with "blah" as tokens | sum(tokens[-2])
+"""
 input = """
 level=INFO raw="ablah10blahcblah"
 level=WARN raw="ablahbblahcblah"

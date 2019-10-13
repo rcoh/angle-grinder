@@ -1,4 +1,6 @@
-query = "* | parse \"* *\" as level, rest | split rest with '.' | sum(rest[1])"
+query = """
+* | parse "* *" as level, rest | split rest with '.' | sum(rest[1])
+"""
 input = """
 INFO name.power.over_9000
 DEBUG pavel.5000.false

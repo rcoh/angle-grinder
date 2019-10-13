@@ -1,4 +1,6 @@
-query = "* | parse \"* *\" as level, rest | split rest with '...' as new_rest"
+query = """
+* | parse "* *" as level, rest | split rest with '...' as new_rest
+"""
 input = """
 INFO name...power...over_9000
 DEBUG pavel5000...false

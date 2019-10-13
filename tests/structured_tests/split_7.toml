@@ -1,4 +1,6 @@
-query = "* | logfmt | split with \" \""
+query = """
+* | logfmt | split with " "
+"""
 input = """
 level=INFO raw="ablah10blahcblah"
 level=WARN raw="ablahbblahcblah"

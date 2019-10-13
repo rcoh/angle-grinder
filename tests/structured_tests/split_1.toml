@@ -1,4 +1,6 @@
-query = "* | split with \" \""
+query = """
+* | split with " "
+"""
 input = """
 Oct 09 20:22:21 web-001 influxd[188053]: 127.0.0.1 "POST /write \"escaped\" HTTP/1.0" 204
 """
