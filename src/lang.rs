@@ -486,12 +486,12 @@ macro_rules! verify_ref {
   );
 }
 
-fn expr_not_with_or_as(e: &Expr) -> bool {
+fn expr_not_on_or_as(e: &Expr) -> bool {
     match e {
         Expr::Column {
             head: DataAccessAtom::Key(s),
             rest: _,
-        } => s != "with" && s != "as",
+        } => s != "on" && s != "as",
         _ => false,
     }
 }
@@ -510,9 +510,9 @@ named!(split<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("split") >>
     from_column_opt: opt!(verify_ref!(
         expr,
-        expr_not_with_or_as
+        expr_not_on_or_as
     )) >>
-    separator_opt: opt!(ws!(preceded!(tag!("with"), quoted_string))) >>
+    separator_opt: opt!(ws!(preceded!(tag!("on"), quoted_string))) >>
     rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
     (InlineOperator::Split {
         separator: separator_opt.map(|s| s.to_string()).unwrap_or_else(|| ",".to_string()),

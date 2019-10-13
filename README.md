@@ -112,11 +112,11 @@ Given input like:
 ```
 
 ##### Split
-`split [input_field] [with separator] [as new_field]`: Split the input via the separator (default is `,`). Output is an array type. If no `input_field` or `new_field`, the contents will be put in the key `_split`.
+`split [input_field] [on separator] [as new_field]`: Split the input via the separator (default is `,`). Output is an array type. If no `input_field` or `new_field`, the contents will be put in the key `_split`.
 
 *Examples*:
 ```agrind
-* | split with " "
+* | split on " "
 ```
 
 Given input like:
@@ -135,7 +135,7 @@ Other possible usages:
 ```
 
 ```agrind
-* | logfmt | split raw with "blah" as tokens | sum(tokens[1])
+* | logfmt | split raw on "blah" as tokens | sum(tokens[1])
 ```
 
 ##### Parse

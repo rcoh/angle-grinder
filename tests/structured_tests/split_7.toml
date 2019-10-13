@@ -1,5 +1,5 @@
 query = """
-* | logfmt | split with " "
+* | logfmt | split on " "
 """
 input = """
 level=INFO raw="ablah10blahcblah"
