@@ -901,32 +901,7 @@ impl UnaryPreAggOperator for Total {
     }
 }
 
-pub struct SplitDef {
-    separator: String,
-    input_column: Option<String>,
-    output_column: String,
-}
-
-impl SplitDef {
-    pub fn new(separator: String, input_column: Option<String>, output_column: String) -> Self {
-        SplitDef {
-            separator,
-            input_column,
-            output_column,
-        }
-    }
-}
-
-impl OperatorBuilder for SplitDef {
-    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
-        Box::new(Split::new(
-            self.separator.clone(),
-            self.input_column.clone(),
-            self.output_column.clone(),
-        ))
-    }
-}
-
+#[derive(Clone)]
 pub struct Split {
     separator: String,
     input_column: Option<Expr>,
@@ -943,8 +918,8 @@ impl Split {
     }
 }
 
-impl UnaryPreAggOperator for Split {
-    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+impl UnaryPreAggFunction for Split {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let inp = get_input(&rec, &self.input_column)?;
         let array = split::split_with_separator_and_closures(
             &inp,

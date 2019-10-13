@@ -207,7 +207,7 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                 separator,
                 input_column,
                 output_column,
-            } => Ok(Box::new(operator::SplitDef::new(
+            } => Ok(Box::new(operator::Split::new(
                 separator,
                 input_column,
                 output_column,
