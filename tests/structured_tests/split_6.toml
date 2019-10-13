@@ -1,0 +1,11 @@
+query = "* | logfmt | split raw with \"blah\" as tokens | sum(tokens[1])"
+input = """
+level=INFO raw="ablah10blahcblah"
+level=WARN raw="ablahbblahcblah"
+level=DEBUG raw="ablah55.9blahcblah"
+"""
+output = """
+_sum
+-------------
+65.90
+"""

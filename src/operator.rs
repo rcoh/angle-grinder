@@ -21,6 +21,8 @@ use std::iter::FromIterator;
 
 type Data = HashMap<String, data::Value>;
 
+mod split;
+
 #[derive(Debug, Fail, PartialEq)]
 pub enum EvalError {
     #[fail(display = "No value for key {}", key)]
@@ -895,6 +897,62 @@ impl UnaryPreAggOperator for Total {
         let val: f64 = self.column.eval(&rec.data).unwrap_or(0.0);
         self.total += val;
         let rec = rec.put(&self.output_column, data::Value::from_float(self.total));
+        Ok(Some(rec))
+    }
+}
+
+pub struct SplitDef {
+    separator: String,
+    input_column: Option<String>,
+    output_column: String,
+}
+
+impl SplitDef {
+    pub fn new(separator: String, input_column: Option<String>, output_column: String) -> Self {
+        SplitDef {
+            separator,
+            input_column,
+            output_column,
+        }
+    }
+}
+
+impl OperatorBuilder for SplitDef {
+    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
+        Box::new(Split::new(
+            self.separator.clone(),
+            self.input_column.clone(),
+            self.output_column.clone(),
+        ))
+    }
+}
+
+pub struct Split {
+    separator: String,
+    input_column: Option<Expr>,
+    output_column: String,
+}
+
+impl Split {
+    pub fn new(separator: String, input_column: Option<String>, output_column: String) -> Self {
+        Self {
+            separator,
+            input_column: input_column.map(Expr::Column),
+            output_column,
+        }
+    }
+}
+
+impl UnaryPreAggOperator for Split {
+    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+        let inp = get_input(&rec, &self.input_column)?;
+        let array = split::split_with_separator_and_closures(
+            &inp,
+            &self.separator,
+            &split::DEFAULT_CLOSURES,
+            data::Value::from_string,
+        );
+        let rec = rec.put(&self.output_column, data::Value::Array(array));
         Ok(Some(rec))
     }
 }

@@ -140,15 +140,16 @@ impl Value {
         }
     }
 
-    pub fn from_string(s: &str) -> Value {
-        let int_value = s.trim().parse::<i64>();
-        let float_value = s.trim().parse::<f64>();
-        let bool_value = s.trim().parse::<bool>();
+    pub fn from_string(s: impl AsRef<str> + Into<String>) -> Value {
+        let trimmed = s.as_ref().trim();
+        let int_value = trimmed.parse::<i64>();
+        let float_value = trimmed.parse::<f64>();
+        let bool_value = trimmed.parse::<bool>();
         int_value
             .map(Value::Int)
             .or_else(|_| float_value.map(Value::from_float))
             .or_else(|_| bool_value.map(Value::Bool))
-            .unwrap_or_else(|_| Value::Str(s.to_string()))
+            .unwrap_or_else(|_| Value::Str(s.into()))
     }
 }
 

@@ -1,0 +1,11 @@
+query = "* | parse \"* *\" as level, rest | split rest with '.'"
+input = """
+INFO name.power.over_9000
+DEBUG pavel.5000.false
+DEBUG darren.10000.true
+"""
+output = """
+[level=INFO]         [rest=[name, power, over_9000]]
+[level=DEBUG]        [rest=[pavel, 5000, false]]
+[level=DEBUG]        [rest=[darren, 10000, true]]
+"""

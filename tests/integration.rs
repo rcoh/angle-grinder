@@ -145,8 +145,17 @@ mod integration {
         structured_test(include_str!("structured_tests/nested_values_1.toml"));
         structured_test(include_str!("structured_tests/nested_values_2.toml"));
         structured_test(include_str!("structured_tests/nested_values_3.toml"));
-        structured_test(include_str!("structured_tests/nested_values_3.toml"));
-        structured_test(include_str!("structured_tests/nested_values_3.toml"));
+    }
+
+    #[test]
+    fn test_split() {
+        structured_test(include_str!("structured_tests/split_1.toml"));
+        structured_test(include_str!("structured_tests/split_2.toml"));
+        structured_test(include_str!("structured_tests/split_3.toml"));
+        structured_test(include_str!("structured_tests/split_4.toml"));
+        structured_test(include_str!("structured_tests/split_5.toml"));
+        structured_test(include_str!("structured_tests/split_6.toml"));
+        structured_test(include_str!("structured_tests/split_7.toml"));
     }
 
     #[test]

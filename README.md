@@ -1,5 +1,5 @@
 # angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/angle-grinder/Lobby)
-Slice and dice log files on the command line. 
+Slice and dice log files on the command line.
 
 Angle-grinder allows you to parse, aggregate, sum, average, min/max, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
 
@@ -41,7 +41,7 @@ cargo install ag
 
 An angle grinder query is composed of filters followed by a series of operators.
 The filters select the lines from the input stream to be transformed by the operators.
-Typically, the initial operators will transform the data in some way by parsing fields or JSON from the log line. 
+Typically, the initial operators will transform the data in some way by parsing fields or JSON from the log line.
 The subsequent operators can then aggregate or group the data via operators like `sum`, `average`, `percentile`, etc.
 ```bash
 agrind '<filter1> [... <filterN>] | operator1 | operator2 | operator3 | ...'
@@ -59,9 +59,9 @@ There are three basic filters:
 - `*`: Match all logs
 - `filter-me*` (with no quotes) is a case-insensitive match that can include wildcards
 - "filter-me" (in quotes) is a case-sensitive match (no wildcards, `*` matches literal `*`
-, `filter-me`, or `"filter me!"`. 
+, `filter-me`, or `"filter me!"`.
 
-Filters can be combined with `AND`, `OR` and `NOT` 
+Filters can be combined with `AND`, `OR` and `NOT`
 ```agrind
 ("ERROR" OR WARN*) AND NOT staging | count
 ```
@@ -75,7 +75,7 @@ Sub-expressions _must_ be grouped in parenthesis. Only lines that match all filt
 These operators have a 1 to 1 correspondence between input data and output data. 1 row in, 0 or 1 rows out.
 
 ##### JSON
-`json [from other_field]`: Extract json-serialized rows into fields for later use. If the row is _not_ valid JSON, then it is dropped. Optionally, `from other_field` can be 
+`json [from other_field]`: Extract json-serialized rows into fields for later use. If the row is _not_ valid JSON, then it is dropped. Optionally, `from other_field` can be
 specified. Nested JSON structures are supported out of the box. Simply access nested values with `.key[index]`, for example, `.servers[6]`. Negative indexing is also supported.
 
 *Examples*:
@@ -111,6 +111,33 @@ Given input like:
 * | json | logfmt from nested_key | fields some
 ```
 
+##### Split
+`split [input_field] [with separator] [as new_field]`: Split the input via the separator (default is `,`). Output is an array type. If no `input_field` or `new_field`, the contents will be put in the key `_split`.
+
+*Examples*:
+```agrind
+* | split with " "
+```
+
+Given input like:
+```
+INFO web-001 influxd[188053]: 127.0.0.1 "POST /write HTTP/1.0" 204
+```
+
+Output:
+```
+[_split=[INFO, web-001, influxd[188053]:, 127.0.0.1, POST /write HTTP/1.0, 204]]
+```
+
+Other possible usages:
+```agrind
+* | parse "* *" as level, csv | split csv | count by csv[2]
+```
+
+```agrind
+* | logfmt | split raw with "blah" as tokens | sum(tokens[1])
+```
+
 ##### Parse
 `parse "* pattern * otherpattern *" [from field] as a,b,c [nodrop]`: Parse text that matches the pattern into variables. Lines that don't match the pattern will be dropped unless `nodrop` is specified. `*` is equivalent to regular expression `.*` and is greedy.
 By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.
@@ -122,7 +149,7 @@ By default, `parse` operates on the raw text of the message. With `from field_na
 ![parse.gif](/screen_shots/parse.gif)
 
 ##### Fields
-`fields [only|except|-|+] a, b`: Drop fields `a, b` or include only `a, b` depending on specified mode. 
+`fields [only|except|-|+] a, b`: Drop fields `a, b` or include only `a, b` depending on specified mode.
 
 *Examples*:
 Drop all fields except `event` and `timestamp`
@@ -137,7 +164,7 @@ Drop only the `event` field
 ##### Where
 `where <bool-expr>`: Drop rows where the condition is not met.
 The condition must be an expression that returns a boolean value.
-The expression can be as simple as a field name or a comparison (i.e. ==, !=, <=, >=, <, >) 
+The expression can be as simple as a field name or a comparison (i.e. ==, !=, <=, >=, <, >)
 between fields and literal values (i.e. numbers, strings).
 The '!' operator can be used to negate the result of a sub-expression.
 Note that `None == None`, so a row where both the left and right sides match a non-existent key will match.
@@ -154,7 +181,7 @@ Note that `None == None`, so a row where both the left and right sides match a n
 ```
 
 ##### Limit
-`limit #`: Limit the number of rows to the given amount.  If the number is positive, only the 
+`limit #`: Limit the number of rows to the given amount.  If the number is positive, only the
 first N rows are returned.  If the number is negative, the last N rows are returned.
 
 *Examples*
@@ -193,7 +220,7 @@ In the simplest form, key fields refer to columns, but they can also be generali
 There are several aggregate operators available.
 
 ##### Count
-`count [as count_column]`: Counts the numer of input rows. Output column Defaults to `_count` 
+`count [as count_column]`: Counts the numer of input rows. Output column Defaults to `_count`
 
 *Examples*:
 
@@ -246,7 +273,7 @@ Count number of source_hosts:
 ```
 
 ##### Sort
-`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
+`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending.
 
 *Examples*:
 ```agrind
@@ -274,8 +301,8 @@ Count number of source_hosts:
 ```bash
 curl  https://api.github.com/repos/rcoh/angle-grinder/releases  | \
    jq '.[] | .assets | .[]' -c | \
-   agrind '* | json 
-         | parse "download/*/" from browser_download_url as version 
+   agrind '* | json
+         | parse "download/*/" from browser_download_url as version
          | sum(download_count) by version | sort by version desc'
 ```
 Output:
@@ -308,7 +335,7 @@ More example queries can be found in the [tests folder](tests/structured_tests)
 ### Rendering
 Non-aggregate data is simply written row-by-row to the terminal as it is received:
 ```noformat
-tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" as length' 
+tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" as length'
 [dest=111.221.29.254.https]        [length=0]        [src=21:50:18.458331 IP 10.0.2.243.47152]
 [dest=111.221.29.254.https]        [length=310]      [src=21:50:18.458527 IP 10.0.2.243.47152]
 ```
@@ -322,20 +349,20 @@ tail -f live_pcap | agrind --format '{src} => {dst} | length={length}' '* | pars
 
 Aggregate data is written to the terminal and will live-update until the stream ends:
 ```noformat
-k2                  avg         
+k2                  avg
 --------------------------------
-test longer test    500.50      
-test test           375.38      
-alternate input     4.00        
-hello               3.00        
-hello thanks        2.00        
+test longer test    500.50
+test test           375.38
+alternate input     4.00
+hello               3.00
+hello thanks        2.00
 ```
 
 The renderer will do its best to keep the data nicely formatted as it changes and the number of output rows is limited to the length of your terminal. Currently,
 it has a refresh rate of about 20hz.
 
 ### Contributing
-`angle-grinder` builds with Rust >= 1.26. `rustfmt` is required when submitting PRs (`rustup component add rustfmt`). 
+`angle-grinder` builds with Rust >= 1.26. `rustfmt` is required when submitting PRs (`rustup component add rustfmt`).
 
 There are a number of ways you can contribute:
 - Adding new special purpose operators
@@ -361,45 +388,45 @@ See the following projects and open issues for specific potential improvements/b
 #### Project: Improving Error Reporting
 
 Usability can be greatly improved by accurate and helpful error messages for query-related issues.
-If you have struggled to figure out why a query is not working correctly and had a hard time 
+If you have struggled to figure out why a query is not working correctly and had a hard time
 fixing the issue, that would be a good place to jump in and start making changes!
 
 First, you need to determine where the problem is occurring.
-If the parser is rejecting a query, the grammar may need some tweaking to be more accepting of 
+If the parser is rejecting a query, the grammar may need some tweaking to be more accepting of
 some syntax.
-For example, if the field names are not provided for the `parse` operator, the query can still 
+For example, if the field names are not provided for the `parse` operator, the query can still
 be parsed to produce a syntax tree and the error can be raised in the next phase.
 If the query passes the parsing phase, the problem may lie in the semantic analysis phase where the
 values in parse tree are verified for correctness.
-Continuing with the `parse` example, if the number of captures in the pattern string does not 
+Continuing with the `parse` example, if the number of captures in the pattern string does not
 match the number of field names, the error would be raised here.
-Finally, if the query has been valid up to this point, you might want to raise an error at 
+Finally, if the query has been valid up to this point, you might want to raise an error at
 execution time.
-For example, if a field name being accessed does not exist in the records being passed to an 
+For example, if a field name being accessed does not exist in the records being passed to an
 operator, an error could be raised to tell the user that they might have mistyped the name.
 
 Once you have an idea of where the problem might lie, you can start to dig into the code.
 The grammar is written using [nom](https://github.com/Geal/nom/) and is contained in the
 [`lang.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/lang.rs) module.
 The enums/structs that make up the parse tree are also in the `lang.rs` module.
-To make error reporting easier, values in the parse tree are wrapped with a `Positioned` object 
+To make error reporting easier, values in the parse tree are wrapped with a `Positioned` object
 that records where the value came from in the query string.
 The `Positioned` objects are produced by the `with_pos!()` parser combinator.
 These objects can then be passed to the `SnippetBuilder` in the
-[`errors.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/errors.rs) module to highlight 
+[`errors.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/errors.rs) module to highlight
 portions of the query string in error messages.
 
 The semantic phase is contained in the
-[`typecheck.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/typecheck.rs) module and 
+[`typecheck.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/typecheck.rs) module and
 is probably where most of the work will need to be done.
 The `semantic_analysis()` methods in that module are passed an `ErrorBuilder` that can be used to
-build and send error reports to the user. 
+build and send error reports to the user.
 
 After adjusting the grammar and adding a check for the problem, it will be time to figure out how
 to inform the user.
-Ideally, any errors should explain the problem, point the user to the relevant part of the query 
+Ideally, any errors should explain the problem, point the user to the relevant part of the query
 string, and lead the user to a solution.
-Using the `ErrorBuilder`, you can call the `new_error_report_for()` method to construct a 
+Using the `ErrorBuilder`, you can call the `new_error_report_for()` method to construct a
 `SnippetBuilder` for a given error.
 To highlight a portion of the query string, use the `with_code_pointer()` method with the
 `Positioned` object that refers to the relevant segment of the query string.

@@ -203,6 +203,15 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
             lang::InlineOperator::Limit { count: None } => {
                 Ok(Box::new(operator::LimitDef::new(DEFAULT_LIMIT)))
             }
+            lang::InlineOperator::Split {
+                separator,
+                input_column,
+                output_column,
+            } => Ok(Box::new(operator::SplitDef::new(
+                separator,
+                input_column,
+                output_column,
+            ))),
             lang::InlineOperator::Total {
                 input_column,
                 output_column,

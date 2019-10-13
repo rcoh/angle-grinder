@@ -68,7 +68,7 @@ pub const VALID_AGGREGATES: &'static [&str] = &[
 ];
 
 pub const VALID_INLINE: &'static [&str] = &[
-    "parse", "limit", "json", "logfmt", "total", "fields", "where",
+    "parse", "limit", "json", "logfmt", "total", "fields", "where", "split",
 ];
 
 lazy_static! {
@@ -245,6 +245,11 @@ pub enum InlineOperator {
         /// The count for the limit is pretty loosely typed at this point, the next phase will
         /// check the value to see if it's sane or provide a default if no number was given.
         count: Option<Positioned<f64>>,
+    },
+    Split {
+        separator: String,
+        input_column: Option<String>,
+        output_column: String,
     },
     Total {
         input_column: Expr,
@@ -446,6 +451,58 @@ named!(limit<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     })
 ))));
 
+/// HACK: work-around to get around the incompatibility of verify! with non-Copy objects
+/// This is solved in nom 5.0 (https://github.com/Geal/nom/issues/510)
+/// TODO: remove after updating to nom 5.0
+macro_rules! verify_ref {
+  // Internal parser, do not use directly
+  (__impl $i:expr, $submac:ident!( $($args:tt)* ), $submac2:ident!( $($args2:tt)* )) => (
+    {
+      use nom::lib::std::result::Result::*;
+      use nom::{Err,ErrorKind};
+
+      let i_ = $i.clone();
+      match $submac!(i_, $($args)*) {
+        Err(e)     => Err(e),
+        Ok((i, o)) => if $submac2!(&o, $($args2)*) {
+          Ok((i, o))
+        } else {
+          Err(Err::Error(error_position!($i, ErrorKind::Verify)))
+        }
+      }
+    }
+  );
+  ($i:expr, $submac:ident!( $($args:tt)* ), $g:expr) => (
+    verify_ref!(__impl $i, $submac!($($args)*), call!($g));
+  );
+  ($i:expr, $submac:ident!( $($args:tt)* ), $submac2:ident!( $($args2:tt)* )) => (
+    verify_ref!(__impl $i, $submac!($($args)*), $submac2!($($args2)*));
+  );
+  ($i:expr, $f:expr, $g:expr) => (
+    verify_ref!(__impl $i, call!($f), call!($g));
+  );
+  ($i:expr, $f:expr, $submac:ident!( $($args:tt)* )) => (
+    verify_ref!(__impl $i, call!($f), $submac!($($args)*));
+  );
+}
+
+named!(split<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
+    tag!("split") >>
+    from_column_opt: opt!(ws!(verify_ref!(
+        ident,
+        |s| s != "with" && s != "as"
+    ))) >>
+    separator_opt: opt!(ws!(preceded!(tag!("with"), quoted_string))) >>
+    rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
+    (InlineOperator::Split {
+        separator: separator_opt.map(|s| s.to_string()).unwrap_or_else(|| ",".to_string()),
+        input_column: from_column_opt.clone().map(|s| s.to_string()),
+        // If from column specified, but output column not specified
+        // output should be the from column.
+        output_column: rename_opt.or(from_column_opt).map(|s| s.to_string()).unwrap_or_else(|| "_split".to_string()),
+    })
+))));
+
 named!(total<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("total") >>
     input_column: delimited!(tag!("("), expr, tag!(")")) >>
@@ -613,7 +670,7 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
 ));
 
 named!(inline_operator<Span, Operator>,
-    map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total), Operator::Inline)
+    map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split), Operator::Inline)
 );
 
 named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
