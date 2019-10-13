@@ -201,7 +201,6 @@ pub enum ValueRef {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Column(String),
     // First record can only be a String, after that, you can do things like `[0]` in addition to `.foo`
     NestedColumn { head: String, rest: Vec<ValueRef> },
     BoolUnary(UnaryExpr<BoolUnaryExpr>),
@@ -290,9 +289,6 @@ impl EvaluatableBorrowed<data::Value> for Expr {
         record: &'a HashMap<String, data::Value>,
     ) -> Result<&'a data::Value, EvalError> {
         match *self {
-            Expr::Column(ref col) => record
-                .get(col)
-                .ok_or_else(|| EvalError::NoValueForKey { key: col.clone() }),
             Expr::NestedColumn { ref head, ref rest } => {
                 let mut root_record: &data::Value = record
                     .get(head)
@@ -947,10 +943,8 @@ pub struct ParseJson {
 }
 
 impl ParseJson {
-    pub fn new(input_column: Option<String>) -> ParseJson {
-        ParseJson {
-            input_column: input_column.map(Expr::Column),
-        }
+    pub fn new(input_column: Option<Expr>) -> ParseJson {
+        ParseJson { input_column }
     }
 }
 
@@ -1002,10 +996,8 @@ pub struct ParseLogfmt {
 }
 
 impl ParseLogfmt {
-    pub fn new(input_column: Option<String>) -> ParseLogfmt {
-        ParseLogfmt {
-            input_column: input_column.map(Expr::Column),
-        }
+    pub fn new(input_column: Option<Expr>) -> ParseLogfmt {
+        ParseLogfmt { input_column }
     }
 }
 
@@ -1118,9 +1110,18 @@ mod tests {
     use crate::lang;
     use maplit::hashmap;
 
+    impl Expr {
+        fn column(key: &str) -> Expr {
+            Expr::NestedColumn {
+                head: key.to_owned(),
+                rest: vec![],
+            }
+        }
+    }
+
     impl<S: Into<String>> From<S> for Expr {
         fn from(inp: S) -> Self {
-            Expr::Column(inp.into())
+            Expr::column(&inp.into())
         }
     }
 
@@ -1394,11 +1395,7 @@ mod tests {
             ),
         ];
 
-        let mut grouper = MultiGrouper::new(
-            &[Expr::Column("k1".to_string())],
-            vec!["k1".to_string()],
-            ops,
-        );
+        let mut grouper = MultiGrouper::new(&[Expr::column("k1")], vec!["k1".to_string()], ops);
         (0..10).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
@@ -1462,11 +1459,7 @@ mod tests {
     fn count_groups() {
         let ops: Vec<(String, Box<dyn AggregateFunction>)> =
             vec![("_count".to_string(), Box::new(Count::new()))];
-        let mut count_agg = MultiGrouper::new(
-            &[Expr::Column("k1".to_string())],
-            vec!["k1".to_string()],
-            ops,
-        );
+        let mut count_agg = MultiGrouper::new(&[Expr::column("k1")], vec!["k1".to_string()], ops);
         (0..10).for_each(|n| {
             let rec = Record::new(&n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
@@ -1572,7 +1565,7 @@ mod tests {
     #[test]
     fn test_total() {
         let mut total_op = PreAggAdapter::new(Box::new(TotalDef::new(
-            Expr::Column("count".to_string()),
+            Expr::column("count"),
             "_total".to_string(),
         )));
         let agg = Aggregate::new(

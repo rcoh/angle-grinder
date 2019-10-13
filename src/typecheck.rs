@@ -94,11 +94,17 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
         error_builder: &T,
     ) -> Result<Box<dyn operator::OperatorBuilder + Send + Sync>, TypeError> {
         match self.value {
-            lang::InlineOperator::Json { input_column } => {
-                Ok(Box::new(operator::ParseJson::new(input_column)))
-            }
+            lang::InlineOperator::Json { input_column } => Ok(Box::new(operator::ParseJson::new(
+                input_column
+                    .map(|e| e.type_check(error_builder))
+                    .transpose()?,
+            ))),
             lang::InlineOperator::Logfmt { input_column } => {
-                Ok(Box::new(operator::ParseLogfmt::new(input_column)))
+                Ok(Box::new(operator::ParseLogfmt::new(
+                    input_column
+                        .map(|e| e.type_check(error_builder))
+                        .transpose()?,
+                )))
             }
             lang::InlineOperator::Parse {
                 pattern,

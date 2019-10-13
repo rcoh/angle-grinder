@@ -223,10 +223,10 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Clone)]
 pub enum InlineOperator {
     Json {
-        input_column: Option<String>,
+        input_column: Option<Expr>,
     },
     Logfmt {
-        input_column: Option<String>,
+        input_column: Option<Expr>,
     },
     Parse {
         pattern: Keyword,
@@ -422,14 +422,14 @@ named!(expr<Span, Expr>, ws!(alt_complete!(
 
 named!(json<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("json") >>
-    from_column_opt: opt!(ws!(preceded!(tag!("from"), ident))) >>
-    (InlineOperator::Json { input_column: from_column_opt.map(|s|s.to_string()) })
+    from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
+    (InlineOperator::Json { input_column: from_column_opt })
 ))));
 
 named!(logfmt<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("logfmt") >>
-    from_column_opt: opt!(ws!(preceded!(tag!("from"), ident))) >>
-    (InlineOperator::Logfmt { input_column: from_column_opt.map(|s|s.to_string()) })
+    from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
+    (InlineOperator::Logfmt { input_column: from_column_opt })
 ))));
 
 named!(whre<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
@@ -1248,7 +1248,7 @@ mod tests {
                         start_pos: QueryPosition(4),
                         end_pos: QueryPosition(18),
                         value: InlineOperator::Json {
-                            input_column: Some("col".to_string()),
+                            input_column: Some(Expr::column("col")),
                         }
                     }),
                     Operator::Inline(Positioned {
@@ -1302,7 +1302,7 @@ mod tests {
                         start_pos: QueryPosition(4),
                         end_pos: QueryPosition(20),
                         value: InlineOperator::Logfmt {
-                            input_column: Some("col".to_string()),
+                            input_column: Some(Expr::column("col")),
                         }
                     }),
                     Operator::Sort(SortOperator {
