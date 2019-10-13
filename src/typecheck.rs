@@ -209,7 +209,9 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                 output_column,
             } => Ok(Box::new(operator::Split::new(
                 separator,
-                input_column,
+                input_column
+                    .map(|e| e.type_check(error_builder))
+                    .transpose()?,
                 output_column,
             ))),
             lang::InlineOperator::Total {

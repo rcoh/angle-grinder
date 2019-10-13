@@ -909,10 +909,10 @@ pub struct Split {
 }
 
 impl Split {
-    pub fn new(separator: String, input_column: Option<String>, output_column: String) -> Self {
+    pub fn new(separator: String, input_column: Option<Expr>, output_column: String) -> Self {
         Self {
             separator,
-            input_column: input_column.map(Expr::Column),
+            input_column,
             output_column,
         }
     }
