@@ -156,6 +156,7 @@ mod integration {
         structured_test(include_str!("structured_tests/split_5.toml"));
         structured_test(include_str!("structured_tests/split_6.toml"));
         structured_test(include_str!("structured_tests/split_7.toml"));
+        structured_test(include_str!("structured_tests/split_8.toml"));
     }
 
     #[test]
