@@ -1,9 +1,11 @@
 extern crate ordered_float;
 
 use self::ordered_float::OrderedFloat;
+use crate::operator::{EvalError, Expr, ValueRef};
 use crate::render;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Display;
 
@@ -107,7 +109,11 @@ impl Value {
             Value::Bool(ref s) => format!("{}", s),
             Value::Obj(ref o) => {
                 // todo: this is pretty janky...
-                let rendered: Vec<String> = o
+                // These values are sorted so the output is deterministic.
+                let mut items = o.iter().collect::<Vec<_>>();
+                items.sort();
+
+                let rendered: Vec<String> = items
                     .iter()
                     .map(|(k, v)| format!("{}:{}", k, v.render(render_config)))
                     .collect();
@@ -194,6 +200,82 @@ impl Record {
     pub fn put(mut self, key: &str, value: Value) -> Record {
         self.data.insert(key.to_string(), value);
         self
+    }
+
+    /// Places a Value in the data based on the Expr accessor.
+    /// Only works with NestedColumn exprs.
+    pub fn put_expr(mut self, key: &Expr, value: Value) -> Result<Record, EvalError> {
+        match key {
+            Expr::NestedColumn { ref head, ref rest } => {
+                let mut root_record: &mut Value = if let Some(record) = self.data.get_mut(head) {
+                    record
+                } else {
+                    return if rest.is_empty() {
+                        self.data.insert(head.clone(), value);
+                        Ok(self)
+                    } else {
+                        Err(EvalError::NoValueForKey { key: head.clone() })
+                    };
+                };
+
+                let rest_len = rest.len();
+                for (index, value_reference) in rest.iter().enumerate() {
+                    match (value_reference, root_record) {
+                        (ValueRef::Field(ref key), Value::Obj(map)) => {
+                            if !map.contains_key(key) {
+                                let is_last = index + 1 == rest_len;
+                                return if is_last {
+                                    map.insert(key.clone(), value);
+                                    Ok(self)
+                                } else {
+                                    Err(EvalError::NoValueForKey { key: key.clone() })
+                                };
+                            }
+
+                            root_record = map.get_mut(key).expect("exists");
+                        }
+                        (ValueRef::Field(_), other) => {
+                            return Err(EvalError::ExpectedXYZ {
+                                expected: "object".to_string(),
+                                found: other.render(&render::RenderConfig::default()),
+                            });
+                        }
+                        (ValueRef::IndexAt(index), Value::Array(vec)) => {
+                            let vec_len: i64 = vec.len().try_into().unwrap();
+                            let real_index = if *index < 0 { *index + vec_len } else { *index };
+
+                            if real_index < 0 || real_index >= vec_len {
+                                return Err(EvalError::IndexOutOfRange { index: *index });
+                            }
+                            root_record = &mut vec[real_index as usize];
+                        }
+                        (ValueRef::IndexAt(_), other) => {
+                            return Err(EvalError::ExpectedXYZ {
+                                expected: "array".to_string(),
+                                found: other.render(&render::RenderConfig::default()),
+                            });
+                        }
+                    }
+                }
+
+                std::mem::replace(root_record, value);
+            }
+            // These should not happen, if so this is a programming error
+            // since the data cannot be indexed by BoolUnary / Comparison / Value Exprs.
+            Expr::BoolUnary(_) => Err(EvalError::ExpectedXYZ {
+                expected: "valid expr".to_string(),
+                found: "bool unary expr".to_string(),
+            })?,
+            Expr::Comparison(_) => Err(EvalError::ExpectedXYZ {
+                expected: "valid expr".to_string(),
+                found: "comparison expr".to_string(),
+            })?,
+            Expr::Value(_) => Err(EvalError::ExpectedXYZ {
+                expected: "valid expr".to_string(),
+                found: "value expr".to_string(),
+            })?,
+        }
+        Ok(self)
     }
 
     pub fn new(raw: &str) -> Record {

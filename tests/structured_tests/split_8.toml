@@ -7,8 +7,8 @@ input = """
 {"level": "DEBUG" }
 """
 output = """
-[level=INFO]         [raw=[a, b, c]]
-[level=WARN]         [raw=[ab, c]]          [hello=world]
+[level=INFO]         [raw={nested:[a, b, c]}]
+[level=WARN]         [raw={foo:bar, nested:[ab, c]}]        [hello=world]
 """
 error = """
 error: No value for key raw

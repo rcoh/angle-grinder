@@ -1,0 +1,19 @@
+query = """
+* | json | split(raw.nested) on "-" as oh_boy[0].abc
+"""
+input = """
+{"level": "INFO", "raw": { "nested": "a---b---c" }, "oh_boy": [{"abc": "xyz", "def": "gg"}, 10]}
+{"level": "WARN", "raw": { "nested": "ab---c-", "foo": "bar"}, "hello": "world"}
+{"level": "DEBUG", "oh_boy": [] }
+{"level": "WARN", "raw": { "nested": "a-c" }, "oh_boy": [{"abc": 10}] }
+{"level": "TRACE", "raw": { "nested": "a-c" }, "oh_boy": [] }
+"""
+output = """
+[level=INFO]         [oh_boy=[{abc:[a, b, c], def:gg}, 10]]        [raw={nested:a---b---c}]
+[level=WARN]         [oh_boy=[{abc:[a, c]}]]                       [raw={nested:a-c}]
+"""
+error = """
+error: No value for key oh_boy
+error: No value for key raw
+error: Index 0 out of range
+"""

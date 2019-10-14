@@ -905,11 +905,11 @@ impl UnaryPreAggOperator for Total {
 pub struct Split {
     separator: String,
     input_column: Option<Expr>,
-    output_column: String,
+    output_column: Option<Expr>,
 }
 
 impl Split {
-    pub fn new(separator: String, input_column: Option<Expr>, output_column: String) -> Self {
+    pub fn new(separator: String, input_column: Option<Expr>, output_column: Option<Expr>) -> Self {
         Self {
             separator,
             input_column,
@@ -927,7 +927,11 @@ impl UnaryPreAggFunction for Split {
             &split::DEFAULT_CLOSURES,
             data::Value::from_string,
         );
-        let rec = rec.put(&self.output_column, data::Value::Array(array));
+        let rec = if let Some(output_column) = &self.output_column {
+            rec.put_expr(output_column, data::Value::Array(array))?
+        } else {
+            rec.put("_split", data::Value::Array(array))
+        };
         Ok(Some(rec))
     }
 }

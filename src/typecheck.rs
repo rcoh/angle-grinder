@@ -212,7 +212,9 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                 input_column
                     .map(|e| e.type_check(error_builder))
                     .transpose()?,
-                output_column,
+                output_column
+                    .map(|e| e.type_check(error_builder))
+                    .transpose()?,
             ))),
             lang::InlineOperator::Total {
                 input_column,

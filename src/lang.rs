@@ -249,7 +249,7 @@ pub enum InlineOperator {
     Split {
         separator: String,
         input_column: Option<Expr>,
-        output_column: String,
+        output_column: Option<Expr>,
     },
     Total {
         input_column: Expr,
@@ -451,16 +451,6 @@ named!(limit<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     })
 ))));
 
-fn expr_as_output_column(e: Option<Expr>) -> Option<String> {
-    e.and_then(|expr| match expr {
-        Expr::Column {
-            head: DataAccessAtom::Key(s),
-            rest: _,
-        } => Some(s),
-        _ => None,
-    })
-}
-
 named!(split<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("split") >>
     from_column_opt: opt!(delimited!(
@@ -469,13 +459,14 @@ named!(split<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
         tag!(")")
     )) >>
     separator_opt: opt!(ws!(preceded!(tag!("on"), quoted_string))) >>
-    rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
+    // TODO: make variant of expr that only accepts Expr::Column instead of all types
+    rename_opt: opt!(ws!(preceded!(tag!("as"), expr))) >>
     (InlineOperator::Split {
         separator: separator_opt.map(|s| s.to_string()).unwrap_or_else(|| ",".to_string()),
         input_column: from_column_opt.clone(),
         // If from column specified, but output column not specified
         // output should be the from column.
-        output_column: rename_opt.map(|s| s.to_string()).or(expr_as_output_column(from_column_opt)).unwrap_or_else(|| "_split".to_string()),
+        output_column: rename_opt.or(from_column_opt),
     })
 ))));
 
