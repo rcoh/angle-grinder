@@ -1,0 +1,15 @@
+query = """* | json | sum(thing_a[0])"""
+input = """
+{"thing_a": [0, 1, 2]}
+{"thing_a": [5]}
+{"thing_a": []}
+{}
+{"thing_a": ["foo"]}
+"""
+output = """
+_sum
+------------
+5
+"""
+error = """
+"""
