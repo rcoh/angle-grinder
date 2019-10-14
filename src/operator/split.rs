@@ -26,14 +26,10 @@ pub fn split_with_separator_and_closures<T>(
 
     // If any tokens are surrounded by closure start / end, then trim.
     let transform = |mut token: String| {
-        let mut trimmed = true;
-        while trimmed {
-            trimmed = false;
-            for (start, end) in closures {
-                if token.starts_with(start) && token.ends_with(end) {
-                    token = token[start.len()..token.len() - end.len()].to_string();
-                    trimmed = true;
-                }
+        for (start, end) in closures {
+            if token.starts_with(start) && token.ends_with(end) {
+                token = token[start.len()..token.len() - end.len()].to_string();
+                break;
             }
         }
 
@@ -132,7 +128,7 @@ mod tests {
                 "ow",
                 &DEFAULT_CLOSURES
             ),
-            vec!["mm", "mow"],
+            vec!["mm", "\"mow\""],
         );
     }
 }
