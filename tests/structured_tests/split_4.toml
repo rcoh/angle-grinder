@@ -1,0 +1,17 @@
+query = """
+* | parse "* *" as level, rest | split(rest) on '.' | count by rest[1]
+"""
+input = """
+INFO name.power.over_9000
+DEBUG pavel.5000.false
+DEBUG darren..10000.true
+WARN jonathon...400..false
+"""
+output = """
+rest[1]        _count
+-----------------------------
+400            1
+5000           1
+10000          1
+power          1
+"""

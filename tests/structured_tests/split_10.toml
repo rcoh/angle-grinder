@@ -1,0 +1,21 @@
+query = """
+* | json | split(level) on "-" as nested.nested.boo
+"""
+input = """
+{"level": "INFO", "nested": { "nested": "invalid" } }
+{"level": "INFO", "nested": { "nested": 10 } }
+{"level": "INFO", "nested": { "nested": {} } }
+{"level": "INFO", "nested": { "nested": [] } }
+{"level": "INFO", "nested": { "nested": {"boo": "foo"} } }
+{"level": "INFO", "nested": { "nested": {"abc": 10} } }
+"""
+output = """
+[level=INFO]         [nested={nested:{boo:[INFO]}}]
+[level=INFO]         [nested={nested:{boo:[INFO]}}]
+[level=INFO]         [nested={nested:{abc:10, boo:[INFO]}}]
+"""
+error = """
+error: Expected object, found invalid
+error: Expected object, found 10
+error: Expected object, found []
+"""

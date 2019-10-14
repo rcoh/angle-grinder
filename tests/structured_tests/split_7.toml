@@ -1,0 +1,13 @@
+query = """
+* | logfmt | split on " "
+"""
+input = """
+level=INFO raw="ablah10blahcblah"
+level=WARN raw="ablahbblahcblah"
+level=DEBUG raw="ablah55.9blahcblah"
+"""
+output = """
+[_split=[level=INFO, raw="ablah10blahcblah"]]        [level=INFO]         [raw=ablah10blahcblah]
+[_split=[level=WARN, raw="ablahbblahcblah"]]         [level=WARN]         [raw=ablahbblahcblah]
+[_split=[level=DEBUG, raw="ablah55.9blahcblah"]]     [level=DEBUG]        [raw=ablah55.9blahcblah]
+"""

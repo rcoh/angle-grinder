@@ -1,0 +1,15 @@
+query = """
+* | json | split(raw.nested) on "-"
+"""
+input = """
+{"level": "INFO", "raw": { "nested": "a---b---c" }}
+{"level": "WARN", "raw": { "nested": "ab---c-", "foo": "bar"}, "hello": "world"}
+{"level": "DEBUG" }
+"""
+output = """
+[level=INFO]         [raw={nested:[a, b, c]}]
+[level=WARN]         [raw={foo:bar, nested:[ab, c]}]        [hello=world]
+"""
+error = """
+error: No value for key raw
+"""

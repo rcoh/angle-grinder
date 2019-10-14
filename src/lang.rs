@@ -68,7 +68,7 @@ pub const VALID_AGGREGATES: &'static [&str] = &[
 ];
 
 pub const VALID_INLINE: &'static [&str] = &[
-    "parse", "limit", "json", "logfmt", "total", "fields", "where",
+    "parse", "limit", "json", "logfmt", "total", "fields", "where", "split",
 ];
 
 lazy_static! {
@@ -245,6 +245,11 @@ pub enum InlineOperator {
         /// The count for the limit is pretty loosely typed at this point, the next phase will
         /// check the value to see if it's sane or provide a default if no number was given.
         count: Option<Positioned<f64>>,
+    },
+    Split {
+        separator: String,
+        input_column: Option<Expr>,
+        output_column: Option<Expr>,
     },
     Total {
         input_column: Expr,
@@ -446,6 +451,25 @@ named!(limit<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     })
 ))));
 
+named!(split<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
+    tag!("split") >>
+    from_column_opt: opt!(delimited!(
+        tag!("("),
+        expr,
+        tag!(")")
+    )) >>
+    separator_opt: opt!(ws!(preceded!(tag!("on"), quoted_string))) >>
+    // TODO: make variant of expr that only accepts Expr::Column instead of all types
+    rename_opt: opt!(ws!(preceded!(tag!("as"), expr))) >>
+    (InlineOperator::Split {
+        separator: separator_opt.map(|s| s.to_string()).unwrap_or_else(|| ",".to_string()),
+        input_column: from_column_opt.clone(),
+        // If from column specified, but output column not specified
+        // output should be the from column.
+        output_column: rename_opt.or(from_column_opt),
+    })
+))));
+
 named!(total<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("total") >>
     input_column: delimited!(tag!("("), expr, tag!(")")) >>
@@ -613,7 +637,7 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
 ));
 
 named!(inline_operator<Span, Operator>,
-    map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total), Operator::Inline)
+    map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split), Operator::Inline)
 );
 
 named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
