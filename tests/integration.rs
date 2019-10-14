@@ -141,6 +141,11 @@ mod integration {
     }
 
     #[test]
+    fn test_json_arrays() {
+        structured_test(include_str!("structured_tests/arrays_1.toml"));
+    }
+
+    #[test]
     fn test_nested_values() {
         structured_test(include_str!("structured_tests/nested_values_1.toml"));
         structured_test(include_str!("structured_tests/nested_values_2.toml"));

@@ -312,7 +312,7 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                             let vec_len: i64 = vec.len().try_into().unwrap();
                             let real_index = if *index < 0 { *index + vec_len } else { *index };
 
-                            if real_index < 0 || real_index > vec_len {
+                            if real_index < 0 || real_index >= vec_len {
                                 return Err(EvalError::IndexOutOfRange { index: *index });
                             }
                             root_record = &vec[real_index as usize];
