@@ -925,8 +925,7 @@ impl UnaryPreAggFunction for Split {
             &inp,
             &self.separator,
             &split::DEFAULT_CLOSURES,
-            data::Value::from_string,
-        );
+        ).into_iter().map(data::Value::from_string).collect();
         let rec = if let Some(output_column) = &self.output_column {
             rec.put_expr(output_column, data::Value::Array(array))?
         } else {

@@ -12,12 +12,11 @@ lazy_static! {
 
 /// Helper function for splitting a string by a separator, but also
 /// respecting closures (like "double-quoted strings").
-pub fn split_with_separator_and_closures<T>(
+pub fn split_with_separator_and_closures(
     input: &str,
     separator: &str,
     closures: &HashMap<&'static str, &'static str>,
-    map: impl Fn(String) -> T,
-) -> Vec<T> {
+) -> Vec<String> {
     let input = input.trim();
 
     let mut prev_index = 0;
@@ -32,8 +31,7 @@ pub fn split_with_separator_and_closures<T>(
                 break;
             }
         }
-
-        map(token)
+        token
     };
 
     while index < input.len() {
@@ -85,7 +83,7 @@ mod tests {
         separator: &str,
         closures: &HashMap<&'static str, &'static str>,
     ) -> Vec<String> {
-        split_with_separator_and_closures(input, separator, closures, |s| s)
+        split_with_separator_and_closures(input, separator, closures)
     }
 
     #[test]
