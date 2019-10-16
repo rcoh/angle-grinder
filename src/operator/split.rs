@@ -10,122 +10,107 @@ lazy_static! {
     };
 }
 
-/// Helper function for splitting a string by a separator, but also
-/// respecting closures (like "double-quoted strings").
-pub fn split_with_separator_and_closures(
-    input: &str,
-    separator: &str,
-    closures: &HashMap<&'static str, &'static str>,
-) -> Vec<String> {
-    let input = input.trim();
-
-    let mut prev_index = 0;
-    let mut index = 0;
-    let mut tokens = vec![];
-
-    // If any tokens are surrounded by closure start / end, then trim.
-    let transform = |mut token: String| {
-        for (start, end) in closures {
-            if token.starts_with(start) && token.ends_with(end) {
-                token = token[start.len()..token.len() - end.len()].to_string();
-                break;
-            }
+fn find_close_terminator(s: &str, term: &str) -> Option<usize> {
+    let mut pos = 0;
+    while pos < s.len() {
+        match s[pos..].find(term) {
+            Some(i) if i == 0 || &s[pos + i - 1..pos + i] != "\\" => return Some(i + pos),
+            Some(other) => pos += other + 1,
+            None => return None,
         }
-        token
-    };
+    }
+    return None;
+}
+
+pub fn split_with_separator_and_closures<'a>(
+    input: &'a str,
+    separator: &'a str,
+    closures: &HashMap<&'static str, &'static str>,
+) -> Vec<&'a str> {
+    // 1. Find the next separator.
+    // 2. Determine if there's a quote involved. Quotes can only follow separators.
+    // 3. Read until matching quote.
+
+    let mut index = 0;
+    let mut ret: Vec<&'a str> = vec![];
 
     while index < input.len() {
-        let mut found_separator = false;
-        let remaining = &input[index..];
-        if remaining.starts_with(separator) {
-            found_separator = true;
+        let terminator = closures
+            .into_iter()
+            .flat_map(|(k, v)| {
+                if input[index..].starts_with(k) {
+                    Some((k, v))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if let Some((term_start, term_end)) = terminator.first() {
+            index += term_start.len();
+            let end_quote = find_close_terminator(&input[index..], *term_end).map(|i| i + index);
+            if let Some(end) = end_quote {
+                ret.push(&input[index..end]);
+                index = end + term_end.len();
+                if input[index..].starts_with(separator) {
+                    index += separator.len();
+                } else {
+                    // malformed split -- quotes need to end at a separator.
+                }
+            } else {
+                ret.push(&input[index - term_start.len()..]);
+                index = input.len();
+            }
         } else {
-            let mut found = false;
-            for (start, end) in closures {
-                if !remaining.starts_with(start) {
-                    continue;
-                }
-
-                if let Some(end_index) = remaining[start.len()..].find(end) {
-                    index += start.len() + end_index + end.len();
-                    found = true;
-                    break;
-                }
+            let next_sep = input[index..]
+                .find(separator)
+                .map(|i| i + index)
+                .unwrap_or(input.len());
+            if index != next_sep {
+                ret.push(&input[index..next_sep]);
             }
-
-            if !found {
-                index += 1;
-            }
-        }
-
-        if found_separator {
-            if index != prev_index {
-                tokens.push(transform(input[prev_index..index].to_string()));
-            }
-            index += separator.len();
-            prev_index = index;
+            index = next_sep + separator.len();
         }
     }
-
-    if index != prev_index {
-        tokens.push(transform(input[prev_index..index].to_string()));
-    }
-
-    tokens
+    ret.into_iter().map(|s| s.trim()).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn split_with_separator_and_closures_string(
-        input: &str,
-        separator: &str,
-        closures: &HashMap<&'static str, &'static str>,
-    ) -> Vec<String> {
-        split_with_separator_and_closures(input, separator, closures)
-    }
-
     #[test]
     fn split_works() {
         assert_eq!(
-            split_with_separator_and_closures_string("power hello", " ", &DEFAULT_CLOSURES),
+            split_with_separator_and_closures("power hello", " ", &DEFAULT_CLOSURES),
             vec!["power", "hello"],
         );
         assert_eq!(
-            split_with_separator_and_closures_string("morecomplicated", "ecomp", &DEFAULT_CLOSURES),
+            split_with_separator_and_closures("morecomplicated", "ecomp", &DEFAULT_CLOSURES),
             vec!["mor", "licated"],
         );
         assert_eq!(
-            split_with_separator_and_closures_string("owmmowmow", "ow", &DEFAULT_CLOSURES),
+            split_with_separator_and_closures("owmmowmow", "ow", &DEFAULT_CLOSURES),
             vec!["mm", "m"],
+        );
+        assert_eq!(
+            split_with_separator_and_closures(r#"Oct 09 20:22:21 web-001 influxd[188053]: 127.0.0.1 "POST /write \"escaped\" HTTP/1.0" 204"#, " ", &DEFAULT_CLOSURES),
+            vec!["Oct", "09", "20:22:21", "web-001", "influxd[188053]:", "127.0.0.1", "POST /write \\\"escaped\\\" HTTP/1.0", "204"],
         );
     }
 
     #[test]
     fn split_with_closures_works() {
         assert_eq!(
-            split_with_separator_and_closures_string(
-                "power hello \"good bye\"",
-                " ",
-                &DEFAULT_CLOSURES
-            ),
+            split_with_separator_and_closures("power hello \"good bye\"", " ", &DEFAULT_CLOSURES),
             vec!["power", "hello", "good bye"],
         );
         assert_eq!(
-            split_with_separator_and_closures_string(
-                "more'ecomp'licated",
-                "ecomp",
-                &DEFAULT_CLOSURES
-            ),
-            vec!["more'ecomp'licated"],
+            split_with_separator_and_closures("more'ecomp'licated", "ecomp", &DEFAULT_CLOSURES),
+            vec!["more'", "'licated"],
         );
         assert_eq!(
-            split_with_separator_and_closures_string(
-                "ow\"mm\"ow'\"mow\"'",
-                "ow",
-                &DEFAULT_CLOSURES
-            ),
+            split_with_separator_and_closures("ow\"mm\"ow'\"mow\"'", "ow", &DEFAULT_CLOSURES),
             vec!["mm", "\"mow\""],
         );
     }
