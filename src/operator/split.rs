@@ -22,6 +22,8 @@ fn find_close_terminator(s: &str, term: &str) -> Option<usize> {
     return None;
 }
 
+// TODO: this function can be further improved by using `.split` instead of .find, removing a lot of
+// finicky index management
 pub fn split_with_separator_and_closures<'a>(
     input: &'a str,
     separator: &'a str,
