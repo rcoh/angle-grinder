@@ -921,14 +921,10 @@ impl Split {
 impl UnaryPreAggFunction for Split {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let inp = get_input(&rec, &self.input_column)?;
-        let array = split::split_with_separator_and_closures(
-            &inp,
-            &self.separator,
-            &split::DEFAULT_CLOSURES,
-        )
-        .into_iter()
-        .map(data::Value::from_string)
-        .collect();
+        let array = split::split_with_delimiters(&inp, &self.separator, &split::DEFAULT_DELIMITERS)
+            .into_iter()
+            .map(data::Value::from_string)
+            .collect();
         let rec = if let Some(output_column) = &self.output_column {
             rec.put_expr(output_column, data::Value::Array(array))?
         } else {

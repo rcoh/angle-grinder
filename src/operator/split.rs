@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 lazy_static! {
-    pub static ref DEFAULT_CLOSURES: HashMap<&'static str, &'static str> = {
+    pub static ref DEFAULT_DELIMITERS: HashMap<&'static str, &'static str> = {
         let mut h = HashMap::new();
         h.insert("\"", "\"");
         h.insert("'", "'");
@@ -10,37 +10,53 @@ lazy_static! {
     };
 }
 
-fn find_close_terminator(s: &str, term: &str) -> Option<usize> {
-    let mut pos = 0;
+/// Given a slice and start and end terminators, find a closing terminator while respecting escaped values.
+/// If a closing terminator is found, starting and ending terminators will be removed.
+/// If no closing terminator exists, the starting terminator will not be removed.
+fn find_close_terminator<'a>(
+    s: &'a str,
+    term_start: &'a str,
+    term_end: &'a str,
+) -> (&'a str, &'a str) {
+    let mut pos = term_start.len();
     while pos < s.len() {
-        match s[pos..].find(term) {
-            Some(i) if i == 0 || &s[pos + i - 1..pos + i] != "\\" => return Some(i + pos),
-            Some(other) => pos += other + 1,
-            None => return None,
+        match s[pos..].find(term_end).map(|index| index + pos) {
+            None => break,
+            Some(i) if i == 0 || &s[i - 1..i] != "\\" => {
+                return (&s[term_start.len()..i], &s[i + term_end.len()..])
+            }
+            Some(other) => pos = other + 1,
         }
     }
-    return None;
+    // We end up here if we never found a close quote. In that case, don't strip the leading quote.
+    return (&s, &s[0..0]);
 }
 
-// TODO: this function can be further improved by using `.split` instead of .find, removing a lot of
-// finicky index management
-pub fn split_with_separator_and_closures<'a>(
+fn split_once<'a>(s: &'a str, p: &'a str) -> (&'a str, &'a str) {
+    let mut split_iter = s.splitn(2, p);
+    (split_iter.next().unwrap(), split_iter.next().unwrap_or(""))
+}
+
+/// split function that respects delimiters
+pub fn split_with_delimiters<'a>(
     input: &'a str,
     separator: &'a str,
-    closures: &HashMap<&'static str, &'static str>,
+    delimiters: &HashMap<&'static str, &'static str>,
 ) -> Vec<&'a str> {
-    // 1. Find the next separator.
-    // 2. Determine if there's a quote involved. Quotes can only follow separators.
-    // 3. Read until matching quote.
-
-    let mut index = 0;
+    let mut wip = input;
     let mut ret: Vec<&'a str> = vec![];
 
-    while index < input.len() {
-        let terminator = closures
+    while wip.len() > 0 {
+        // Strip separators
+        if wip.starts_with(separator) {
+            wip = &wip[separator.len()..];
+            continue;
+        }
+        // Look for a leading quote
+        let terminator = delimiters
             .into_iter()
             .flat_map(|(k, v)| {
-                if input[index..].starts_with(k) {
+                if wip.starts_with(k) {
                     Some((k, v))
                 } else {
                     None
@@ -49,29 +65,17 @@ pub fn split_with_separator_and_closures<'a>(
             .collect::<Vec<_>>();
 
         if let Some((term_start, term_end)) = terminator.first() {
-            index += term_start.len();
-            let end_quote = find_close_terminator(&input[index..], *term_end).map(|i| i + index);
-            if let Some(end) = end_quote {
-                ret.push(&input[index..end]);
-                index = end + term_end.len();
-                if input[index..].starts_with(separator) {
-                    index += separator.len();
-                } else {
-                    // malformed split -- quotes need to end at a separator.
-                }
-            } else {
-                ret.push(&input[index - term_start.len()..]);
-                index = input.len();
-            }
+            // If we're left with a quoted string, consume it.
+            let (quoted_section, rest) = find_close_terminator(wip, *term_start, *term_end);
+            wip = rest;
+            ret.push(quoted_section);
         } else {
-            let next_sep = input[index..]
-                .find(separator)
-                .map(|i| i + index)
-                .unwrap_or(input.len());
-            if index != next_sep {
-                ret.push(&input[index..next_sep]);
+            // Otherwise, read until the next separator
+            let (next_section, rest) = split_once(wip, separator);
+            wip = rest;
+            if !next_section.is_empty() {
+                ret.push(next_section)
             }
-            index = next_sep + separator.len();
         }
     }
     ret.into_iter().map(|s| s.trim()).collect()
@@ -82,21 +86,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_find_terminator() {
+        assert_eq!(
+            find_close_terminator(r#""foo \" bar" cde"#, "\"", "\""),
+            (r#"foo \" bar"#, " cde")
+        );
+        // Only strip the quote if a terminator is actually found
+        assert_eq!(
+            find_close_terminator(r#""'foo "#, "\"", "\""),
+            ("\"'foo ", "")
+        );
+    }
+
+    #[test]
+    fn test_split_once() {
+        assert_eq!(split_once("abc cde", " "), ("abc", "cde"));
+        assert_eq!(split_once(" cde", " "), ("", "cde"));
+        assert_eq!(split_once("", " "), ("", ""));
+    }
+
+    #[test]
     fn split_works() {
         assert_eq!(
-            split_with_separator_and_closures("power hello", " ", &DEFAULT_CLOSURES),
+            split_with_delimiters("power hello", " ", &DEFAULT_DELIMITERS),
             vec!["power", "hello"],
         );
         assert_eq!(
-            split_with_separator_and_closures("morecomplicated", "ecomp", &DEFAULT_CLOSURES),
+            split_with_delimiters("morecomplicated", "ecomp", &DEFAULT_DELIMITERS),
             vec!["mor", "licated"],
         );
         assert_eq!(
-            split_with_separator_and_closures("owmmowmow", "ow", &DEFAULT_CLOSURES),
+            split_with_delimiters("owmmowmow", "ow", &DEFAULT_DELIMITERS),
             vec!["mm", "m"],
         );
         assert_eq!(
-            split_with_separator_and_closures(r#"Oct 09 20:22:21 web-001 influxd[188053]: 127.0.0.1 "POST /write \"escaped\" HTTP/1.0" 204"#, " ", &DEFAULT_CLOSURES),
+            split_with_delimiters(r#"Oct 09 20:22:21 web-001 influxd[188053]: 127.0.0.1 "POST /write \"escaped\" HTTP/1.0" 204"#, " ", &DEFAULT_DELIMITERS),
             vec!["Oct", "09", "20:22:21", "web-001", "influxd[188053]:", "127.0.0.1", "POST /write \\\"escaped\\\" HTTP/1.0", "204"],
         );
     }
@@ -104,15 +128,15 @@ mod tests {
     #[test]
     fn split_with_closures_works() {
         assert_eq!(
-            split_with_separator_and_closures("power hello \"good bye\"", " ", &DEFAULT_CLOSURES),
+            split_with_delimiters("power hello \"good bye\"", " ", &DEFAULT_DELIMITERS),
             vec!["power", "hello", "good bye"],
         );
         assert_eq!(
-            split_with_separator_and_closures("more'ecomp'licated", "ecomp", &DEFAULT_CLOSURES),
+            split_with_delimiters("more'ecomp'licated", "ecomp", &DEFAULT_DELIMITERS),
             vec!["more'", "'licated"],
         );
         assert_eq!(
-            split_with_separator_and_closures("ow\"mm\"ow'\"mow\"'", "ow", &DEFAULT_CLOSURES),
+            split_with_delimiters("ow\"mm\"ow'\"mow\"'", "ow", &DEFAULT_DELIMITERS),
             vec!["mm", "\"mow\""],
         );
     }
