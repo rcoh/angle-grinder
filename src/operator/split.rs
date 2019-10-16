@@ -53,18 +53,15 @@ pub fn split_with_delimiters<'a>(
             continue;
         }
         // Look for a leading quote
-        let terminator = delimiters
-            .into_iter()
-            .flat_map(|(k, v)| {
-                if wip.starts_with(k) {
-                    Some((k, v))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut terminator = delimiters.into_iter().flat_map(|(k, v)| {
+            if wip.starts_with(k) {
+                Some((k, v))
+            } else {
+                None
+            }
+        });
 
-        if let Some((term_start, term_end)) = terminator.first() {
+        if let Some((term_start, term_end)) = terminator.next() {
             // If we're left with a quoted string, consume it.
             let (quoted_section, rest) = find_close_terminator(wip, *term_start, *term_end);
             wip = rest;
