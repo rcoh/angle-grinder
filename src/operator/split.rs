@@ -13,7 +13,7 @@ lazy_static! {
 /// Given a slice and start and end terminators, find a closing terminator while respecting escaped values.
 /// If a closing terminator is found, starting and ending terminators will be removed.
 /// If no closing terminator exists, the starting terminator will not be removed.
-fn find_close_terminator<'a>(
+fn find_close_delimiter<'a>(
     s: &'a str,
     term_start: &'a str,
     term_end: &'a str,
@@ -48,18 +48,21 @@ pub fn split_with_delimiters<'a>(
 
     while wip.len() > 0 {
         // Look for a leading quote
-        let terminator_opt= delimiters.into_iter().flat_map(|(k, v)| {
-            if wip.starts_with(k) {
-                Some((k, v))
-            } else {
-                None
-            }
-        }).next();
+        let leading_delimiter = delimiters
+            .into_iter()
+            .flat_map(|(k, v)| {
+                if wip.starts_with(k) {
+                    Some((k, v))
+                } else {
+                    None
+                }
+            })
+            .next();
 
         // If we're left with a quoted string, consume it, otherwise read until the next separator
-        let (token, rest) = match terminator_opt {
-            Some((term_start, term_end)) => find_close_terminator(wip, *term_start, *term_end),
-            None => split_once(wip, separator)
+        let (token, rest) = match leading_delimiter {
+            Some((term_start, term_end)) => find_close_delimiter(wip, *term_start, *term_end),
+            None => split_once(wip, separator),
         };
         let token = token.trim();
         if !token.is_empty() {
@@ -77,12 +80,12 @@ mod tests {
     #[test]
     fn test_find_terminator() {
         assert_eq!(
-            find_close_terminator(r#""foo \" bar" cde"#, "\"", "\""),
+            find_close_delimiter(r#""foo \" bar" cde"#, "\"", "\""),
             (r#"foo \" bar"#, " cde")
         );
         // Only strip the quote if a terminator is actually found
         assert_eq!(
-            find_close_terminator(r#""'foo "#, "\"", "\""),
+            find_close_delimiter(r#""'foo "#, "\"", "\""),
             ("\"'foo ", "")
         );
     }
