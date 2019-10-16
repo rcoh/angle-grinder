@@ -37,7 +37,7 @@ fn split_once<'a>(s: &'a str, p: &'a str) -> (&'a str, &'a str) {
     (split_iter.next().unwrap(), split_iter.next().unwrap_or(""))
 }
 
-/// split function that respects delimiters
+/// split function that respects delimiters and strips whitespace
 pub fn split_with_delimiters<'a>(
     input: &'a str,
     separator: &'a str,
@@ -47,35 +47,27 @@ pub fn split_with_delimiters<'a>(
     let mut ret: Vec<&'a str> = vec![];
 
     while wip.len() > 0 {
-        // Strip separators
-        if wip.starts_with(separator) {
-            wip = &wip[separator.len()..];
-            continue;
-        }
         // Look for a leading quote
-        let mut terminator = delimiters.into_iter().flat_map(|(k, v)| {
+        let terminator_opt= delimiters.into_iter().flat_map(|(k, v)| {
             if wip.starts_with(k) {
                 Some((k, v))
             } else {
                 None
             }
-        });
+        }).next();
 
-        if let Some((term_start, term_end)) = terminator.next() {
-            // If we're left with a quoted string, consume it.
-            let (quoted_section, rest) = find_close_terminator(wip, *term_start, *term_end);
-            wip = rest;
-            ret.push(quoted_section);
-        } else {
-            // Otherwise, read until the next separator
-            let (next_section, rest) = split_once(wip, separator);
-            wip = rest;
-            if !next_section.is_empty() {
-                ret.push(next_section)
-            }
+        // If we're left with a quoted string, consume it, otherwise read until the next separator
+        let (token, rest) = match terminator_opt {
+            Some((term_start, term_end)) => find_close_terminator(wip, *term_start, *term_end),
+            None => split_once(wip, separator)
+        };
+        let token = token.trim();
+        if !token.is_empty() {
+            ret.push(token);
         }
+        wip = rest;
     }
-    ret.into_iter().map(|s| s.trim()).collect()
+    ret
 }
 
 #[cfg(test)]
