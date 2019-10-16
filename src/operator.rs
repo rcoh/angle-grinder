@@ -921,12 +921,10 @@ impl Split {
 impl UnaryPreAggFunction for Split {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         let inp = get_input(&rec, &self.input_column)?;
-        let array = split::split_with_separator_and_closures(
-            &inp,
-            &self.separator,
-            &split::DEFAULT_CLOSURES,
-            data::Value::from_string,
-        );
+        let array = split::split_with_delimiters(&inp, &self.separator, &split::DEFAULT_DELIMITERS)
+            .into_iter()
+            .map(data::Value::from_string)
+            .collect();
         let rec = if let Some(output_column) = &self.output_column {
             rec.put_expr(output_column, data::Value::Array(array))?
         } else {
@@ -1047,7 +1045,7 @@ impl UnaryPreAggFunction for ParseLogfmt {
             logfmt::parse(&inp.trim_end())
         };
         let res = {
-            pairs.into_iter().fold(rec, |record, pair| match &pair.val {
+            pairs.into_iter().fold(rec, |record, pair| match pair.val {
                 None => record.put(&pair.key, data::Value::None),
                 Some(val) => record.put(&pair.key, data::Value::from_string(val)),
             })
