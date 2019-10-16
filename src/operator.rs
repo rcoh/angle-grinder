@@ -1047,7 +1047,7 @@ impl UnaryPreAggFunction for ParseLogfmt {
             logfmt::parse(&inp.trim_end())
         };
         let res = {
-            pairs.into_iter().fold(rec, |record, pair| match &pair.val {
+            pairs.into_iter().fold(rec, |record, pair| match pair.val {
                 None => record.put(&pair.key, data::Value::None),
                 Some(val) => record.put(&pair.key, data::Value::from_string(val)),
             })
