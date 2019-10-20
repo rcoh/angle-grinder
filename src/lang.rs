@@ -543,10 +543,6 @@ named!(did_you_mean_aggregate<Span, Span>,
     call!(did_you_mean, &VALID_AGGREGATES, SyntaxErrors::NotAnAggregateOperator)
 );
 
-named!(did_you_mean_alias<Span, Span>,
-    call!(did_you_mean, alias::LOADED_KEYWORDS.as_slice(), SyntaxErrors::NotAnAliasOperator)
-);
-
 // parse "blah * ... *" [from other_field] as x, y
 named!(parse<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("parse") >>
@@ -654,16 +650,12 @@ fn string_from_located_span(
     String::from_utf8(span.fragment.as_bytes().to_vec())
 }
 
-named!(alias<Span, Operator>, do_parse!(
-    peek!(did_you_mean_alias) >>
-    op: map!(
-        with_pos!(ws!(do_parse!(
-            config: map_res!(map_res!(nom::alpha, string_from_located_span), AliasConfig::matching_string) >>
-            (config.render())
-        ))),
-        Operator::RenderedAlias
-    ) >>
-    (op)
+named!(alias<Span, Operator>, map!(
+    with_pos!(ws!(do_parse!(
+        config: map_res!(map_res!(nom::alpha, string_from_located_span), AliasConfig::matching_string) >>
+        (config.render())
+    ))),
+    Operator::RenderedAlias
 ));
 
 named!(inline_operator<Span, Operator>,

@@ -32,8 +32,6 @@ pub enum SyntaxErrors {
 
     #[fail(display = "Not an aggregate operator")]
     NotAnAggregateOperator,
-    #[fail(display = "Not an alias operator")]
-    NotAnAliasOperator,
 
     #[fail(display = "Invalid filter")]
     InvalidFilter,
@@ -148,13 +146,6 @@ impl SyntaxErrors {
             SyntaxErrors::NotAnOperator => {
                 let mut res = vec![format!("{} is not a valid operator", code_fragment)];
                 if let Some(choice) = did_you_mean(code_fragment, &VALID_OPERATORS) {
-                    res.push(format!("Did you mean \"{}\"?", choice));
-                }
-                res
-            }
-            SyntaxErrors::NotAnAliasOperator => {
-                let mut res = vec![format!("{} is not a valid alias operator", code_fragment)];
-                if let Some(choice) = did_you_mean(code_fragment, &crate::alias::LOADED_KEYWORDS) {
                     res.push(format!("Did you mean \"{}\"?", choice));
                 }
                 res
