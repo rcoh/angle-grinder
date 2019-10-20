@@ -73,8 +73,14 @@ pub const VALID_INLINE: &'static [&str] = &[
 ];
 
 lazy_static! {
-    pub static ref VALID_OPERATORS: Vec<&'static str> =
-        { [VALID_INLINE, VALID_AGGREGATES].concat() };
+    pub static ref VALID_OPERATORS: Vec<&'static str> = {
+        [
+            VALID_INLINE,
+            VALID_AGGREGATES,
+            alias::LOADED_KEYWORDS.as_slice(),
+        ]
+        .concat()
+    };
 }
 
 pub const RESERVED_FILTER_WORDS: &'static [&str] = &["AND", "OR", "NOT"];
@@ -678,7 +684,7 @@ named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
 
 named!(operator<Span, Operator>, do_parse!(
     peek!(did_you_mean_operator) >>
-    res: alt_complete!(inline_operator | sort | multi_aggregate_operator | alias) >> (res)
+    res: alt_complete!(inline_operator | sort | alias | multi_aggregate_operator) >> (res)
 ));
 
 // count by x,y
@@ -840,12 +846,14 @@ named!(prelexed_query<Span, Search>, ws!(do_parse!(
 
 named!(pub query<Span, Query, SyntaxErrors>, fix_error!(SyntaxErrors, exact!(ws!(do_parse!(
     filter: prelexed_query >>
-    operators: ws!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
+    operators: ws!(opt!(preceded!(tag!("|"), operator_list))) >>
     (Query{
         search: filter,
         operators: operators.unwrap_or_default()
     }))
 ))));
+
+named!(pub operator_list<Span, Vec<Operator>>, ws!(separated_nonempty_list!(tag!("|"), operator)));
 
 #[cfg(test)]
 mod tests {
