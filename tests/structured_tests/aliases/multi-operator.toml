@@ -1,0 +1,9 @@
+query = """* | testmultioperator"""
+input = """
+{ "abc": 5, "xyz": "hello" }
+"""
+output = """
+_count
+--------------
+1
+"""

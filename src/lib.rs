@@ -134,7 +134,9 @@ pub mod pipeline {
                         let (_span, operators) =
                             operator_list(Span::new(CompleteStr(&rendered_alias.value)))
                                 .expect("alias parsing aways works");
-                        for new_op in operators {
+
+                        // Insert operators (in-order) to front of operator stack
+                        for new_op in operators.into_iter().rev() {
                             op_deque.push_front(new_op);
                         }
                     }

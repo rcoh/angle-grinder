@@ -169,6 +169,7 @@ mod integration {
     #[test]
     fn test_aliases() {
         structured_test(include_str!("structured_tests/aliases/apache.toml"));
+        structured_test(include_str!("structured_tests/aliases/multi-operator.toml"));
         structured_test(include_str!(
             "structured_tests/aliases/alias_with_failure.toml"
         ));
