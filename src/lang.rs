@@ -1,3 +1,4 @@
+use crate::alias::{self, AliasConfig};
 use crate::data;
 use crate::errors::SyntaxErrors;
 use lazy_static::lazy_static;
@@ -37,10 +38,10 @@ macro_rules! with_pos {
 }
 
 /// Dynamic version of `alt` that takes a slice of strings
-fn alternative<T>(input: T, alternatives: &[&'static str]) -> IResult<T, T>
+fn alternative<'a, T>(input: T, alternatives: &[&'a str]) -> IResult<T, T>
 where
     T: InputTake,
-    T: Compare<&'static str>,
+    T: Compare<&'a str>,
     T: InputLength,
     T: AtEof,
     T: Clone,
@@ -48,7 +49,7 @@ where
     let mut last_err = None;
     for alternative in alternatives {
         let inp = input.clone();
-        match tag!(inp, &**alternative) {
+        match tag!(inp, alternative) {
             done @ Ok(..) => return done,
             err @ Err(..) => last_err = Some(err), // continue
         }
@@ -72,8 +73,14 @@ pub const VALID_INLINE: &'static [&str] = &[
 ];
 
 lazy_static! {
-    pub static ref VALID_OPERATORS: Vec<&'static str> =
-        { [VALID_INLINE, VALID_AGGREGATES].concat() };
+    pub static ref VALID_OPERATORS: Vec<&'static str> = {
+        [
+            VALID_INLINE,
+            VALID_AGGREGATES,
+            alias::LOADED_KEYWORDS.as_slice(),
+        ]
+        .concat()
+    };
 }
 
 pub const RESERVED_FILTER_WORDS: &'static [&str] = &["AND", "OR", "NOT"];
@@ -215,6 +222,7 @@ impl Search {
 
 #[derive(Debug, PartialEq)]
 pub enum Operator {
+    RenderedAlias(Positioned<String>),
     Inline(Positioned<InlineOperator>),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
@@ -512,7 +520,7 @@ named!(sourced_expr<Span, (String, Expr)>, ws!(
         )
 )));
 
-named_args!(did_you_mean<'a>(choices: &[&'static str], err: SyntaxErrors)<Span<'a>, Span<'a>>,
+named_args!(did_you_mean<'a>(choices: &[&'a str], err: SyntaxErrors)<Span<'a>, Span<'a>>,
         preceded!(space0,
             return_error!(SyntaxErrors::StartOfError.into(),
                 alt_complete!(
@@ -636,6 +644,20 @@ named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
     ))
 ));
 
+fn string_from_located_span(
+    span: LocatedSpan<impl nom::AsBytes>,
+) -> Result<String, std::string::FromUtf8Error> {
+    String::from_utf8(span.fragment.as_bytes().to_vec())
+}
+
+named!(alias<Span, Operator>, map!(
+    with_pos!(ws!(do_parse!(
+        config: map_res!(map_res!(nom::alpha, string_from_located_span), AliasConfig::matching_string) >>
+        (config.render())
+    ))),
+    Operator::RenderedAlias
+));
+
 named!(inline_operator<Span, Operator>,
     map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split), Operator::Inline)
 );
@@ -654,7 +676,7 @@ named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
 
 named!(operator<Span, Operator>, do_parse!(
     peek!(did_you_mean_operator) >>
-    res: alt_complete!(inline_operator | sort | multi_aggregate_operator) >> (res)
+    res: alt_complete!(inline_operator | sort | alias | multi_aggregate_operator) >> (res)
 ));
 
 // count by x,y
@@ -816,12 +838,14 @@ named!(prelexed_query<Span, Search>, ws!(do_parse!(
 
 named!(pub query<Span, Query, SyntaxErrors>, fix_error!(SyntaxErrors, exact!(ws!(do_parse!(
     filter: prelexed_query >>
-    operators: ws!(opt!(preceded!(tag!("|"), ws!(separated_nonempty_list!(tag!("|"), operator))))) >>
+    operators: ws!(opt!(preceded!(tag!("|"), operator_list))) >>
     (Query{
         search: filter,
         operators: operators.unwrap_or_default()
     }))
 ))));
+
+named!(pub operator_list<Span, Vec<Operator>>, ws!(separated_nonempty_list!(tag!("|"), operator)));
 
 #[cfg(test)]
 mod tests {
