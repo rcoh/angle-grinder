@@ -132,8 +132,13 @@ pub mod pipeline {
                         // -> expecting only Inline operators?
                         // let inner_query = QueryContainer::new(rendered_alias.value, ???);
                         let (_span, operators) =
-                            operator_list(Span::new(CompleteStr(&rendered_alias.value)))
-                                .expect("alias parsing aways works");
+                            match operator_list(Span::new(CompleteStr(&rendered_alias.value))) {
+                                Err(_err) => bail!(
+                                    "Failed to parse rendered alias: `{}` as operator_list",
+                                    rendered_alias.value,
+                                ),
+                                Ok(v) => v,
+                            };
 
                         // Insert operators (in-order) to front of operator stack
                         for new_op in operators.into_iter().rev() {
