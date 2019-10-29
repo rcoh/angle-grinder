@@ -40,6 +40,10 @@ struct Cli {
     #[structopt(long = "format", short = "m")]
     format: Option<String>,
 
+    /// Print timing information
+    #[structopt(long = "time", short = "t")]
+    time: bool,
+
     #[structopt(flatten)]
     verbosity: Verbosity,
 }
@@ -69,6 +73,8 @@ fn main() -> CliResult {
     if args.update {
         return update();
     }
+    //let start_time =
+    let start = std::time::Instant::now();
     let query = QueryContainer::new(
         args.query.ok_or(InvalidArgs::MissingQuery)?,
         Box::new(TermErrorReporter {
@@ -90,6 +96,9 @@ fn main() -> CliResult {
             pipeline.process(locked)
         }
     };
+    if args.time {
+        eprintln!("elapsed {:?}", start.elapsed()); // note :?
+    }
     Ok(())
 }
 

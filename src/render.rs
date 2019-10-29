@@ -10,6 +10,7 @@ use strfmt::strfmt;
 extern crate terminal_size;
 
 use self::terminal_size::{terminal_size, Height, Width};
+use crossterm::{ExecutableCommand, TerminalCursor};
 use std::time::{Duration, Instant};
 
 pub struct RenderConfig {
@@ -312,9 +313,12 @@ impl Renderer {
                     }
                 } else if self.should_print() || last_row {
                     let output = self.pretty_printer.format_aggregate(aggregate);
+                    let mut cursor = TerminalCursor::new();
                     let num_lines = output.matches('\n').count();
-                    write!(self.stdout, "{}{}", self.reset_sequence, output)?;
-                    self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines);
+                    write!(self.stdout, "{}", output)?;
+                    if !last_row {
+                        cursor.move_up(num_lines as u16);
+                    }
                     self.last_print = Some(Instant::now());
                 }
 

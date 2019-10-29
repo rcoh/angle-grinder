@@ -63,6 +63,40 @@ pub trait UnaryPreAggFunction: Send + Sync {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError>;
 }
 
+pub enum OperatorResult {
+    None,
+    Single(Record),
+    Many(Vec<Record>),
+}
+
+impl OperatorResult {
+    pub fn flatten(self) -> Vec<Record> {
+        match self {
+            OperatorResult::None => vec![],
+            OperatorResult::Single(rec) => vec![rec],
+            OperatorResult::Many(recs) => recs,
+        }
+    }
+}
+
+/// Trait for operators that maintain state while processing records.
+pub trait UnaryPreAggOperator: Send + Sync {
+    fn process_many_mut(&mut self, rec: Record) -> Result<OperatorResult, EvalError> {
+        let rec_opt = self.process_mut(rec)?;
+        Ok(match rec_opt {
+            None => OperatorResult::None,
+            Some(res) => OperatorResult::Single(res),
+        })
+    }
+
+    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError>;
+    /// Return any remaining records that may have been gathered by the operator.  This method
+    /// will be called when there are no more new input records.
+    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item = Record>> {
+        Box::new(iter::empty())
+    }
+}
+
 /// Get a column from the given record.
 fn get_input<'a>(rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
     match col {
@@ -71,16 +105,6 @@ fn get_input<'a>(rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalErr
             Ok(res)
         }
         None => Ok(&rec.raw),
-    }
-}
-
-/// Trait for operators that maintain state while processing records.
-pub trait UnaryPreAggOperator: Send + Sync {
-    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError>;
-    /// Return any remaining records that may have been gathered by the operator.  This method
-    /// will be called when there are no more new input records.
-    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item = Record>> {
-        Box::new(iter::empty())
     }
 }
 
@@ -149,7 +173,11 @@ impl AggregateOperator for PreAggAdapter {
                             data: vmap,
                             raw: "".to_string(),
                         })
-                        .flat_map(|rec| op.process_mut(rec).unwrap_or(None))
+                        .flat_map(|rec| {
+                            op.process_many_mut(rec)
+                                .unwrap_or(OperatorResult::None)
+                                .flatten()
+                        })
                         .map(|rec| rec.data);
                     records.collect()
                 };

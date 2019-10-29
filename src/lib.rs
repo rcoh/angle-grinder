@@ -267,22 +267,48 @@ pub mod pipeline {
         /// Process a record using the pre-agg operators.  The output of the last operator will be
         /// sent to `tx`.
         fn proc_preagg(
-            mut rec: Record,
+            input_rec: Record,
             pre_aggs: &mut [Box<dyn operator::UnaryPreAggOperator>],
             tx: &Sender<Row>,
         ) -> bool {
+            let mut next_batch = operator::OperatorResult::Single(input_rec);
             for pre_agg in pre_aggs {
-                match (*pre_agg).process_mut(rec) {
-                    Ok(Some(next_rec)) => rec = next_rec,
-                    Ok(None) => return true,
-                    Err(err) => {
-                        eprintln!("error: {}", err);
-                        return true;
+                next_batch = match next_batch {
+                    operator::OperatorResult::Single(rec) => {
+                        (*pre_agg).process_many_mut(rec).unwrap_or_else(|e| {
+                            eprintln!("error: {}", e);
+                            operator::OperatorResult::None
+                        })
                     }
-                }
+                    operator::OperatorResult::None => operator::OperatorResult::None,
+                    operator::OperatorResult::Many(recs) => {
+                        let mut result = vec![];
+                        recs.into_iter()
+                            .for_each(|rec| match (*pre_agg).process_many_mut(rec) {
+                                Ok(operator::OperatorResult::Single(rec)) => result.push(rec),
+                                Ok(operator::OperatorResult::Many(recs)) => result.extend(recs),
+                                Err(e) => eprintln!("error: {}", e),
+                                _other => (),
+                            });
+                        match result.len() {
+                            0 => operator::OperatorResult::None,
+                            1 => {
+                                operator::OperatorResult::Single(result.into_iter().next().unwrap())
+                            }
+                            _ => operator::OperatorResult::Many(result),
+                        }
+                    }
+                };
             }
 
-            tx.send(Row::Record(rec)).is_ok()
+            match next_batch {
+                operator::OperatorResult::Single(rec) => tx.send(Row::Record(rec)).is_ok(),
+                operator::OperatorResult::Many(recs) => recs
+                    .into_iter()
+                    .map(|rec| tx.send(Row::Record(rec)).is_ok())
+                    .all(|r| r == true),
+                operator::OperatorResult::None => true,
+            }
         }
 
         pub fn run_agg_pipeline(

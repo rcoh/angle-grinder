@@ -7,6 +7,10 @@ license = "MIT"
 repository = "https://github.com/rcoh/angle-grinder"
 readme = "README.md"
 edition = "2018"
+
+[profile.release]
+debug = true
+
 [package.metadata.deb]
 extended-description = """Angle-grinder allows you to parse, aggregate, sum, average, percentile, and sort your data. \
                         You can see it, live-updating, in your terminal. Angle grinder is designed for when, for \
@@ -20,6 +24,7 @@ extended-description = """Angle-grinder allows you to parse, aggregate, sum, ave
 serde_json = "1.0.33"
 itertools = "0.8.0"
 nom = { version = "4.2.3", features = ["verbose-errors"] }
+crossterm = "0.12.1"
 nom_locate = { version = "0.3.1", features = ["verbose-errors"] }
 strsim = "0.8.0"
 quicli = "0.4.0"

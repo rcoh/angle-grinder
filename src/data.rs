@@ -281,7 +281,7 @@ impl Record {
     pub fn new(raw: &str) -> Record {
         Record {
             data: HashMap::new(),
-            raw: raw.to_string(),
+            raw: raw.to_owned(),
         }
     }
 
