@@ -1,13 +1,20 @@
 #[macro_use]
 extern crate failure;
+#[macro_use]
+extern crate include_dir;
+#[macro_use]
+extern crate serde_derive;
 extern crate atty;
 extern crate nom_locate;
 extern crate num_derive;
 extern crate num_traits;
+extern crate serde;
+extern crate toml;
 
 extern crate annotate_snippets;
 extern crate crossbeam_channel;
 
+mod alias;
 mod data;
 mod errors;
 mod filter;
@@ -26,6 +33,8 @@ pub mod pipeline {
     use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
+    use nom::types::CompleteStr;
+    use std::collections::VecDeque;
     use std::io::BufRead;
     use std::thread;
     use std::time::Duration;
@@ -114,10 +123,28 @@ pub mod pipeline {
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<dyn operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<dyn operator::AggregateOperator>> = Vec::new();
-            let mut op_iter = query.operators.into_iter().peekable();
+            let mut op_deque = query.operators.into_iter().collect::<VecDeque<_>>();
             let mut has_errors = false;
-            while let Some(op) = op_iter.next() {
+            while let Some(op) = op_deque.pop_front() {
                 match op {
+                    Operator::RenderedAlias(rendered_alias) => {
+                        // TODO: create a new QueryContainer here and parse the templated string
+                        // -> expecting only Inline operators?
+                        // let inner_query = QueryContainer::new(rendered_alias.value, ???);
+                        let (_span, operators) =
+                            match operator_list(Span::new(CompleteStr(&rendered_alias.value))) {
+                                Err(_err) => bail!(
+                                    "Failed to parse rendered alias: `{}` as operator_list",
+                                    rendered_alias.value,
+                                ),
+                                Ok(v) => v,
+                            };
+
+                        // Insert operators (in-order) to front of operator stack
+                        for new_op in operators.into_iter().rev() {
+                            op_deque.push_front(new_op);
+                        }
+                    }
                     Operator::Inline(inline_op) => {
                         let op_builder = inline_op.type_check(pipeline)?;
 
@@ -133,7 +160,7 @@ pub mod pipeline {
                         if let Ok(op) = Pipeline::convert_multi_agg(agg_op, pipeline) {
                             post_agg.push(op);
 
-                            let needs_sort = match op_iter.peek() {
+                            let needs_sort = match op_deque.front() {
                                 Some(Operator::Inline(Positioned {
                                     value: InlineOperator::Limit { .. },
                                     ..

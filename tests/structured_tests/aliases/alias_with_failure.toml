@@ -1,0 +1,13 @@
+query = """* | apache | foo"""
+input = ""
+output = ""
+error = """
+error: Expected an operator
+  |
+1 | * | apache | foo
+  |              ^^^
+  |
+  = help: foo is not a valid operator
+Error: Failed to parse query
+"""
+succeeds = false

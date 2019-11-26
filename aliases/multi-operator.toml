@@ -1,0 +1,4 @@
+keyword = "testmultioperator"
+template = """
+json | count(abc)
+"""

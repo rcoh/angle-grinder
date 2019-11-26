@@ -1,0 +1,4 @@
+keyword = "apache"
+template = """
+parse "* - * [*] \\"* * *\\" * *" as ip, name, timestamp, method, url, protocol, status, contentlength
+"""
