@@ -8,7 +8,7 @@ use self_update::cargo_crate_version;
 use std::env;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, stdout};
+use std::io::{stdout, BufReader};
 use structopt::StructOpt;
 
 use structopt::clap::ArgGroup;

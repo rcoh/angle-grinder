@@ -60,15 +60,9 @@ pub mod pipeline {
 
     fn convert_filter(filter: Search) -> filter::Filter {
         match filter {
-            Search::And(vec) => {
-                filter::Filter::And(vec.into_iter().map(convert_filter).collect())
-            }
-            Search::Or(vec) => {
-                filter::Filter::Or(vec.into_iter().map(convert_filter).collect())
-            }
-            Search::Not(search) => {
-                filter::Filter::Not(Box::new(convert_filter(*search)))
-            }
+            Search::And(vec) => filter::Filter::And(vec.into_iter().map(convert_filter).collect()),
+            Search::Or(vec) => filter::Filter::Or(vec.into_iter().map(convert_filter).collect()),
+            Search::Not(search) => filter::Filter::Not(Box::new(convert_filter(*search))),
             Search::Keyword(keyword) => filter::Filter::Keyword(keyword.to_regex()),
         }
     }
@@ -116,8 +110,11 @@ pub mod pipeline {
             }
         }
 
-
-        pub fn new<W: 'static + Write + Send>(pipeline: &QueryContainer, format: Option<String>, output: W) -> Result<Self, Error> {
+        pub fn new<W: 'static + Write + Send>(
+            pipeline: &QueryContainer,
+            format: Option<String>,
+            output: W,
+        ) -> Result<Self, Error> {
             let parsed = pipeline.parse().map_err(|_pos| CompileError::Parse);
             let query = parsed?;
             let filters = convert_filter(query.search);
@@ -194,7 +191,7 @@ pub mod pipeline {
                         format,
                     },
                     Duration::from_millis(50),
-                    Box::new(output)
+                    Box::new(output),
                 ),
             })
         }

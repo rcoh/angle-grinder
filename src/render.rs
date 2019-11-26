@@ -2,7 +2,7 @@ use crate::data;
 use failure::Error;
 use std;
 use std::collections::HashMap;
-use std::io::{Write};
+use std::io::Write;
 
 extern crate strfmt;
 use strfmt::strfmt;
@@ -289,7 +289,11 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(config: RenderConfig, update_interval: Duration, output: Box<dyn Write + Send>) -> Self {
+    pub fn new(
+        config: RenderConfig,
+        update_interval: Duration,
+        output: Box<dyn Write + Send>,
+    ) -> Self {
         let tsize_opt =
             terminal_size().map(|(Width(width), Height(height))| TerminalSize { width, height });
         Renderer {

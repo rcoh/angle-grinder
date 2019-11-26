@@ -23,8 +23,8 @@ mod integration {
     use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
     use assert_cli;
     use std::borrow::Borrow;
-    use toml;
     use std::io::stdout;
+    use toml;
 
     pub struct EmptyErrorReporter;
 

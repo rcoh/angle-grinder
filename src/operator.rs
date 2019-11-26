@@ -823,8 +823,8 @@ impl UnaryPreAggFunction for Parse {
             }
             (Some(matches), _) => {
                 let mut rec = rec;
-                for (i, field) in self.fields.iter().enumerate() {
-                    rec = rec.put(field, matches[i].clone());
+                for (field, value) in self.fields.iter().zip(matches.into_iter()) {
+                    rec = rec.put(field, value);
                 }
                 Ok(Some(rec))
             }
