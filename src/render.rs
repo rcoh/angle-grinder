@@ -2,7 +2,7 @@ use crate::data;
 use failure::Error;
 use std;
 use std::collections::HashMap;
-use std::io::{stdout, Write};
+use std::io::{Write};
 
 extern crate strfmt;
 use strfmt::strfmt;
@@ -281,7 +281,7 @@ impl PrettyPrinter {
 pub struct Renderer {
     pretty_printer: PrettyPrinter,
     update_interval: Duration,
-    stdout: std::io::Stdout,
+    stdout: Box<dyn Write + Send>,
 
     reset_sequence: String,
     is_tty: bool,
@@ -289,13 +289,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(config: RenderConfig, update_interval: Duration) -> Self {
+    pub fn new(config: RenderConfig, update_interval: Duration, output: Box<dyn Write + Send>) -> Self {
         let tsize_opt =
             terminal_size().map(|(Width(width), Height(height))| TerminalSize { width, height });
         Renderer {
             is_tty: tsize_opt.is_some(),
             pretty_printer: PrettyPrinter::new(config, tsize_opt),
-            stdout: stdout(),
+            stdout: output,
             reset_sequence: "".to_string(),
             last_print: None,
             update_interval,
