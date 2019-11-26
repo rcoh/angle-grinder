@@ -70,7 +70,9 @@ pub enum OperatorResult {
 }
 
 impl OperatorResult {
-    pub fn flatten(self) -> Vec<Record> {
+    /// to_vec should only be used where converting the result into a vector is required -- otherwise
+    /// it will can be a significant performance penalty in hot loops.
+    pub fn into_vec(self) -> Vec<Record> {
         match self {
             OperatorResult::None => vec![],
             OperatorResult::Single(rec) => vec![rec],
@@ -79,8 +81,14 @@ impl OperatorResult {
     }
 }
 
-/// Trait for operators that maintain state while processing records.
-pub trait UnaryPreAggOperator: Send + Sync {
+pub trait Operator: Send + Sync {
+    fn process_many_mut(&mut self, rec: Record) -> Result<OperatorResult, EvalError>;
+    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item=Record>> {
+        Box::new(iter::empty())
+    }
+}
+
+impl Operator for dyn SingleRowOperator {
     fn process_many_mut(&mut self, rec: Record) -> Result<OperatorResult, EvalError> {
         let rec_opt = self.process_mut(rec)?;
         Ok(match rec_opt {
@@ -89,10 +97,17 @@ pub trait UnaryPreAggOperator: Send + Sync {
         })
     }
 
+    fn drain(self: Box<Self>) -> Box<Iterator<Item=Record>> {
+        self.drain()
+    }
+}
+
+/// Trait for operators that maintain state while processing records.
+pub trait SingleRowOperator: Send + Sync {
     fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError>;
     /// Return any remaining records that may have been gathered by the operator.  This method
     /// will be called when there are no more new input records.
-    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item = Record>> {
+    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item=Record>> {
         Box::new(iter::empty())
     }
 }
@@ -111,16 +126,16 @@ fn get_input<'a>(rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalErr
 /// Trait used to instantiate an operator from its definition.  If an operator does not maintain
 /// state, the operator definition value can be cloned and returned.
 pub trait OperatorBuilder: Send + Sync {
-    fn build(&self) -> Box<dyn UnaryPreAggOperator>;
+    fn build(&self) -> Box<dyn Operator>;
 }
 
 /// A trivial OperatorBuilder implementation for functional traits since they don't need to
 /// maintain state.
 impl<T> OperatorBuilder for T
-where
-    T: 'static + UnaryPreAggFunction + Clone,
+    where
+        T: 'static + UnaryPreAggFunction + Clone,
 {
-    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
+    fn build(&self) -> Box<dyn Operator> {
         // TODO: eliminate the clone since a functional operator definition could be shared.
         Box::new((*self).clone())
     }
@@ -144,16 +159,31 @@ impl PreAggAdapter {
     }
 }
 
+impl<T> Operator for T
+    where
+        T: UnaryPreAggFunction,
+{
+
+    fn process_many_mut(&mut self, rec: Record) -> Result<OperatorResult, EvalError> {
+        let res = self.process(rec)?;
+        Ok(match res {
+            Some(rec) => OperatorResult::Single(rec),
+            None => OperatorResult::None
+        })
+    }
+}
+
 /// A trivial UnaryPreAggOperator implementation for functional operators since they don't need
 /// an object to contain any state.
-impl<T> UnaryPreAggOperator for T
-where
-    T: UnaryPreAggFunction,
+/*impl<T> SingleRowOperator for T
+    where
+        T: UnaryPreAggFunction,
 {
     fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
         self.process(rec)
     }
-}
+}*/
+
 
 impl AggregateOperator for PreAggAdapter {
     fn emit(&self) -> Aggregate {
@@ -176,7 +206,7 @@ impl AggregateOperator for PreAggAdapter {
                         .flat_map(|rec| {
                             op.process_many_mut(rec)
                                 .unwrap_or(OperatorResult::None)
-                                .flatten()
+                                .into_vec()
                         })
                         .map(|rec| rec.data);
                     records.collect()
@@ -189,7 +219,7 @@ impl AggregateOperator for PreAggAdapter {
                         .unique()
                         .cloned()
                 }
-                .collect();
+                    .collect();
                 let output_column_set: HashSet<String> =
                     HashSet::from_iter(resulting_columns.iter().cloned());
                 let input_column_set = HashSet::from_iter(agg.columns.iter().cloned());
@@ -593,6 +623,16 @@ impl AggregateFunction for Max {
     }
 }
 
+pub struct Splat {
+    column: Expr
+}
+
+impl Operator for Splat {
+    fn process_many_mut(&mut self, rec: Record) -> Result<OperatorResult, EvalError> {
+        unimplemented!()
+    }
+}
+
 pub struct Percentile {
     ckms: CKMS<f64>,
     column: Expr,
@@ -897,7 +937,7 @@ impl TotalDef {
 }
 
 impl OperatorBuilder for TotalDef {
-    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
+    fn build(&self) -> Box<dyn Operator> {
         Box::new(Total::new(self.column.clone(), self.output_column.clone()))
     }
 }
@@ -918,14 +958,14 @@ impl Total {
     }
 }
 
-impl UnaryPreAggOperator for Total {
-    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+impl Operator for Total {
+    fn process_many_mut(&mut self, rec: Record) -> Result<OperatorResult, EvalError> {
         // I guess this means there are cases when you need to both emit a warning _and_ a row, TODO
         // for now, we'll just emit the row
         let val: f64 = self.column.eval(&rec.data).unwrap_or(0.0);
         self.total += val;
         let rec = rec.put(&self.output_column, data::Value::from_float(self.total));
-        Ok(Some(rec))
+        Ok(OperatorResult::Single(rec))
     }
 }
 
@@ -1114,7 +1154,7 @@ pub enum Limit {
 }
 
 impl OperatorBuilder for LimitDef {
-    fn build(&self) -> Box<dyn UnaryPreAggOperator> {
+    fn build(&self) -> Box<dyn Operator> {
         Box::new(if self.limit > 0 {
             Limit::Head {
                 index: 0,
@@ -1129,8 +1169,8 @@ impl OperatorBuilder for LimitDef {
     }
 }
 
-impl UnaryPreAggOperator for Limit {
-    fn process_mut(&mut self, rec: Record) -> Result<Option<Record>, EvalError> {
+impl Operator for Limit {
+    fn process_many_mut(&mut self, rec: Record) -> Result<OperatorResult, EvalError> {
         match self {
             Limit::Head {
                 ref mut index,
@@ -1139,9 +1179,9 @@ impl UnaryPreAggOperator for Limit {
                 (*index) += 1;
 
                 if index <= limit {
-                    Ok(Some(rec))
+                    Ok(OperatorResult::Single(rec))
                 } else {
-                    Ok(None)
+                    Ok(OperatorResult::None)
                 }
             }
             Limit::Tail {
@@ -1153,12 +1193,12 @@ impl UnaryPreAggOperator for Limit {
                 }
                 queue.push_back(rec);
 
-                Ok(None)
+                Ok(OperatorResult::None)
             }
         }
     }
 
-    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item = Record>> {
+    fn drain(self: Box<Self>) -> Box<dyn Iterator<Item=Record>> {
         match *self {
             Limit::Head { .. } => Box::new(iter::empty()),
             Limit::Tail { queue, .. } => Box::new(queue.into_iter()),

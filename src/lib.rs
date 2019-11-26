@@ -44,7 +44,7 @@ pub mod pipeline {
 
     pub struct Pipeline {
         filter: filter::Filter,
-        pre_aggregates: Vec<Box<dyn operator::UnaryPreAggOperator>>,
+        pre_aggregates: Vec<Box<dyn operator::Operator>>,
         aggregators: Vec<Box<dyn operator::AggregateOperator>>,
         renderer: Renderer,
     }
@@ -112,7 +112,7 @@ pub mod pipeline {
             let query = parsed?;
             let filters = Pipeline::convert_filter(query.search);
             let mut in_agg = false;
-            let mut pre_agg: Vec<Box<dyn operator::UnaryPreAggOperator>> = Vec::new();
+            let mut pre_agg: Vec<Box<dyn operator::Operator>> = Vec::new();
             let mut post_agg: Vec<Box<dyn operator::AggregateOperator>> = Vec::new();
             let mut op_iter = query.operators.into_iter().peekable();
             let mut has_errors = false;
@@ -268,7 +268,7 @@ pub mod pipeline {
         /// sent to `tx`.
         fn proc_preagg(
             input_rec: Record,
-            pre_aggs: &mut [Box<dyn operator::UnaryPreAggOperator>],
+            pre_aggs: &mut [Box<dyn operator::Operator>],
             tx: &Sender<Row>,
         ) -> bool {
             let mut next_batch = operator::OperatorResult::Single(input_rec);
