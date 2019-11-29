@@ -1,11 +1,8 @@
 use ag::data::Record;
 use ag::lang::Keyword;
 use ag::operator::{Parse, ParseOptions, UnaryPreAggFunction};
-use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
-use annotate_snippets::snippet::Snippet;
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use std::fs::File;
-use std::io::{BufReader, Write};
+
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let parser = Parse::new(
