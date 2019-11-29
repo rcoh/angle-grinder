@@ -15,11 +15,11 @@ extern crate annotate_snippets;
 extern crate crossbeam_channel;
 
 mod alias;
-mod data;
+pub mod data;
 mod errors;
 mod filter;
-mod lang;
-mod operator;
+pub mod lang;
+pub mod operator;
 mod render;
 mod typecheck;
 
@@ -35,7 +35,7 @@ pub mod pipeline {
     use failure::Error;
     use nom::types::CompleteStr;
     use std::collections::VecDeque;
-    use std::io::BufRead;
+    use std::io::{BufRead, Write};
     use std::thread;
     use std::time::Duration;
 
@@ -56,6 +56,15 @@ pub mod pipeline {
         pre_aggregates: Vec<Box<dyn operator::UnaryPreAggOperator>>,
         aggregators: Vec<Box<dyn operator::AggregateOperator>>,
         renderer: Renderer,
+    }
+
+    fn convert_filter(filter: Search) -> filter::Filter {
+        match filter {
+            Search::And(vec) => filter::Filter::And(vec.into_iter().map(convert_filter).collect()),
+            Search::Or(vec) => filter::Filter::Or(vec.into_iter().map(convert_filter).collect()),
+            Search::Not(search) => filter::Filter::Not(Box::new(convert_filter(*search))),
+            Search::Keyword(keyword) => filter::Filter::Keyword(keyword.to_regex()),
+        }
     }
 
     impl Pipeline {
@@ -101,25 +110,14 @@ pub mod pipeline {
             }
         }
 
-        fn convert_filter(filter: Search) -> filter::Filter {
-            match filter {
-                Search::And(vec) => {
-                    filter::Filter::And(vec.into_iter().map(Pipeline::convert_filter).collect())
-                }
-                Search::Or(vec) => {
-                    filter::Filter::Or(vec.into_iter().map(Pipeline::convert_filter).collect())
-                }
-                Search::Not(search) => {
-                    filter::Filter::Not(Box::new(Pipeline::convert_filter(*search)))
-                }
-                Search::Keyword(keyword) => filter::Filter::Keyword(keyword.to_regex()),
-            }
-        }
-
-        pub fn new(pipeline: &QueryContainer, format: Option<String>) -> Result<Self, Error> {
+        pub fn new<W: 'static + Write + Send>(
+            pipeline: &QueryContainer,
+            format: Option<String>,
+            output: W,
+        ) -> Result<Self, Error> {
             let parsed = pipeline.parse().map_err(|_pos| CompileError::Parse);
             let query = parsed?;
-            let filters = Pipeline::convert_filter(query.search);
+            let filters = convert_filter(query.search);
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<dyn operator::UnaryPreAggOperator>> = Vec::new();
             let mut post_agg: Vec<Box<dyn operator::AggregateOperator>> = Vec::new();
@@ -190,9 +188,10 @@ pub mod pipeline {
                         floating_points: 2,
                         min_buffer: 4,
                         max_buffer: 8,
-                        format: format,
+                        format,
                     },
                     Duration::from_millis(50),
+                    Box::new(output),
                 ),
             })
         }

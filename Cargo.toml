@@ -49,3 +49,15 @@ serde_derive = "1.0.82"
 assert_cli = "0.6.3"
 maplit = "1.0.1"
 pulldown-cmark = "0.2.0"
+criterion = "0.3"
+
+[[bench]]
+name = "e2e"
+harness = false
+
+[[bench]]
+name = "parse"
+harness = false
+
+[profile.release]
+debug = true

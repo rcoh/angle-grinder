@@ -789,17 +789,16 @@ impl Parse {
 
     fn matches(&self, rec: &Record) -> Result<Option<Vec<data::Value>>, EvalError> {
         let inp = get_input(rec, &self.input_column)?;
-        let matches: Vec<regex::Captures> = self.regex.captures_iter(inp.trim()).collect();
-        if matches.is_empty() {
-            Ok(None)
-        } else {
-            let capture = &matches[0];
-            let mut values: Vec<data::Value> = Vec::new();
-            for i in 0..self.fields.len() {
-                // the first capture is the entire string
-                values.push(data::Value::from_string(&capture[i + 1]));
+        match self.regex.captures_iter(inp.trim()).next() {
+            None => Ok(None),
+            Some(capture) => {
+                let mut values: Vec<data::Value> = Vec::with_capacity(self.fields.len());
+                for i in 0..self.fields.len() {
+                    // the first capture is the entire string
+                    values.push(data::Value::from_string(&capture[i + 1]));
+                }
+                Ok(Some(values))
             }
-            Ok(Some(values))
         }
     }
 }
@@ -824,8 +823,8 @@ impl UnaryPreAggFunction for Parse {
             }
             (Some(matches), _) => {
                 let mut rec = rec;
-                for (i, field) in self.fields.iter().enumerate() {
-                    rec = rec.put(field, matches[i].clone());
+                for (field, value) in self.fields.iter().zip(matches.into_iter()) {
+                    rec = rec.put(field, value);
                 }
                 Ok(Some(rec))
             }

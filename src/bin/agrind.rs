@@ -8,7 +8,7 @@ use self_update::cargo_crate_version;
 use std::env;
 use std::fs::File;
 use std::io;
-use std::io::BufReader;
+use std::io::{stdout, BufReader};
 use structopt::StructOpt;
 
 use structopt::clap::ArgGroup;
@@ -78,7 +78,7 @@ fn main() -> CliResult {
         }),
     );
     args.verbosity.setup_env_logger("agrind")?;
-    let pipeline = Pipeline::new(&query, args.format)?;
+    let pipeline = Pipeline::new(&query, args.format, stdout())?;
     match args.file {
         Some(file_name) => {
             let f = File::open(file_name)?;
