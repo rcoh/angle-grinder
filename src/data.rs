@@ -155,7 +155,7 @@ impl Value {
             .map(Value::Int)
             .or_else(|_| float_value.map(Value::from_float))
             .or_else(|_| bool_value.map(Value::Bool))
-            .unwrap_or_else(|_| Value::Str(s.into()))
+            .unwrap_or_else(|_| Value::Str(trimmed.into()))
     }
 }
 
@@ -367,6 +367,7 @@ mod tests {
             Value::Str("not a number".to_string())
         );
         assert_eq!(Value::from_string("1 "), Value::Int(1));
+        assert_eq!(Value::from_string("abcd "), Value::Str("abcd".to_owned()));
     }
 
     #[test]
