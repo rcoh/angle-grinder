@@ -112,8 +112,21 @@ mod tests {
             vec!["mm", "m"],
         );
         assert_eq!(
-            split_with_delimiters(r#"Oct 09 20:22:21 web-001 influxd[188053]: 127.0.0.1 "POST /write \"escaped\" HTTP/1.0" 204"#, " ", &DEFAULT_DELIMITERS),
-            vec!["Oct", "09", "20:22:21", "web-001", "influxd[188053]:", "127.0.0.1", "POST /write \\\"escaped\\\" HTTP/1.0", "204"],
+            split_with_delimiters(
+                r#"Oct 09 20:22:21 web-001 influxd[188053]: 127.0.0.1 "POST /write \"escaped\" HTTP/1.0" 204"#,
+                " ",
+                &DEFAULT_DELIMITERS
+            ),
+            vec![
+                "Oct",
+                "09",
+                "20:22:21",
+                "web-001",
+                "influxd[188053]:",
+                "127.0.0.1",
+                "POST /write \\\"escaped\\\" HTTP/1.0",
+                "204"
+            ],
         );
     }
 

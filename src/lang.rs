@@ -1284,8 +1284,7 @@ mod tests {
 
     #[test]
     fn query_operators() {
-        let query_str =
-            r#"* | json from col | parse "!123*" as foo | count by foo, foo == 123 | sort by foo dsc "#;
+        let query_str = r#"* | json from col | parse "!123*" as foo | count by foo, foo == 123 | sort by foo dsc "#;
         expect!(
             query,
             query_str,
