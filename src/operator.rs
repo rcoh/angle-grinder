@@ -8,9 +8,8 @@ extern crate serde_json;
 use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
 use crate::data;
-use crate::data::{Aggregate, Record, Row};
-use crate::operator::itertools::Itertools;
-use crate::render::RenderConfig;
+use crate::data::{Aggregate, DisplayConfig, Record, Row};
+use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -307,7 +306,7 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                         (ValueRef::Field(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "object".to_string(),
-                                found: other.render(&RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                         (ValueRef::IndexAt(index), data::Value::Array(vec)) => {
@@ -322,7 +321,7 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                         (ValueRef::IndexAt(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "array".to_string(),
-                                found: other.render(&RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                     }
@@ -330,7 +329,10 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                 Ok(root_record)
             }
             Expr::BoolUnary(
-                ref unary_op @ UnaryExpr {
+                ref
+                unary_op
+                @
+                UnaryExpr {
                     operator: BoolUnaryExpr::Not,
                     ..
                 },

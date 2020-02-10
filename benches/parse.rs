@@ -24,10 +24,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter_batched(
             || {
                 Record::new(
-            "17:12:14.214111 IP 10.0.2.243.53938 > \"taotie.canonical.com.http\": \
+                    "17:12:14.214111 IP 10.0.2.243.53938 > \"taotie.canonical.com.http\": \
              Flags [.], ack 56575, win 2375, options [nop,nop,TS val 13651369 ecr 169698010], \
              length 99",
-        )
+                )
             },
             |rec| parser.process(rec),
             BatchSize::SmallInput,

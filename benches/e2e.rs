@@ -1,4 +1,4 @@
-use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
+use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
 use annotate_snippets::snippet::Snippet;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use std::fs::File;
@@ -59,7 +59,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let file = &test.file;
         group.bench_function(name, |b| {
             b.iter(|| {
-                let pipeline = Pipeline::new(&query_container, None, NopWriter {}).unwrap();
+                let pipeline =
+                    Pipeline::new(&query_container, NopWriter {}, OutputMode::Legacy).unwrap();
                 let f = File::open(file).unwrap();
                 pipeline.process(black_box(BufReader::new(f)))
             })

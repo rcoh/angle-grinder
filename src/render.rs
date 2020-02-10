@@ -5,32 +5,53 @@ use std::collections::HashMap;
 use std::io::Write;
 
 extern crate strfmt;
-use strfmt::strfmt;
-
 extern crate terminal_size;
 
-use self::terminal_size::{terminal_size, Height, Width};
+use self::strfmt::{strfmt_map, FmtError, Formatter};
+use crate::data::{DisplayConfig, Record};
+use crate::pipeline::OutputMode;
+use itertools::Itertools;
 use std::time::{Duration, Instant};
+use terminal_size::{terminal_size, Height, Width};
 
+#[derive(Clone)]
 pub struct RenderConfig {
-    pub floating_points: usize,
+    pub display_config: DisplayConfig,
     pub min_buffer: usize,
     pub max_buffer: usize,
-    pub format: Option<String>,
 }
 
-impl RenderConfig {
-    pub fn default() -> Self {
+impl Default for RenderConfig {
+    fn default() -> Self {
         RenderConfig {
-            floating_points: 2,
+            display_config: data::DisplayConfig { floating_points: 2 },
             min_buffer: 1,
             max_buffer: 4,
-            format: None,
         }
     }
 }
 
-struct TerminalSize {
+pub struct TerminalConfig {
+    size: Option<TerminalSize>,
+    is_tty: bool,
+    color_enabled: bool,
+}
+
+impl TerminalConfig {
+    pub fn load() -> Self {
+        let tsize_opt =
+            terminal_size().map(|(Width(width), Height(height))| TerminalSize { width, height });
+        let is_tty = tsize_opt != None;
+        TerminalConfig {
+            size: tsize_opt,
+            is_tty,
+            color_enabled: is_tty,
+        }
+    }
+}
+
+#[derive(PartialEq)]
+pub struct TerminalSize {
     height: u16,
     width: u16,
 }
@@ -76,7 +97,7 @@ impl PrettyPrinter {
                 let current_width = *self.column_widths.get(column_name).unwrap_or(&0);
                 // 1. If the width would increase, set it to max_buffer
                 let value_length = value
-                    .render(&self.render_config)
+                    .render(&self.render_config.display_config)
                     .len()
                     .max(column_name.len());
                 let min_column_width = value_length + self.render_config.min_buffer;
@@ -144,9 +165,11 @@ impl PrettyPrinter {
                 let value = record.data.get(column_name);
 
                 let unpadded = match value {
-                    Some(value) => {
-                        format!("[{}={}]", column_name, value.render(&self.render_config))
-                    }
+                    Some(value) => format!(
+                        "[{}={}]",
+                        column_name,
+                        value.render(&self.render_config.display_config)
+                    ),
                     None => "".to_string(),
                 };
                 if no_padding {
@@ -161,17 +184,6 @@ impl PrettyPrinter {
             })
             .collect();
         strs.join("").trim().to_string()
-    }
-
-    fn format_record_as_format(&self, format: &String, record: &data::Record) -> String {
-        strfmt(format, &record.data).unwrap()
-    }
-
-    fn format_record(&mut self, record: &data::Record) -> String {
-        match self.render_config.format {
-            Some(ref format) => self.format_record_as_format(format, record),
-            None => self.format_record_as_columns(record),
-        }
     }
 
     fn max_width(&self) -> u16 {
@@ -228,7 +240,7 @@ impl PrettyPrinter {
                 format_with_ellipsis(
                     row.get(column_name)
                         .unwrap_or(&data::Value::None)
-                        .render(&self.render_config),
+                        .render(&self.render_config.display_config),
                     self.column_widths[column_name],
                 )
             })
@@ -278,10 +290,94 @@ impl PrettyPrinter {
     }
 }
 
+pub trait Printer<O> {
+    fn print(&mut self, row: &O, display_config: &DisplayConfig) -> String;
+}
+
+struct LogFmtPrinter {}
+
+pub fn raw_printer(
+    mode: OutputMode,
+    render_config: RenderConfig,
+    terminal_config: TerminalConfig,
+) -> Result<Box<dyn Printer<data::Record> + Send>, Error> {
+    // suppress warnings until I use these
+    let _x = terminal_config.color_enabled;
+    let _y = terminal_config.is_tty;
+    match mode {
+        OutputMode::Logfmt => Ok(Box::new(LogFmtPrinter {})),
+        OutputMode::Legacy => Ok(Box::new(LegacyPrinter::new(render_config, terminal_config))),
+        OutputMode::Json => unimplemented!(),
+        OutputMode::Format(format_str) => Ok(Box::new(FormatPrinter::new(format_str)?)),
+    }
+}
+
+impl Printer<data::Record> for LogFmtPrinter {
+    fn print(&mut self, row: &data::Record, display_config: &DisplayConfig) -> String {
+        let columns = row.data.iter().sorted();
+        let kv_pairs = columns
+            .map(|(col, data)| format!("{}={}", col, data.render(display_config)))
+            .collect_vec();
+        kv_pairs.join(" ")
+    }
+}
+
+struct LegacyPrinter {
+    pretty_printer: PrettyPrinter,
+}
+
+impl LegacyPrinter {
+    pub fn new(render_config: RenderConfig, terminal_config: TerminalConfig) -> Self {
+        LegacyPrinter {
+            pretty_printer: PrettyPrinter::new(render_config, terminal_config.size),
+        }
+    }
+}
+
+impl Printer<data::Record> for LegacyPrinter {
+    fn print(&mut self, row: &Record, _display_config: &DisplayConfig) -> String {
+        self.pretty_printer.format_record_as_columns(row)
+    }
+}
+
+struct FormatPrinter {
+    format_str: String,
+}
+
+impl FormatPrinter {
+    pub fn new(format_str: String) -> Result<Self, Error> {
+        let nop_formatter = |mut fmt: Formatter| fmt.str("");
+        let _ = strfmt_map(&format_str, &nop_formatter)?;
+        Ok(FormatPrinter { format_str })
+    }
+}
+
+pub fn strformat_record(fmtstr: &str, vars: &Record) -> Result<String, FmtError> {
+    let formatter = |mut fmt: Formatter| {
+        let v = match vars.data.get(fmt.key) {
+            Some(v) => v,
+            None => &data::Value::None,
+        };
+        fmt.str(v.to_string().as_str())
+    };
+    strfmt_map(fmtstr, &formatter)
+}
+
+impl Printer<data::Record> for FormatPrinter {
+    fn print(&mut self, row: &Record, _display_config: &DisplayConfig) -> String {
+        match strformat_record(&self.format_str, row) {
+            Ok(s) => s,
+            Err(e) => format!("{}", e),
+        }
+    }
+}
+
 pub struct Renderer {
     pretty_printer: PrettyPrinter,
+    raw_printer: Box<dyn Printer<data::Record> + Send>,
     update_interval: Duration,
     stdout: Box<dyn Write + Send>,
+    config: RenderConfig,
 
     reset_sequence: String,
     is_tty: bool,
@@ -292,13 +388,16 @@ impl Renderer {
     pub fn new(
         config: RenderConfig,
         update_interval: Duration,
+        raw_printer: Box<dyn Printer<data::Record> + Send>,
         output: Box<dyn Write + Send>,
     ) -> Self {
         let tsize_opt =
             terminal_size().map(|(Width(width), Height(height))| TerminalSize { width, height });
         Renderer {
             is_tty: tsize_opt.is_some(),
-            pretty_printer: PrettyPrinter::new(config, tsize_opt),
+            pretty_printer: PrettyPrinter::new(config.clone(), tsize_opt),
+            raw_printer,
+            config,
             stdout: output,
             reset_sequence: "".to_string(),
             last_print: None,
@@ -325,7 +424,7 @@ impl Renderer {
                 Ok(())
             }
             data::Row::Record(ref record) => {
-                let output = self.pretty_printer.format_record(record);
+                let output = self.raw_printer.print(record, &self.config.display_config);
                 writeln!(self.stdout, "{}", output)?;
 
                 Ok(())
@@ -353,51 +452,53 @@ mod tests {
     #[test]
     fn print_raw() {
         let rec = Record::new("Hello, World!\n");
-        let mut pp = PrettyPrinter::new(
-            RenderConfig {
-                floating_points: 2,
-                min_buffer: 1,
-                max_buffer: 4,
-                format: None,
-            },
-            None,
-        );
-        assert_eq!(pp.format_record(&rec), "Hello, World!");
+        let render_config = RenderConfig {
+            display_config: DisplayConfig { floating_points: 2 },
+            min_buffer: 1,
+            max_buffer: 4,
+        };
+        let display_config = DisplayConfig { floating_points: 2 };
+        let mut pp = LegacyPrinter::new(render_config, TerminalConfig::load());
+        assert_eq!(pp.print(&rec, &display_config), "Hello, World!");
     }
 
     #[test]
     fn pretty_print_record() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
+        let display_config = DisplayConfig { floating_points: 2 };
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
-        let mut pp = PrettyPrinter::new(
-            RenderConfig {
-                floating_points: 2,
-                min_buffer: 1,
-                max_buffer: 4,
-                format: None,
-            },
-            None,
+        let render_config = RenderConfig {
+            display_config: DisplayConfig { floating_points: 2 },
+            min_buffer: 1,
+            max_buffer: 4,
+        };
+        let mut pp = LegacyPrinter::new(render_config, TerminalConfig::load());
+        assert_eq!(
+            pp.print(&rec, &display_config),
+            "[k1=5]     [k2=5.50]    [k3=str]"
         );
-        assert_eq!(pp.format_record(&rec), "[k1=5]     [k2=5.50]    [k3=str]");
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
-        assert_eq!(pp.format_record(&rec), "[k1=955]   [k2=5.50]    [k3=str3]");
+        assert_eq!(
+            pp.print(&rec, &display_config),
+            "[k1=955]   [k2=5.50]    [k3=str3]"
+        );
         let rec = Record::new(
             r#"{"k1": "here is a amuch longer stsring", "k2": 5.5000001, "k3": "str3"}"#,
         );
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.format_record(&rec),
+            pp.print(&rec, &display_config),
             "[k1=here is a amuch longer stsring]    [k2=5.50]    [k3=str3]"
         );
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.format_record(&rec),
+            pp.print(&rec, &display_config),
             "[k1=955]                               [k2=5.50]    [k3=str3]"
         );
     }
@@ -406,28 +507,24 @@ mod tests {
     fn pretty_print_record_formatted() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
         let parser = ParseJson::new(None);
+        let display_config = DisplayConfig { floating_points: 2 };
         let rec = parser.process(rec).unwrap().unwrap();
-        let mut pp = PrettyPrinter::new(
-            RenderConfig {
-                floating_points: 2,
-                min_buffer: 1,
-                max_buffer: 4,
-                format: Some("{k1:>3} k2={k2:<10.3} k3[{k3}]".to_string()),
-            },
-            None,
-        );
-        assert_eq!(pp.format_record(&rec), "  5 k2=5.5        k3[str]");
+        let mut pp = FormatPrinter::new("{k1:>3} k2={k2:<10.3} k3[{k3}]".to_string()).unwrap();
+        assert_eq!(pp.print(&rec, &display_config), "  5 k2=5.5        k3[str]");
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
-        assert_eq!(pp.format_record(&rec), "955 k2=5.5        k3[str3]");
+        assert_eq!(
+            pp.print(&rec, &display_config),
+            "955 k2=5.5        k3[str3]"
+        );
         let rec = Record::new(
             r#"{"k1": "here is a amuch longer stsring", "k2": 5.5000001, "k3": "str3"}"#,
         );
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.format_record(&rec),
+            pp.print(&rec, &display_config),
             "here is a amuch longer stsring k2=5.5        k3[str3]"
         );
     }
@@ -436,20 +533,25 @@ mod tests {
     fn pretty_print_record_too_long() {
         let rec = Record::new(r#"{"k1": 5, "k2": 5.5000001, "k3": "str"}"#);
         let parser = ParseJson::new(None);
+        let display_config = DisplayConfig { floating_points: 2 };
         let rec = parser.process(rec).unwrap().unwrap();
-        let mut pp = PrettyPrinter::new(
-            RenderConfig {
-                floating_points: 2,
-                min_buffer: 1,
-                max_buffer: 4,
-                format: None,
+        let render_config = RenderConfig {
+            display_config: DisplayConfig { floating_points: 2 },
+            min_buffer: 1,
+            max_buffer: 4,
+        };
+        let mut pp = LegacyPrinter::new(
+            render_config,
+            TerminalConfig {
+                size: Some(TerminalSize {
+                    width: 10,
+                    height: 2,
+                }),
+                is_tty: false,
+                color_enabled: false,
             },
-            Some(TerminalSize {
-                width: 10,
-                height: 2,
-            }),
         );
-        assert_eq!(pp.format_record(&rec), "[k1=5][k2=5.50][k3=str]");
+        assert_eq!(pp.print(&rec, &display_config), "[k1=5][k2=5.50][k3=str]");
     }
 
     #[test]
@@ -477,10 +579,9 @@ mod tests {
         assert_eq!(agg.data.len(), 2);
         let mut pp = PrettyPrinter::new(
             RenderConfig {
-                floating_points: 2,
+                display_config: DisplayConfig { floating_points: 2 },
                 min_buffer: 2,
                 max_buffer: 4,
-                format: None,
             },
             Some(TerminalSize {
                 width: 100,
@@ -526,10 +627,9 @@ mod tests {
         let max_width = 60;
         let mut pp = PrettyPrinter::new(
             RenderConfig {
-                floating_points: 2,
+                display_config: DisplayConfig { floating_points: 2 },
                 min_buffer: 2,
                 max_buffer: 4,
-                format: None,
             },
             Some(TerminalSize {
                 width: max_width as u16,

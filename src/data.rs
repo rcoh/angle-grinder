@@ -2,7 +2,6 @@ extern crate ordered_float;
 
 use self::ordered_float::OrderedFloat;
 use crate::operator::{EvalError, Expr, ValueRef};
-use crate::render;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -86,6 +85,17 @@ impl Display for Value {
     }
 }
 
+#[derive(Clone)]
+pub struct DisplayConfig {
+    pub floating_points: usize,
+}
+
+impl Default for DisplayConfig {
+    fn default() -> Self {
+        DisplayConfig { floating_points: 2 }
+    }
+}
+
 impl Value {
     /// Used to sort mixed values
     pub fn rank(&self) -> u8 {
@@ -100,7 +110,7 @@ impl Value {
         }
     }
 
-    pub fn render(&self, render_config: &render::RenderConfig) -> String {
+    pub fn render(&self, render_config: &DisplayConfig) -> String {
         match *self {
             Value::Str(ref s) => s.to_string(),
             Value::Int(ref s) => format!("{}", s),
@@ -237,7 +247,7 @@ impl Record {
                         (ValueRef::Field(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "object".to_string(),
-                                found: other.render(&render::RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                         (ValueRef::IndexAt(index), Value::Array(vec)) => {
@@ -252,7 +262,7 @@ impl Record {
                         (ValueRef::IndexAt(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "array".to_string(),
-                                found: other.render(&render::RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                     }
@@ -306,7 +316,6 @@ impl Record {
 mod tests {
     use super::*;
     use maplit::hashmap;
-    use render::RenderConfig;
 
     #[test]
     fn record_put_get() {
@@ -340,7 +349,7 @@ mod tests {
             Value::from_string("123.5"),
             Value::Array(vec![]),
         ]);
-        assert_eq!(rec.render(&RenderConfig::default()), "[false, 123.50, []]");
+        assert_eq!(rec.render(&DisplayConfig::default()), "[false, 123.50, []]");
     }
 
     #[test]

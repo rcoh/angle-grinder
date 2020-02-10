@@ -20,7 +20,7 @@ struct TestDefinition {
 #[cfg(test)]
 mod integration {
     use super::*;
-    use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
+    use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
     use assert_cli;
     use std::borrow::Borrow;
     use std::io::stdout;
@@ -365,7 +365,7 @@ warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManag
 
     fn ensure_parses(query: &str) {
         let query_container = QueryContainer::new(query.to_string(), Box::new(EmptyErrorReporter));
-        Pipeline::new(&query_container, None, stdout()).expect(&format!(
+        Pipeline::new(&query_container, stdout(), OutputMode::Legacy).expect(&format!(
             "Query: `{}` from the README should have parsed",
             query
         ));
