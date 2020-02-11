@@ -20,6 +20,7 @@ mod errors;
 mod filter;
 pub mod lang;
 pub mod operator;
+mod printer;
 mod render;
 mod typecheck;
 
@@ -29,7 +30,8 @@ pub mod pipeline {
     use crate::filter;
     use crate::lang::*;
     use crate::operator;
-    use crate::render::{raw_printer, RenderConfig, Renderer, TerminalConfig};
+    use crate::printer::{agg_printer, raw_printer};
+    use crate::render::{RenderConfig, Renderer, TerminalConfig};
     use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
@@ -192,7 +194,10 @@ pub mod pipeline {
                 min_buffer: 4,
                 max_buffer: 8,
             };
-            let printer = raw_printer(output_mode, render_config, TerminalConfig::load())?;
+            let raw_printer =
+                raw_printer(&output_mode, render_config.clone(), TerminalConfig::load())?;
+            let agg_printer =
+                agg_printer(&output_mode, render_config.clone(), TerminalConfig::load())?;
             Result::Ok(Pipeline {
                 filter: filters,
                 pre_aggregates: pre_agg,
@@ -204,7 +209,8 @@ pub mod pipeline {
                         max_buffer: 8,
                     },
                     Duration::from_millis(50),
-                    printer,
+                    raw_printer,
+                    agg_printer,
                     Box::new(output),
                 ),
             })
