@@ -77,9 +77,9 @@ impl serde::Serialize for Value {
     }
 }
 
-pub static FALSE_VALUE: &'static Value = &Value::Bool(false);
-pub static TRUE_VALUE: &'static Value = &Value::Bool(true);
-pub static NONE: &'static Value = &Value::None;
+pub static FALSE_VALUE: &Value = &Value::Bool(false);
+pub static TRUE_VALUE: &Value = &Value::Bool(true);
+pub static NONE: &Value = &Value::None;
 
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -168,10 +168,7 @@ impl Value {
                 format!("{{{}}}", rendered.join(", "))
             }
             Value::Array(ref o) => {
-                let rendered: Vec<String> = o
-                    .iter()
-                    .map(|v| format!("{}", v.render(render_config)))
-                    .collect();
+                let rendered: Vec<String> = o.iter().map(|v| v.render(render_config)).collect();
                 format!("[{}]", rendered.join(", "))
             }
         }
@@ -310,18 +307,24 @@ impl Record {
             }
             // These should not happen, if so this is a programming error
             // since the data cannot be indexed by BoolUnary / Comparison / Value Exprs.
-            Expr::BoolUnary(_) => Err(EvalError::ExpectedXYZ {
-                expected: "valid expr".to_string(),
-                found: "bool unary expr".to_string(),
-            })?,
-            Expr::Comparison(_) => Err(EvalError::ExpectedXYZ {
-                expected: "valid expr".to_string(),
-                found: "comparison expr".to_string(),
-            })?,
-            Expr::Value(_) => Err(EvalError::ExpectedXYZ {
-                expected: "valid expr".to_string(),
-                found: "value expr".to_string(),
-            })?,
+            Expr::BoolUnary(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "bool unary expr".to_string(),
+                })
+            }
+            Expr::Comparison(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "comparison expr".to_string(),
+                })
+            }
+            Expr::Value(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "value expr".to_string(),
+                })
+            }
         }
         Ok(self)
     }

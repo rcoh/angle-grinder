@@ -377,6 +377,7 @@ impl EvaluatableBorrowed<String> for Expr {
     }
 }
 
+#[derive(Default)]
 pub struct Count {
     count: i64,
 }
@@ -814,7 +815,7 @@ impl UnaryPreAggFunction for Parse {
                 let new_fields: Vec<_> = self
                     .fields
                     .iter()
-                    .filter(|f| !rec.data.contains_key(&f.to_string()))
+                    .filter(|f| !rec.data.contains_key(*f))
                     .collect();
 
                 let mut rec = rec;
@@ -987,24 +988,24 @@ impl ParseJson {
 impl UnaryPreAggFunction for ParseJson {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         fn json_to_value(v: &JsonValue) -> data::Value {
-            match v {
-                &JsonValue::Number(ref num) => {
+            match *v {
+                JsonValue::Number(ref num) => {
                     if num.is_i64() {
                         data::Value::Int(num.as_i64().unwrap())
                     } else {
                         data::Value::from_float(num.as_f64().unwrap())
                     }
                 }
-                &JsonValue::String(ref s) => data::Value::Str(s.to_string()),
-                &JsonValue::Null => data::Value::None,
-                &JsonValue::Bool(b) => data::Value::Bool(b),
-                &JsonValue::Object(ref map) => data::Value::Obj(
+                JsonValue::String(ref s) => data::Value::Str(s.to_string()),
+                JsonValue::Null => data::Value::None,
+                JsonValue::Bool(b) => data::Value::Bool(b),
+                JsonValue::Object(ref map) => data::Value::Obj(
                     map.iter()
                         .map(|(k, v)| (k.to_string(), json_to_value(v)))
                         .collect::<HashMap<String, data::Value>>()
                         .into(),
                 ),
-                &JsonValue::Array(ref vec) => {
+                JsonValue::Array(ref vec) => {
                     data::Value::Array(vec.iter().map(json_to_value).collect::<Vec<data::Value>>())
                 }
             }

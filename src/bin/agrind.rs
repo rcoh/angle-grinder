@@ -125,7 +125,7 @@ fn main() -> CliResult {
 
 fn parse_output(output_param: &str) -> Result<OutputMode, InvalidArgs> {
     // for some args, we split on `=` first
-    let (arg, val) = match output_param.find("=") {
+    let (arg, val) = match output_param.find('=') {
         None => (output_param, "="),
         Some(idx) => output_param.split_at(idx),
     };

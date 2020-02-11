@@ -196,8 +196,7 @@ pub mod pipeline {
             };
             let raw_printer =
                 raw_printer(&output_mode, render_config.clone(), TerminalConfig::load())?;
-            let agg_printer =
-                agg_printer(&output_mode, render_config.clone(), TerminalConfig::load())?;
+            let agg_printer = agg_printer(&output_mode, render_config, TerminalConfig::load())?;
             Result::Ok(Pipeline {
                 filter: filters,
                 pre_aggregates: pre_agg,
