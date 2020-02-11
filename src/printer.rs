@@ -29,7 +29,7 @@ pub fn raw_printer(
     match mode {
         OutputMode::Logfmt => Ok(Box::new(LogFmtPrinter {})),
         OutputMode::Legacy => Ok(Box::new(LegacyPrinter::new(render_config, terminal_config))),
-        OutputMode::Json => unimplemented!(),
+        OutputMode::Json => Ok(Box::new(JsonPrinter {})),
         OutputMode::Format(format_str) => Ok(Box::new(FormatPrinter::new(format_str.to_owned())?)),
     }
 }
@@ -106,6 +106,14 @@ impl Printer<data::Record> for FormatPrinter {
             Ok(s) => s,
             Err(e) => format!("{}", e),
         }
+    }
+}
+
+struct JsonPrinter {}
+
+impl Printer<data::Record> for JsonPrinter {
+    fn print(&mut self, row: &Record, _display_config: &DisplayConfig) -> String {
+        serde_json::to_string(row).unwrap()
     }
 }
 

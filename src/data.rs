@@ -2,6 +2,8 @@ extern crate ordered_float;
 
 use self::ordered_float::OrderedFloat;
 use crate::operator::{EvalError, Expr, ValueRef};
+use crate::serde::ser::SerializeMap;
+use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -27,6 +29,19 @@ pub struct Record {
     pub raw: String,
 }
 
+impl serde::Serialize for Record {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.data.len()))?;
+        for (k, v) in &self.data {
+            map.serialize_entry(k, v)?;
+        }
+        map.end()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Value {
     Str(String),
@@ -37,6 +52,29 @@ pub enum Value {
     Obj(im::HashMap<String, Value>),
     Array(Vec<Value>),
     None,
+}
+
+impl serde::Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Value::Str(s) => serializer.serialize_str(s),
+            Value::Int(i) => serializer.serialize_i64(*i),
+            Value::Float(ofloat) => serializer.serialize_f64(ofloat.0),
+            Value::Bool(b) => serializer.serialize_bool(*b),
+            Value::Obj(map) => {
+                let mut m = serializer.serialize_map(Some(map.len()))?;
+                for (k, v) in map {
+                    m.serialize_entry(k, v)?;
+                }
+                m.end()
+            }
+            Value::Array(v) => serializer.collect_seq(v),
+            Value::None => serializer.serialize_none(),
+        }
+    }
 }
 
 pub static FALSE_VALUE: &'static Value = &Value::Bool(false);
@@ -333,8 +371,8 @@ mod tests {
             "count".to_string(),
             &[(
                 hashmap! {
-                    "kc1".to_string() => "k1".to_string(),
-                    "kc2".to_string() => "k2".to_string()
+                "kc1".to_string() => "k1".to_string(),
+                "kc2".to_string() => "k2".to_string()
                 },
                 Value::Int(100),
             )],
@@ -360,7 +398,7 @@ mod tests {
             "count".to_string(),
             &[(
                 hashmap! {
-                    "kc2".to_string() => "k2".to_string()
+                "kc2".to_string() => "k2".to_string()
                 },
                 Value::Int(100),
             )],
