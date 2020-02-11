@@ -345,7 +345,7 @@ None         1")
     }
 
     #[test]
-    fn custom_format() {
+    fn custom_format_backcompat() {
         assert_cli::Assert::main_binary()
             .with_args(&[
                 "* | logfmt",
@@ -353,6 +353,25 @@ None         1")
                 "{level} | {msg:<30} module={module}",
                 "--file",
                 "test_files/test_logfmt.log",
+            ])
+            .stdout()
+            .is(
+                "info | Stopping all fetchers          module=kafka.consumer.ConsumerFetcherManager
+info | Starting all fetchers          module=kafka.consumer.ConsumerFetcherManager
+warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManager",
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn custom_format() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                "-o",
+                "format={level} | {msg:<30} module={module}",
+                "--file",
+                "test_files/test_logfmt.log",
+                "* | logfmt",
             ])
             .stdout()
             .is(
