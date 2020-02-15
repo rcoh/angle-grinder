@@ -60,47 +60,44 @@ impl QueryContainer {
             Err(nom::Err::Error(nom::Context::List(ref list))) => Some(list),
             _ => None,
         };
-        match errors {
-            Some(ref list) => {
-                // Check for an error from a delimited!() parser.  The error list will contain
-                // the location of the start as the last item and the location of the end as the
-                // penultimate item.
-                let last_chunk = list.rchunks_exact(2).next().map(|p| (&p[0], &p[1]));
+        if let Some(ref list) = errors {
+            // Check for an error from a delimited!() parser.  The error list will contain
+            // the location of the start as the last item and the location of the end as the
+            // penultimate item.
+            let last_chunk = list.rchunks_exact(2).next().map(|p| (&p[0], &p[1]));
 
-                match last_chunk {
-                    Some((
-                        (ref end_span, ErrorKind::Custom(ref delim_error)),
-                        (ref start_span, ErrorKind::Custom(SyntaxErrors::StartOfError)),
-                    )) => {
-                        self.report_error_for(delim_error)
-                            .with_code_range((*start_span).into(), (*end_span).into(), "")
-                            .with_resolutions(
-                                delim_error.to_resolution(
-                                    &(&self.query)[start_span.offset..end_span.offset],
-                                ),
+            match last_chunk {
+                Some((
+                    (ref end_span, ErrorKind::Custom(ref delim_error)),
+                    (ref start_span, ErrorKind::Custom(SyntaxErrors::StartOfError)),
+                )) => {
+                    self.report_error_for(delim_error)
+                        .with_code_range((*start_span).into(), (*end_span).into(), "")
+                        .with_resolutions(
+                            delim_error
+                                .to_resolution(&(&self.query)[start_span.offset..end_span.offset]),
+                        )
+                        .send_report();
+                }
+                _ => {
+                    list.iter().for_each(|(span, error)| match error {
+                        ErrorKind::Custom(ref custom_error) => self
+                            .report_error_for(custom_error)
+                            .with_code_range(
+                                QueryPosition(span.offset),
+                                QueryPosition(span.offset + span.fragment.len()),
+                                "",
                             )
-                            .send_report();
-                    }
-                    _ => {
-                        list.iter().for_each(|(span, error)| match error {
-                            ErrorKind::Custom(ref custom_error) => self
-                                .report_error_for(custom_error)
-                                .with_code_range(
-                                    QueryPosition(span.offset),
-                                    QueryPosition(span.offset + span.fragment.len()),
-                                    "",
-                                )
-                                .with_resolutions(custom_error.to_resolution(
-                                    &(&self.query)[span.offset..span.offset + span.fragment.len()],
-                                ))
-                                .send_report(),
-                            _other => (),
-                        });
-                    }
+                            .with_resolutions(custom_error.to_resolution(
+                                &(&self.query)[span.offset..span.offset + span.fragment.len()],
+                            ))
+                            .send_report(),
+                        _other => (),
+                    });
                 }
             }
-            _ => (),
-        }
+        };
+
         // Return the parsed value or the last position of valid syntax
         parse_result.map(|x| x.1).map_err(|e| match e {
             nom::Err::Incomplete(_) => QueryPosition(0),
@@ -131,10 +128,10 @@ fn did_you_mean(input: &str, choices: &[&str]) -> Option<String> {
         .iter()
         .map(|choice| (choice, normalized_levenshtein(choice, input)));
     let mut candidates: Vec<_> = similarities.filter(|(_op, score)| *score > 0.6).collect();
-    candidates.sort_by_key(|(_op, score)| (score * 100 as f64) as u16);
+    candidates.sort_by_key(|(_op, score)| (score * 100_f64) as u16);
     candidates
         .iter()
-        .map(|(choice, _score)| choice.to_string())
+        .map(|(choice, _score)| (**choice).to_owned())
         .next()
 }
 

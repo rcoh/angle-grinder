@@ -20,7 +20,7 @@ struct TestDefinition {
 #[cfg(test)]
 mod integration {
     use super::*;
-    use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
+    use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
     use assert_cli;
     use std::borrow::Borrow;
     use std::io::stdout;
@@ -345,7 +345,7 @@ None         1")
     }
 
     #[test]
-    fn custom_format() {
+    fn custom_format_backcompat() {
         assert_cli::Assert::main_binary()
             .with_args(&[
                 "* | logfmt",
@@ -363,9 +363,28 @@ warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManag
             .unwrap();
     }
 
+    #[test]
+    fn custom_format() {
+        assert_cli::Assert::main_binary()
+            .with_args(&[
+                "-o",
+                "format={level} | {msg:<30} module={module}",
+                "--file",
+                "test_files/test_logfmt.log",
+                "* | logfmt",
+            ])
+            .stdout()
+            .is(
+                "info | Stopping all fetchers          module=kafka.consumer.ConsumerFetcherManager
+info | Starting all fetchers          module=kafka.consumer.ConsumerFetcherManager
+warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManager",
+            )
+            .unwrap();
+    }
+
     fn ensure_parses(query: &str) {
         let query_container = QueryContainer::new(query.to_string(), Box::new(EmptyErrorReporter));
-        Pipeline::new(&query_container, None, stdout()).expect(&format!(
+        Pipeline::new(&query_container, stdout(), OutputMode::Legacy).expect(&format!(
             "Query: `{}` from the README should have parsed",
             query
         ));

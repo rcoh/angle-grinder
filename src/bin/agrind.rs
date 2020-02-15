@@ -1,4 +1,4 @@
-use ag::pipeline::{ErrorReporter, Pipeline, QueryContainer};
+use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
 use annotate_snippets::snippet::Snippet;
 use atty::Stream;
 use human_panic::setup_panic;
@@ -11,6 +11,7 @@ use std::io;
 use std::io::{stdout, BufReader};
 use structopt::StructOpt;
 
+use crate::InvalidArgs::{CantSupplyBoth, InvalidFormatString, InvalidOutputMode};
 use structopt::clap::ArgGroup;
 
 // Needed to require either "--self-update" or a query
@@ -36,9 +37,21 @@ struct Cli {
     #[structopt(long = "file", short = "f")]
     file: Option<String>,
 
-    /// Provide a Rust std::fmt string to format output
+    /// DEPRECATED. Use -o format=... instead. Provide a Rust std::fmt string to format output
     #[structopt(long = "format", short = "m")]
     format: Option<String>,
+
+    /// Set output format. One of (json|legacy|format=<rust fmt str>|logfmt)
+    #[structopt(
+        long = "output",
+        short = "o",
+        long_help = "Set output format. Options: \n\
+    - `json`,\n\
+    - `logfmt`\n\
+    - `format=<rust format string>` (eg. -o format='{src} => {dst}'\n\
+    - `legacy` The original output format, auto aligning [k=v]"
+    )]
+    output: Option<String>,
 
     #[structopt(flatten)]
     verbosity: Verbosity,
@@ -48,6 +61,17 @@ struct Cli {
 pub enum InvalidArgs {
     #[fail(display = "Query was missing. Usage: `agrind 'query'`")]
     MissingQuery,
+
+    #[fail(display = "Invalid output mode {}. Valid choices: {}", choice, choices)]
+    InvalidOutputMode { choice: String, choices: String },
+
+    #[fail(
+        display = "Invalid format string. Expected something like `-o format='{{src}} => {{dst}}'`"
+    )]
+    InvalidFormatString,
+
+    #[fail(display = "Can't supply a format string and an output mode")]
+    CantSupplyBoth,
 }
 
 /// An ErrorReporter that writes errors related to the query string to the terminal
@@ -78,7 +102,13 @@ fn main() -> CliResult {
         }),
     );
     args.verbosity.setup_env_logger("agrind")?;
-    let pipeline = Pipeline::new(&query, args.format, stdout())?;
+    let output_mode = match (args.output, args.format) {
+        (Some(_output), Some(_format)) => Err(CantSupplyBoth),
+        (Some(output), None) => parse_output(&output),
+        (None, Some(format)) => Ok(OutputMode::Format(format)),
+        (None, None) => parse_output("legacy"),
+    }?;
+    let pipeline = Pipeline::new(&query, stdout(), output_mode)?;
     match args.file {
         Some(file_name) => {
             let f = File::open(file_name)?;
@@ -91,6 +121,27 @@ fn main() -> CliResult {
         }
     };
     Ok(())
+}
+
+fn parse_output(output_param: &str) -> Result<OutputMode, InvalidArgs> {
+    // for some args, we split on `=` first
+    let (arg, val) = match output_param.find('=') {
+        None => (output_param, "="),
+        Some(idx) => output_param.split_at(idx),
+    };
+    let val = &val[1..];
+
+    match (arg, val) {
+        ("legacy", "") => Ok(OutputMode::Legacy),
+        ("json", "") => Ok(OutputMode::Json),
+        ("logfmt", "") => Ok(OutputMode::Logfmt),
+        ("format", v) if v != "" => Ok(OutputMode::Format(v.to_owned())),
+        ("format", "") => Err(InvalidFormatString),
+        (other, _v) => Err(InvalidOutputMode {
+            choice: other.to_owned(),
+            choices: "legacy, json, logfmt, format".to_owned(),
+        }),
+    }
 }
 
 fn update() -> CliResult {

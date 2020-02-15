@@ -8,9 +8,8 @@ extern crate serde_json;
 use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
 use crate::data;
-use crate::data::{Aggregate, Record, Row};
-use crate::operator::itertools::Itertools;
-use crate::render::RenderConfig;
+use crate::data::{Aggregate, DisplayConfig, Record, Row};
+use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -307,7 +306,7 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                         (ValueRef::Field(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "object".to_string(),
-                                found: other.render(&RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                         (ValueRef::IndexAt(index), data::Value::Array(vec)) => {
@@ -322,7 +321,7 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                         (ValueRef::IndexAt(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "array".to_string(),
-                                found: other.render(&RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                     }
@@ -330,7 +329,10 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                 Ok(root_record)
             }
             Expr::BoolUnary(
-                ref unary_op @ UnaryExpr {
+                ref
+                unary_op
+                @
+                UnaryExpr {
                     operator: BoolUnaryExpr::Not,
                     ..
                 },
@@ -375,6 +377,7 @@ impl EvaluatableBorrowed<String> for Expr {
     }
 }
 
+#[derive(Default)]
 pub struct Count {
     count: i64,
 }
@@ -812,7 +815,7 @@ impl UnaryPreAggFunction for Parse {
                 let new_fields: Vec<_> = self
                     .fields
                     .iter()
-                    .filter(|f| !rec.data.contains_key(&f.to_string()))
+                    .filter(|f| !rec.data.contains_key(*f))
                     .collect();
 
                 let mut rec = rec;
@@ -985,24 +988,24 @@ impl ParseJson {
 impl UnaryPreAggFunction for ParseJson {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
         fn json_to_value(v: &JsonValue) -> data::Value {
-            match v {
-                &JsonValue::Number(ref num) => {
+            match *v {
+                JsonValue::Number(ref num) => {
                     if num.is_i64() {
                         data::Value::Int(num.as_i64().unwrap())
                     } else {
                         data::Value::from_float(num.as_f64().unwrap())
                     }
                 }
-                &JsonValue::String(ref s) => data::Value::Str(s.to_string()),
-                &JsonValue::Null => data::Value::None,
-                &JsonValue::Bool(b) => data::Value::Bool(b),
-                &JsonValue::Object(ref map) => data::Value::Obj(
+                JsonValue::String(ref s) => data::Value::Str(s.to_string()),
+                JsonValue::Null => data::Value::None,
+                JsonValue::Bool(b) => data::Value::Bool(b),
+                JsonValue::Object(ref map) => data::Value::Obj(
                     map.iter()
                         .map(|(k, v)| (k.to_string(), json_to_value(v)))
                         .collect::<HashMap<String, data::Value>>()
                         .into(),
                 ),
-                &JsonValue::Array(ref vec) => {
+                JsonValue::Array(ref vec) => {
                     data::Value::Array(vec.iter().map(json_to_value).collect::<Vec<data::Value>>())
                 }
             }
