@@ -329,7 +329,10 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                 Ok(root_record)
             }
             Expr::BoolUnary(
-                ref unary_op @ UnaryExpr {
+                ref
+                unary_op
+                @
+                UnaryExpr {
                     operator: BoolUnaryExpr::Not,
                     ..
                 },
