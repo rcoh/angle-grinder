@@ -46,10 +46,10 @@ struct Cli {
         long = "output",
         short = "o",
         long_help = "Set output format. Options: \n\
-    - `json`,\n\
-    - `logfmt`\n\
-    - `format=<rust format string>` (eg. -o format='{src} => {dst}'\n\
-    - `legacy` The original output format, auto aligning [k=v]"
+                     - `json`,\n\
+                     - `logfmt`\n\
+                     - `format=<rust format string>` (eg. -o format='{src} => {dst}'\n\
+                     - `legacy` The original output format, auto aligning [k=v]"
     )]
     output: Option<String>,
 
