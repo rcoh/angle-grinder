@@ -11,7 +11,10 @@ Angle grinder can process well above 1M rows per second (simple pipelines as hig
 * [Installation](#installation)
 * [Query Syntax Overview](#query-syntax)
 * [Operators](#operators)
-** Parsers: [JSON Parser](#json) [logfmt Parser](#logfmt) [split](#split) [parse](#parse)
+    * Parsers: [JSON](#json) [logfmt](#logfmt) [split](#split) [generic](#parse)
+    * Misc: [Add/remove fields](#fields) [limit](#limit) [where](#where)
+    * Aggregators: [count](#count) [sum](#sum) [min](#min) [max](#max) [percentile](#percentile) [sort](#sort) [total](#total) [count distinct](#count-distinct)
+* [Output Control]
 ## Installation
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`. Starting with `v0.9.0`, `agrind` can self-update via the `--self-update` flag.
 
@@ -358,12 +361,15 @@ tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" a
 [dest=111.221.29.254.https]        [length=310]      [src=21:50:18.458527 IP 10.0.2.243.47152]
 ```
 
-Alternate rendering formats can be provided with the `--format` flag. This flag uses the formatting syntax defined in https://doc.rust-lang.org/std/fmt/#syntax. For example
-```
-tail -f live_pcap | agrind --format '{src} => {dst} | length={length}' '* | parse "* > *:" as src, dest | parse "length *" as length'
-21:50:18.458331 IP 10.0.2.243.47152 => 111.221.29.254.https | length=0
-21:50:18.458527 IP 10.0.2.243.47152 => 111.221.29.254.https | length=310
-```
+Alternate rendering formats can be provided with the `--output` flag. Options:
+* `--output json`: JSON output
+* `--output logfmt`: logfmt style output (`k=v`)
+* `--output format=<rust formatter>`: This flag uses [rust string formatting syntax](https://doc.rust-lang.org/std/fmt/#syntax). For example:
+    ```noformat
+    tail -f live_pcap | agrind --format '{src} => {dst} | length={length}' '* | parse "* > *:" as src, dest | parse "length *" as length'
+    21:50:18.458331 IP 10.0.2.243.47152 => 111.221.29.254.https | length=0
+    21:50:18.458527 IP 10.0.2.243.47152 => 111.221.29.254.https | length=310
+    ```
 
 Aggregate data is written to the terminal and will live-update until the stream ends:
 ```noformat
@@ -378,6 +384,8 @@ hello thanks        2.00
 
 The renderer will do its best to keep the data nicely formatted as it changes and the number of output rows is limited to the length of your terminal. Currently,
 it has a refresh rate of about 20hz.
+
+The renderer can detect whether or not the output is a tty -- if you write to a file, it will print once when the pipeline completes.
 
 ### Contributing
 `angle-grinder` builds with Rust >= 1.26. `rustfmt` is required when submitting PRs (`rustup component add rustfmt`).
