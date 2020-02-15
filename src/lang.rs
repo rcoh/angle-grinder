@@ -57,7 +57,7 @@ where
     last_err.unwrap()
 }
 
-pub const VALID_AGGREGATES: &'static [&str] = &[
+pub const VALID_AGGREGATES: &[&str] = &[
     "count",
     "min",
     "average",
@@ -68,7 +68,7 @@ pub const VALID_AGGREGATES: &'static [&str] = &[
     "sort",
 ];
 
-pub const VALID_INLINE: &'static [&str] = &[
+pub const VALID_INLINE: &[&str] = &[
     "parse", "limit", "json", "logfmt", "total", "fields", "where", "split",
 ];
 
@@ -83,7 +83,7 @@ lazy_static! {
     };
 }
 
-pub const RESERVED_FILTER_WORDS: &'static [&str] = &["AND", "OR", "NOT"];
+pub const RESERVED_FILTER_WORDS: &[&str] = &["AND", "OR", "NOT"];
 
 /// Type used to track the current fragment being parsed and its location in the original input.
 pub type Span<'a> = LocatedSpan<CompleteStr<'a>>;
@@ -358,7 +358,7 @@ named!(value<Span, data::Value>, ws!(
 
 named!(dot_property<Span, DataAccessAtom>, do_parse!(
     field: preceded!(tag!("."), ident) >>
-    (DataAccessAtom::Key(field.to_owned()))
+    (DataAccessAtom::Key(field))
 ));
 
 named!(i64_parser<Span, i64>,
@@ -485,7 +485,7 @@ named!(total<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     (InlineOperator::Total{
         input_column,
         output_column:
-            rename_opt.map(|s|s.to_string()).unwrap_or_else(||"_total".to_string()),
+            rename_opt.unwrap_or_else(||"_total".to_string()),
 })))));
 
 named!(double_quoted_string <Span, &str>, add_return_error!(
@@ -700,7 +700,7 @@ named!(complete_agg_function<Span, (String, Positioned<AggregateFunction>)>, ws!
         agg_function: aggregate_function >>
         rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
         (
-            rename_opt.map(|s|s.to_string()).unwrap_or_else(||default_output(&agg_function)),
+            rename_opt.unwrap_or_else(||default_output(&agg_function)),
             agg_function
         )
     ))
@@ -713,7 +713,7 @@ named!(multi_aggregate_operator<Span, Operator>, ws!(do_parse!(
         key_col_headers: key_cols_opt.clone()
             .unwrap_or_default()
             .iter().cloned().map(|col|col.0).collect(),
-        key_cols: key_cols_opt.clone()
+        key_cols: key_cols_opt
             .unwrap_or_default()
             .iter().cloned().map(|col|col.1).collect(),
         aggregate_functions: agg_functions,

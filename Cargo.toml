@@ -47,9 +47,9 @@ serde_derive = "1.0.82"
 
 [dev-dependencies]
 assert_cli = "0.6.3"
-maplit = "1.0.1"
 pulldown-cmark = "0.2.0"
 criterion = "0.3"
+maplit = "1.0.1"
 
 [[bench]]
 name = "e2e"

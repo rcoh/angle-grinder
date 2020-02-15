@@ -20,16 +20,18 @@ mod errors;
 mod filter;
 pub mod lang;
 pub mod operator;
+mod printer;
 mod render;
 mod typecheck;
 
 pub mod pipeline {
-    use crate::data::{Record, Row};
+    use crate::data::{DisplayConfig, Record, Row};
     pub use crate::errors::{ErrorReporter, QueryContainer};
     use crate::filter;
     use crate::lang::*;
     use crate::operator;
-    use crate::render::{RenderConfig, Renderer};
+    use crate::printer::{agg_printer, raw_printer};
+    use crate::render::{RenderConfig, Renderer, TerminalConfig};
     use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
@@ -49,6 +51,14 @@ pub mod pipeline {
 
         #[fail(display = "Unexpected failure: {}", message)]
         Unexpected { message: String },
+    }
+
+    #[derive(Clone, PartialEq)]
+    pub enum OutputMode {
+        Legacy,
+        Logfmt,
+        Format(String),
+        Json,
     }
 
     pub struct Pipeline {
@@ -112,8 +122,8 @@ pub mod pipeline {
 
         pub fn new<W: 'static + Write + Send>(
             pipeline: &QueryContainer,
-            format: Option<String>,
             output: W,
+            output_mode: OutputMode,
         ) -> Result<Self, Error> {
             let parsed = pipeline.parse().map_err(|_pos| CompileError::Parse);
             let query = parsed?;
@@ -179,18 +189,27 @@ pub mod pipeline {
             if has_errors {
                 return Err(CompileError::Parse.into());
             }
+            let render_config = RenderConfig {
+                display_config: DisplayConfig { floating_points: 2 },
+                min_buffer: 4,
+                max_buffer: 8,
+            };
+            let raw_printer =
+                raw_printer(&output_mode, render_config.clone(), TerminalConfig::load())?;
+            let agg_printer = agg_printer(&output_mode, render_config, TerminalConfig::load())?;
             Result::Ok(Pipeline {
                 filter: filters,
                 pre_aggregates: pre_agg,
                 aggregators: post_agg,
                 renderer: Renderer::new(
                     RenderConfig {
-                        floating_points: 2,
+                        display_config: DisplayConfig { floating_points: 2 },
                         min_buffer: 4,
                         max_buffer: 8,
-                        format,
                     },
                     Duration::from_millis(50),
+                    raw_printer,
+                    agg_printer,
                     Box::new(output),
                 ),
             })

@@ -23,13 +23,13 @@ fn find_close_delimiter<'a>(
         match s[pos..].find(term_end).map(|index| index + pos) {
             None => break,
             Some(i) if i == 0 || &s[i - 1..i] != "\\" => {
-                return (&s[term_start.len()..i], &s[i + term_end.len()..])
+                return (&s[term_start.len()..i], &s[i + term_end.len()..]);
             }
             Some(other) => pos = other + 1,
         }
     }
     // We end up here if we never found a close quote. In that case, don't strip the leading quote.
-    return (&s, &s[0..0]);
+    (&s, &s[0..0])
 }
 
 fn split_once<'a>(s: &'a str, p: &'a str) -> (&'a str, &'a str) {
@@ -46,10 +46,10 @@ pub fn split_with_delimiters<'a>(
     let mut wip = input;
     let mut ret: Vec<&'a str> = vec![];
 
-    while wip.len() > 0 {
+    while !wip.is_empty() {
         // Look for a leading quote
         let leading_delimiter = delimiters
-            .into_iter()
+            .iter()
             .flat_map(|(k, v)| {
                 if wip.starts_with(k) {
                     Some((k, v))

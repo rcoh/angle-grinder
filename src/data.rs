@@ -2,7 +2,8 @@ extern crate ordered_float;
 
 use self::ordered_float::OrderedFloat;
 use crate::operator::{EvalError, Expr, ValueRef};
-use crate::render;
+use crate::serde::ser::SerializeMap;
+use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -28,6 +29,19 @@ pub struct Record {
     pub raw: String,
 }
 
+impl serde::Serialize for Record {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.data.len()))?;
+        for (k, v) in &self.data {
+            map.serialize_entry(k, v)?;
+        }
+        map.end()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Value {
     Str(String),
@@ -40,9 +54,32 @@ pub enum Value {
     None,
 }
 
-pub static FALSE_VALUE: &'static Value = &Value::Bool(false);
-pub static TRUE_VALUE: &'static Value = &Value::Bool(true);
-pub static NONE: &'static Value = &Value::None;
+impl serde::Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Value::Str(s) => serializer.serialize_str(s),
+            Value::Int(i) => serializer.serialize_i64(*i),
+            Value::Float(ofloat) => serializer.serialize_f64(ofloat.0),
+            Value::Bool(b) => serializer.serialize_bool(*b),
+            Value::Obj(map) => {
+                let mut m = serializer.serialize_map(Some(map.len()))?;
+                for (k, v) in map {
+                    m.serialize_entry(k, v)?;
+                }
+                m.end()
+            }
+            Value::Array(v) => serializer.collect_seq(v),
+            Value::None => serializer.serialize_none(),
+        }
+    }
+}
+
+pub static FALSE_VALUE: &Value = &Value::Bool(false);
+pub static TRUE_VALUE: &Value = &Value::Bool(true);
+pub static NONE: &Value = &Value::None;
 
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -86,6 +123,17 @@ impl Display for Value {
     }
 }
 
+#[derive(Clone)]
+pub struct DisplayConfig {
+    pub floating_points: usize,
+}
+
+impl Default for DisplayConfig {
+    fn default() -> Self {
+        DisplayConfig { floating_points: 2 }
+    }
+}
+
 impl Value {
     /// Used to sort mixed values
     pub fn rank(&self) -> u8 {
@@ -100,7 +148,7 @@ impl Value {
         }
     }
 
-    pub fn render(&self, render_config: &render::RenderConfig) -> String {
+    pub fn render(&self, render_config: &DisplayConfig) -> String {
         match *self {
             Value::Str(ref s) => s.to_string(),
             Value::Int(ref s) => format!("{}", s),
@@ -120,10 +168,7 @@ impl Value {
                 format!("{{{}}}", rendered.join(", "))
             }
             Value::Array(ref o) => {
-                let rendered: Vec<String> = o
-                    .iter()
-                    .map(|v| format!("{}", v.render(render_config)))
-                    .collect();
+                let rendered: Vec<String> = o.iter().map(|v| v.render(render_config)).collect();
                 format!("[{}]", rendered.join(", "))
             }
         }
@@ -237,7 +282,7 @@ impl Record {
                         (ValueRef::Field(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "object".to_string(),
-                                found: other.render(&render::RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                         (ValueRef::IndexAt(index), Value::Array(vec)) => {
@@ -252,7 +297,7 @@ impl Record {
                         (ValueRef::IndexAt(_), other) => {
                             return Err(EvalError::ExpectedXYZ {
                                 expected: "array".to_string(),
-                                found: other.render(&render::RenderConfig::default()),
+                                found: other.render(&DisplayConfig::default()),
                             });
                         }
                     }
@@ -262,18 +307,24 @@ impl Record {
             }
             // These should not happen, if so this is a programming error
             // since the data cannot be indexed by BoolUnary / Comparison / Value Exprs.
-            Expr::BoolUnary(_) => Err(EvalError::ExpectedXYZ {
-                expected: "valid expr".to_string(),
-                found: "bool unary expr".to_string(),
-            })?,
-            Expr::Comparison(_) => Err(EvalError::ExpectedXYZ {
-                expected: "valid expr".to_string(),
-                found: "comparison expr".to_string(),
-            })?,
-            Expr::Value(_) => Err(EvalError::ExpectedXYZ {
-                expected: "valid expr".to_string(),
-                found: "value expr".to_string(),
-            })?,
+            Expr::BoolUnary(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "bool unary expr".to_string(),
+                })
+            }
+            Expr::Comparison(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "comparison expr".to_string(),
+                })
+            }
+            Expr::Value(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "value expr".to_string(),
+                })
+            }
         }
         Ok(self)
     }
@@ -306,7 +357,6 @@ impl Record {
 mod tests {
     use super::*;
     use maplit::hashmap;
-    use render::RenderConfig;
 
     #[test]
     fn record_put_get() {
@@ -324,8 +374,8 @@ mod tests {
             "count".to_string(),
             &[(
                 hashmap! {
-                    "kc1".to_string() => "k1".to_string(),
-                    "kc2".to_string() => "k2".to_string()
+                "kc1".to_string() => "k1".to_string(),
+                "kc2".to_string() => "k2".to_string()
                 },
                 Value::Int(100),
             )],
@@ -340,7 +390,7 @@ mod tests {
             Value::from_string("123.5"),
             Value::Array(vec![]),
         ]);
-        assert_eq!(rec.render(&RenderConfig::default()), "[false, 123.50, []]");
+        assert_eq!(rec.render(&DisplayConfig::default()), "[false, 123.50, []]");
     }
 
     #[test]
@@ -351,7 +401,7 @@ mod tests {
             "count".to_string(),
             &[(
                 hashmap! {
-                    "kc2".to_string() => "k2".to_string()
+                "kc2".to_string() => "k2".to_string()
                 },
                 Value::Int(100),
             )],
