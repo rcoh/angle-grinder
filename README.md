@@ -7,6 +7,11 @@ Angle grinder can process well above 1M rows per second (simple pipelines as hig
 
 ![overview gif](/screen_shots/overview.gif)
 
+## Quick Links
+* [Installation](#installation)
+* [Query Syntax Overview](#query-syntax)
+* [Operators](#operators)
+** Parsers: [JSON Parser](#json) [logfmt Parser](#logfmt) [split](#split) [parse](#parse)
 ## Installation
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`. Starting with `v0.9.0`, `agrind` can self-update via the `--self-update` flag.
 
@@ -18,14 +23,14 @@ brew install angle-grinder
 ### With Curl (Single binary)
 Linux:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.9.0/angle_grinder-v0.9.0-x86_64-unknown-linux-musl.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.12.0/angle_grinder-v0.12.0-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.9.0/angle_grinder-v0.9.0-x86_64-apple-darwin.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.12.0/angle_grinder-v0.12.0-x86_64-apple-darwin.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
