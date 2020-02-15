@@ -7,6 +7,14 @@ Angle grinder can process well above 1M rows per second (simple pipelines as hig
 
 ![overview gif](/screen_shots/overview.gif)
 
+## Quick Links
+* [Installation](#installation)
+* [Query Syntax Overview](#query-syntax)
+* [Operators](#operators)
+    * Parsers: [JSON](#json) [logfmt](#logfmt) [split](#split) [generic](#parse)
+    * Misc: [Add/remove fields](#fields) [limit](#limit) [where](#where)
+    * Aggregators: [count](#count) [sum](#sum) [min](#min) [max](#max) [percentile](#percentile) [sort](#sort) [total](#total) [count distinct](#count-distinct)
+* [Output Control](#rendering)
 ## Installation
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`. Starting with `v0.9.0`, `agrind` can self-update via the `--self-update` flag.
 
@@ -18,14 +26,14 @@ brew install angle-grinder
 ### With Curl (Single binary)
 Linux:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.9.0/angle_grinder-v0.9.0-x86_64-unknown-linux-musl.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.12.0/angle_grinder-v0.12.0-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
 
 OS X:
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.9.0/angle_grinder-v0.9.0-x86_64-apple-darwin.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.12.0/angle_grinder-v0.12.0-x86_64-apple-darwin.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
 ```
@@ -68,6 +76,14 @@ Filters can be combined with `AND`, `OR` and `NOT`
 
 Sub-expressions _must_ be grouped in parenthesis. Only lines that match all filters will be passed to the subsequent operators.
 ![filter.gif](/screen_shots/filter.gif)
+
+### Aliases
+Starting with v0.12.0, angle grinder supports aliases, pre-built pipelines do simplify common tasks or formats. The only alias currently defined is `apache`, which parses apache logs. Adding more `aliases` is one of the easiest ways to [contribute](#contributing)!
+
+*Examples*:
+```agrind
+* | apache | count by status
+```
 
 ### Operators
 
@@ -353,12 +369,15 @@ tail -f live_pcap | agrind '* | parse "* > *:" as src, dest | parse "length *" a
 [dest=111.221.29.254.https]        [length=310]      [src=21:50:18.458527 IP 10.0.2.243.47152]
 ```
 
-Alternate rendering formats can be provided with the `--format` flag. This flag uses the formatting syntax defined in https://doc.rust-lang.org/std/fmt/#syntax. For example
-```
-tail -f live_pcap | agrind --format '{src} => {dst} | length={length}' '* | parse "* > *:" as src, dest | parse "length *" as length'
-21:50:18.458331 IP 10.0.2.243.47152 => 111.221.29.254.https | length=0
-21:50:18.458527 IP 10.0.2.243.47152 => 111.221.29.254.https | length=310
-```
+Alternate rendering formats can be provided with the `--output` flag. Options:
+* `--output json`: JSON output
+* `--output logfmt`: logfmt style output (`k=v`)
+* `--output format=<rust formatter>`: This flag uses [rust string formatting syntax](https://doc.rust-lang.org/std/fmt/#syntax). For example:
+    ```noformat
+    tail -f live_pcap | agrind --format '{src} => {dst} | length={length}' '* | parse "* > *:" as src, dest | parse "length *" as length'
+    21:50:18.458331 IP 10.0.2.243.47152 => 111.221.29.254.https | length=0
+    21:50:18.458527 IP 10.0.2.243.47152 => 111.221.29.254.https | length=310
+    ```
 
 Aggregate data is written to the terminal and will live-update until the stream ends:
 ```noformat
@@ -374,10 +393,13 @@ hello thanks        2.00
 The renderer will do its best to keep the data nicely formatted as it changes and the number of output rows is limited to the length of your terminal. Currently,
 it has a refresh rate of about 20hz.
 
+The renderer can detect whether or not the output is a tty -- if you write to a file, it will print once when the pipeline completes.
+
 ### Contributing
 `angle-grinder` builds with Rust >= 1.26. `rustfmt` is required when submitting PRs (`rustup component add rustfmt`).
 
 There are a number of ways you can contribute:
+- Defining new aliases for common log formats or actions
 - Adding new special purpose operators
 - Improve documentation of existing operators + providing more usage examples
 - Provide more test cases of real queries on real world data
