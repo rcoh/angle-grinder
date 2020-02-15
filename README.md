@@ -14,7 +14,7 @@ Angle grinder can process well above 1M rows per second (simple pipelines as hig
     * Parsers: [JSON](#json) [logfmt](#logfmt) [split](#split) [generic](#parse)
     * Misc: [Add/remove fields](#fields) [limit](#limit) [where](#where)
     * Aggregators: [count](#count) [sum](#sum) [min](#min) [max](#max) [percentile](#percentile) [sort](#sort) [total](#total) [count distinct](#count-distinct)
-* [Output Control]
+* [Output Control](#rendering)
 ## Installation
 Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`. Starting with `v0.9.0`, `agrind` can self-update via the `--self-update` flag.
 
@@ -76,6 +76,14 @@ Filters can be combined with `AND`, `OR` and `NOT`
 
 Sub-expressions _must_ be grouped in parenthesis. Only lines that match all filters will be passed to the subsequent operators.
 ![filter.gif](/screen_shots/filter.gif)
+
+### Aliases
+Starting with v0.12.0, angle grinder supports aliases, pre-built pipelines do simplify common tasks or formats. The only alias currently defined is `apache`, which parses apache logs. Adding more `aliases` is one of the easiest ways to [contribute](#contributing)!
+
+*Examples*:
+```agrind
+* | apache | count by status
+```
 
 ### Operators
 
@@ -391,6 +399,7 @@ The renderer can detect whether or not the output is a tty -- if you write to a 
 `angle-grinder` builds with Rust >= 1.26. `rustfmt` is required when submitting PRs (`rustup component add rustfmt`).
 
 There are a number of ways you can contribute:
+- Defining new aliases for common log formats or actions
 - Adding new special purpose operators
 - Improve documentation of existing operators + providing more usage examples
 - Provide more test cases of real queries on real world data
