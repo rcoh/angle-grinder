@@ -355,6 +355,7 @@ impl Evaluatable<f64> for Expr {
         match value {
             data::Value::Int(i) => Ok(*i as f64),
             data::Value::Float(f) => Ok(f.into_inner()),
+            data::Value::Str(s) => data::Value::aggressively_to_num(s),
             other => Err(EvalError::ExpectedNumber {
                 found: format!("{}", other),
             }),
