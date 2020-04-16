@@ -191,6 +191,24 @@ impl Value {
         }
     }
 
+    pub fn aggressively_to_num(s: impl AsRef<str> + Into<String>) -> Result<f64, EvalError> {
+        // Handle cases like
+        // 1,000,000
+        match Value::from_string(
+            s.as_ref()
+                .chars()
+                .filter(|c| c.is_numeric() || c == &'.')
+                .collect::<String>(),
+        ) {
+            Value::Float(f) => Ok(f.0),
+            Value::Int(i) => Ok(i as f64),
+            _other => {
+                //println!("not a number...{}", s);
+                Err(EvalError::ExpectedNumber { found: s.into() })
+            }
+        }
+    }
+
     pub fn from_string(s: impl AsRef<str> + Into<String>) -> Value {
         let trimmed = s.as_ref().trim();
         let int_value = trimmed.parse::<i64>();
@@ -425,6 +443,22 @@ mod tests {
         assert_eq!(
             Value::from_string("hello").cmp(&Value::Int(0)),
             Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_aggresively_to_num() {
+        assert_eq!(
+            Value::from_string("1,000,000"),
+            Value::Str("1,000,000".to_owned())
+        );
+        assert_eq!(
+            Value::aggressively_to_num("1,000,000"),
+            Ok(1_000_000 as f64)
+        );
+        assert_eq!(
+            Value::aggressively_to_num("1,000,000.1"),
+            Ok(1_000_000.1 as f64)
         );
     }
 
