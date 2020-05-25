@@ -24,7 +24,7 @@ nom_locate = { version = "0.3.1", features = ["verbose-errors"] }
 strsim = "0.8.0"
 quicli = "0.4.0"
 regex = "1.1.0"
-terminal_size = "0.1.8"
+terminal_size = "0.1.12"
 quantiles = "0.7.1"
 crossbeam-channel = "0.3.4"
 ordered-float = "1.0.1"
