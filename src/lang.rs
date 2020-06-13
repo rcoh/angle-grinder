@@ -239,7 +239,7 @@ pub enum InlineOperator {
     Parse {
         pattern: Keyword,
         fields: Vec<String>,
-        input_column: Option<Expr>,
+        input_column: (Option<Positioned<Expr>>, Option<Positioned<Expr>>),
         no_drop: bool,
     },
     Fields {
@@ -547,14 +547,15 @@ named!(did_you_mean_aggregate<Span, Span>,
 named!(parse<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("parse") >>
     pattern: quoted_string >>
-    from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
+    from_column_opt: opt!(with_pos!(ws!(preceded!(tag!("from"), expr)))) >>
     tag!("as") >>
     vars: var_list >>
+    from_column_opt_2: opt!(with_pos!(ws!(preceded!(tag!("from"), expr)))) >>
     no_drop_opt: opt!(ws!(tag!("nodrop"))) >>
     ( InlineOperator::Parse{
         pattern: Keyword::new_wildcard(pattern.to_string()),
         fields: vars,
-        input_column: from_column_opt,
+        input_column: (from_column_opt, from_column_opt_2),
         no_drop: no_drop_opt.is_some()
         } )
 ))));
@@ -1001,7 +1002,7 @@ mod tests {
                 value: InlineOperator::Parse {
                     pattern: Keyword::new_wildcard("[key=*]".to_string()),
                     fields: vec!["v".to_string()],
-                    input_column: None,
+                    input_column: (None, None),
                     no_drop: false
                 }
             }
@@ -1015,7 +1016,7 @@ mod tests {
                 value: InlineOperator::Parse {
                     pattern: Keyword::new_wildcard("[key=*]".to_string()),
                     fields: vec!["v".to_string()],
-                    input_column: None,
+                    input_column: (None, None),
                     no_drop: true
                 }
             }
@@ -1029,7 +1030,7 @@ mod tests {
                 value: InlineOperator::Parse {
                     pattern: Keyword::new_wildcard("[key=*][val=*]".to_string()),
                     fields: vec!["k".to_string(), "v".to_string()],
-                    input_column: None,
+                    input_column: (None, None),
                     no_drop: true
                 }
             }
@@ -1058,14 +1059,42 @@ mod tests {
         );
         expect!(
             operator,
-            r#" parse "[key=*]" from field as v "#,
+            r#" parse "[key=*]" from field as v"#,
             Operator::Inline(Positioned {
                 start_pos: QueryPosition(1),
-                end_pos: QueryPosition(33),
+                end_pos: QueryPosition(32),
                 value: InlineOperator::Parse {
                     pattern: Keyword::new_wildcard("[key=*]".to_string()),
                     fields: vec!["v".to_string()],
-                    input_column: Some(Expr::column("field")),
+                    input_column: (
+                        Some(Positioned {
+                            start_pos: QueryPosition(17),
+                            end_pos: QueryPosition(28),
+                            value: Expr::column("field")
+                        }),
+                        None
+                    ),
+                    no_drop: false
+                },
+            })
+        );
+        expect!(
+            operator,
+            r#" parse "[key=*]" as v from field"#,
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(32),
+                value: InlineOperator::Parse {
+                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
+                    fields: vec!["v".to_string()],
+                    input_column: (
+                        None,
+                        Some(Positioned {
+                            start_pos: QueryPosition(22),
+                            end_pos: QueryPosition(32),
+                            value: Expr::column("field")
+                        })
+                    ),
                     no_drop: false
                 },
             })
@@ -1304,7 +1333,7 @@ mod tests {
                         value: InlineOperator::Parse {
                             pattern: Keyword::new_wildcard("!123*".to_string()),
                             fields: vec!["foo".to_string()],
-                            input_column: None,
+                            input_column: (None, None),
                             no_drop: false
                         }
                     }),

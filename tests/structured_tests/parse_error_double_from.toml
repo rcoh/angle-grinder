@@ -1,0 +1,17 @@
+query = "* | json | parse \"a * b\" from col as x from col"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+"""
+output = ""
+error = """
+error: Two `from` clauses were provided
+  |
+1 | * | json | parse "a * b" from col as x from col
+  |                          ^^^^^^^^^
+  |                                        ^^^^^^^^
+  |
+  = help: Only one from clause is allowed
+Error: Two `from` clauses were provided
+"""
+succeeds = false
