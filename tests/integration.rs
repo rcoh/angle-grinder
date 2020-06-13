@@ -35,6 +35,15 @@ mod integration {
     impl ErrorReporter for EmptyErrorReporter {}
 
     #[test_resources("tests/structured_tests/*.toml")]
+    fn integration(path: &str) {
+        structured_test(path)
+    }
+
+    #[test_resources("tests/structured_tests/aliases/*.toml")]
+    fn alias(path: &str) {
+        structured_test(path)
+    }
+
     fn structured_test(path: &str) {
         let contents = fs::read_to_string(path).unwrap();
         let conf: TestDefinition = toml::from_str(&contents).unwrap();

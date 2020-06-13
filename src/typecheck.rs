@@ -17,6 +17,9 @@ pub enum TypeError {
     )]
     ParseNumPatterns { pattern: usize, extracted: usize },
 
+    #[fail(display = "Two `from` clauses were provided")]
+    DoubleFromClause,
+
     #[fail(display = "Limit must be a non-zero integer, found {}", limit)]
     InvalidLimit { limit: f64 },
 }
@@ -113,6 +116,21 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                 no_drop,
             } => {
                 let regex = pattern.to_regex();
+
+                let input_column = match input_column {
+                    (Some(from), None) | (None, Some(from)) => Some(from.value),
+                    (None, None) => None,
+                    (Some(l), Some(r)) => {
+                        let e = TypeError::DoubleFromClause;
+                        error_builder
+                            .report_error_for(&e)
+                            .with_code_pointer(&l, "")
+                            .with_code_pointer(&r, "")
+                            .with_resolution("Only one from clause is allowed")
+                            .send_report();
+                        return Err(e);
+                    }
+                };
 
                 if (regex.captures_len() - 1) != fields.len() {
                     Err(TypeError::ParseNumPatterns {
