@@ -1357,6 +1357,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_all_whitespace() {
+        let rec = Record::new("abcd\t1234\t4567");
+        let parser = Parse::new(
+            lang::Keyword::new_wildcard("abcd * *".to_string()).to_regex(),
+            vec!["num_1".to_string(), "num_2".to_string()],
+            None,
+            ParseOptions {
+                drop_nonmatching: false,
+            },
+        );
+        let parsed = parser.process(rec).unwrap().unwrap();
+        assert_eq!(parsed.data.get("num_1"), Some(&Value::Int(1234)))
+    }
+
+    #[test]
     fn parse_nodrop_preserve_existing() {
         let rec = Record::new("abcd 1234").put("ip", Value::Str("127.0.0.1".to_string()));
         let parser = Parse::new(
