@@ -1,9 +1,12 @@
+#![cfg(test)]
 extern crate ag;
 extern crate assert_cli;
 extern crate pulldown_cmark;
+extern crate test_generator;
 extern crate toml;
 
 use serde_derive::Deserialize;
+use test_generator::test_resources;
 
 mod code_blocks;
 
@@ -23,6 +26,7 @@ mod integration {
     use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
     use assert_cli;
     use std::borrow::Borrow;
+    use std::fs;
     use std::io::stdout;
     use toml;
 
@@ -30,8 +34,10 @@ mod integration {
 
     impl ErrorReporter for EmptyErrorReporter {}
 
-    fn structured_test(s: &str) {
-        let conf: TestDefinition = toml::from_str(s).unwrap();
+    #[test_resources("tests/structured_tests/*.toml")]
+    fn structured_test(path: &str) {
+        let contents = fs::read_to_string(path).unwrap();
+        let conf: TestDefinition = toml::from_str(&contents).unwrap();
         let out: &str = conf.output.borrow();
         let err = conf.error.unwrap_or("".to_string());
         let env = assert_cli::Environment::inherit().insert("RUST_BACKTRACE", "0");
@@ -50,130 +56,6 @@ mod integration {
             asserter = asserter.fails();
         }
         asserter.unwrap();
-    }
-
-    #[test]
-    fn count_distinct_operator() {
-        structured_test(include_str!("structured_tests/count_distinct.toml"));
-        structured_test(include_str!("structured_tests/count_distinct_error.toml"));
-    }
-
-    #[test]
-    fn long_aggregate_values() {
-        structured_test(include_str!("structured_tests/longlines.toml"));
-    }
-
-    #[test]
-    fn parse_operator() {
-        structured_test(include_str!(
-            "structured_tests/parse_error_unterminated.toml"
-        ));
-        structured_test(include_str!(
-            "structured_tests/parse_error_unterminated_sq.toml"
-        ));
-        structured_test(include_str!("structured_tests/parse_drop.toml"));
-        structured_test(include_str!("structured_tests/parse_nodrop.toml"));
-    }
-
-    #[test]
-    fn logfmt_operator() {
-        structured_test(include_str!("structured_tests/logfmt.toml"));
-    }
-
-    #[test]
-    fn sum_operator() {
-        structured_test(include_str!("structured_tests/sum.toml"));
-    }
-
-    #[test]
-    fn min_max_operators() {
-        structured_test(include_str!("structured_tests/min_max.toml"));
-        structured_test(include_str!("structured_tests/min_max_none.toml"));
-    }
-
-    #[test]
-    fn where_operator() {
-        structured_test(include_str!("structured_tests/where-1.toml"));
-        structured_test(include_str!("structured_tests/where-2.toml"));
-        structured_test(include_str!("structured_tests/where-3.toml"));
-        structured_test(include_str!("structured_tests/where-4.toml"));
-        structured_test(include_str!("structured_tests/where-5.toml"));
-        structured_test(include_str!("structured_tests/where-6.toml"));
-        structured_test(include_str!("structured_tests/where-7.toml"));
-        structured_test(include_str!("structured_tests/where-8.toml"));
-    }
-
-    #[test]
-    fn filters() {
-        structured_test(include_str!("structured_tests/filters.toml"));
-    }
-
-    #[test]
-    fn sort_order() {
-        structured_test(include_str!("structured_tests/sort_order.toml"));
-    }
-
-    #[test]
-    fn total() {
-        structured_test(include_str!("structured_tests/total.toml"));
-        structured_test(include_str!("structured_tests/total_agg.toml"));
-    }
-
-    #[test]
-    fn fields_after_agg_bug() {
-        structured_test(include_str!("structured_tests/fields_after_agg.toml"));
-    }
-
-    #[test]
-    fn limit() {
-        structured_test(include_str!("structured_tests/limit.toml"));
-        structured_test(include_str!("structured_tests/limit_tail.toml"));
-        structured_test(include_str!("structured_tests/limit_agg.toml"));
-        structured_test(include_str!("structured_tests/limit_agg_tail.toml"));
-    }
-
-    #[test]
-    fn suggest_alternatives() {
-        structured_test(include_str!("structured_tests/limit_error.toml"));
-        structured_test(include_str!("structured_tests/limit_error_2.toml"));
-        structured_test(include_str!("structured_tests/count_distinct_error_2.toml"));
-        structured_test(include_str!("structured_tests/not_an_agg.toml"));
-        structured_test(include_str!("structured_tests/not_an_agg_2.toml"))
-    }
-
-    #[test]
-    fn test_json_arrays() {
-        structured_test(include_str!("structured_tests/arrays_1.toml"));
-    }
-
-    #[test]
-    fn test_nested_values() {
-        structured_test(include_str!("structured_tests/nested_values_1.toml"));
-        structured_test(include_str!("structured_tests/nested_values_2.toml"));
-        structured_test(include_str!("structured_tests/nested_values_3.toml"));
-    }
-
-    #[test]
-    fn test_split() {
-        structured_test(include_str!("structured_tests/split_1.toml"));
-        structured_test(include_str!("structured_tests/split_2.toml"));
-        structured_test(include_str!("structured_tests/split_3.toml"));
-        structured_test(include_str!("structured_tests/split_4.toml"));
-        structured_test(include_str!("structured_tests/split_5.toml"));
-        structured_test(include_str!("structured_tests/split_6.toml"));
-        structured_test(include_str!("structured_tests/split_7.toml"));
-        structured_test(include_str!("structured_tests/split_8.toml"));
-        structured_test(include_str!("structured_tests/split_9.toml"));
-        structured_test(include_str!("structured_tests/split_10.toml"));
-    }
-
-    #[test]
-    fn test_aliases() {
-        structured_test(include_str!("structured_tests/aliases/apache.toml"));
-        structured_test(include_str!("structured_tests/aliases/multi-operator.toml"));
-        structured_test(include_str!(
-            "structured_tests/aliases/alias_with_failure.toml"
-        ));
     }
 
     #[test]

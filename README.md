@@ -169,7 +169,8 @@ Other examples:
 
 ##### Parse
 `parse "* pattern * otherpattern *" [from field] as a,b,c [nodrop]`: Parse text that matches the pattern into variables. Lines that don't match the pattern will be dropped unless `nodrop` is specified. `*` is equivalent to regular expression `.*` and is greedy.
-By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column.
+By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column. Any whitespace in the parse
+expression will match _any_ whitespace character in the input text (eg. a literal tab).
 
 *Examples*:
 ```agrind

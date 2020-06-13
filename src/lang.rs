@@ -188,7 +188,7 @@ impl Keyword {
 
     /// Convert this keyword to a `regex::Regex` object.
     pub fn to_regex(&self) -> regex::Regex {
-        let mut regex_str = regex::escape(&self.0.replace("\\\"", "\""));
+        let mut regex_str = regex::escape(&self.0.replace("\\\"", "\"")).replace(" ", "\\s");
 
         regex_str.insert_str(0, "(?i)");
         if self.1 == KeywordType::WILDCARD {
