@@ -280,10 +280,15 @@ pub mod pipeline {
             // This is pretty slow in practice. We could move line splitting until after
             // we find a match. Another option is moving the transformation to String until
             // after we match (staying as Vec<u8> until then)
-            let mut line = String::with_capacity(1024);
-            while buf.read_line(&mut line).unwrap() > 0 {
-                if self.filter.matches(&line) {
-                    if !Pipeline::proc_preagg(Record::new(&line), &mut preaggs, &tx) {
+            let mut line = Vec::with_capacity(1024);
+            loop {
+                let ct = buf.read_until(b'\n', &mut line).unwrap();
+                if ct == 0 {
+                    break;
+                }
+                let data = std::str::from_utf8(&line[..ct]).unwrap();
+                if self.filter.matches(data) {
+                    if !Pipeline::proc_preagg(Record::new(data), &mut preaggs, &tx) {
                         break;
                     }
                 }
