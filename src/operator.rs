@@ -1020,9 +1020,12 @@ impl UnaryPreAggFunction for ParseJson {
             })?
         };
         let res = match json {
-            JsonValue::Object(map) => map
-                .into_iter()
-                .fold(rec, |record, (k, v)| record.put(k, json_to_value(v))),
+            JsonValue::Object(map) => {
+                let mut rec = rec;
+                rec.data.reserve(map.len());
+                map.into_iter()
+                    .fold(rec, |record, (k, v)| record.put(k, json_to_value(v)))
+            }
             // TODO: we'll implicitly drop non-object root values. Maybe we should produce an EvalError here
             _other => rec,
         };

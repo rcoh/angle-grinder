@@ -17,6 +17,7 @@ extended-description = """Angle-grinder allows you to parse, aggregate, sum, ave
                         Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI."""
 
 [dependencies]
+jemallocator = "0.3.2"
 serde_json = "1.0.33"
 itertools = "0.8.0"
 nom = { version = "4.2.3", features = ["verbose-errors"] }
@@ -54,7 +55,7 @@ test-generator = "0.3.0"
 [dev-dependencies.cargo-husky]
 version = "1"
 default-features = true
-features = ["precommit-hook", "run-cargo-fmt"]
+features = ["run-cargo-fmt", "precommit-hook"]
 
 [[bench]]
 name = "e2e"
