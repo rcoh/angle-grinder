@@ -3,6 +3,7 @@ extern crate ordered_float;
 use self::ordered_float::OrderedFloat;
 use crate::operator::{EvalError, Expr, ValueRef};
 use crate::serde::ser::SerializeMap;
+use itertools::Itertools;
 use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -161,10 +162,9 @@ impl Value {
                 let mut items = o.iter().collect::<Vec<_>>();
                 items.sort();
 
-                let rendered: Vec<String> = items
+                let mut rendered = items
                     .iter()
-                    .map(|(k, v)| format!("{}:{}", k, v.render(render_config)))
-                    .collect();
+                    .map(|(k, v)| format!("{}:{}", k, v.render(render_config)));
                 format!("{{{}}}", rendered.join(", "))
             }
             Value::Array(ref o) => {
@@ -223,6 +223,7 @@ impl Value {
 }
 
 impl Aggregate {
+    #[cfg(test)]
     pub fn new(
         key_columns: &[String],
         agg_column: String,

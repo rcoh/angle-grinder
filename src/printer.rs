@@ -46,9 +46,8 @@ pub fn agg_printer(
 impl Printer<data::Record> for LogFmtPrinter {
     fn print(&mut self, row: &data::Record, display_config: &DisplayConfig) -> String {
         let columns = row.data.iter().sorted();
-        let kv_pairs = columns
-            .map(|(col, data)| format!("{}={}", col, data.render(display_config)))
-            .collect_vec();
+        let mut kv_pairs =
+            columns.map(|(col, data)| format!("{}={}", col, data.render(display_config)));
         kv_pairs.join(" ")
     }
 }
@@ -219,31 +218,28 @@ impl PrettyPrinter {
         } else {
             false
         };
-        let strs: Vec<String> = self
-            .column_order
-            .iter()
-            .map(|column_name| {
-                let value = record.data.get(column_name);
+        let mut strs = self.column_order.iter().map(|column_name| {
+            let value = record.data.get(column_name);
 
-                let unpadded = match value {
-                    Some(value) => format!(
-                        "[{}={}]",
-                        column_name,
-                        value.render(&self.render_config.display_config)
-                    ),
-                    None => "".to_string(),
-                };
-                if no_padding {
-                    unpadded
-                } else {
-                    format!(
-                        "{:width$}",
-                        unpadded,
-                        width = column_name.len() + 3 + self.column_widths[column_name]
-                    )
-                }
-            })
-            .collect();
+            let unpadded = match value {
+                Some(value) => format!(
+                    "[{}={}]",
+                    column_name,
+                    value.render(&self.render_config.display_config)
+                ),
+                None => "".to_string(),
+            };
+            if no_padding {
+                unpadded
+            } else {
+                format!(
+                    "{:width$}",
+                    unpadded,
+                    width = column_name.len() + 3 + self.column_widths[column_name]
+                )
+            }
+        });
+
         strs.join("").trim().to_string()
     }
 
@@ -295,17 +291,14 @@ impl PrettyPrinter {
         columns: &[String],
         row: &HashMap<String, data::Value>,
     ) -> String {
-        let row: Vec<String> = columns
-            .iter()
-            .map(|column_name| {
-                format_with_ellipsis(
-                    row.get(column_name)
-                        .unwrap_or(&data::Value::None)
-                        .render(&self.render_config.display_config),
-                    self.column_widths[column_name],
-                )
-            })
-            .collect();
+        let mut row = columns.iter().map(|column_name| {
+            format_with_ellipsis(
+                row.get(column_name)
+                    .unwrap_or(&data::Value::None)
+                    .render(&self.render_config.display_config),
+                self.column_widths[column_name],
+            )
+        });
         row.join("").trim().to_string()
     }
 
@@ -321,29 +314,24 @@ impl PrettyPrinter {
 
         self.column_widths = self.resize_widths_to_fit(&self.column_widths, &aggregate.columns);
         assert!(self.fits_within_term_agg(), "{:?}", self.column_widths);
-        let header: Vec<String> = aggregate
-            .columns
-            .iter()
-            .map(|column_name| {
-                format!(
-                    "{:width$}",
-                    column_name,
-                    width = self.column_widths[column_name]
-                )
-            })
-            .collect();
+        let mut header = aggregate.columns.iter().map(|column_name| {
+            format!(
+                "{:width$}",
+                column_name,
+                width = self.column_widths[column_name]
+            )
+        });
         let header = header.join("");
         let header_len = header.len();
         let header = format!("{}\n{}", header.trim(), "-".repeat(header_len));
-        let body: Vec<String> = aggregate
+        let mut body = aggregate
             .data
             .iter()
-            .map(|row| self.format_aggregate_row(&aggregate.columns, row))
-            .collect();
+            .map(|row| self.format_aggregate_row(&aggregate.columns, row));
         let overlength_str = format!("{}\n{}\n", header, body.join("\n"));
         match self.term_size {
             Some(TerminalSize { height, .. }) => {
-                let lines: Vec<&str> = overlength_str.lines().take((height as usize) - 1).collect();
+                let mut lines = overlength_str.lines().take((height as usize) - 1);
                 lines.join("\n") + "\n"
             }
             None => overlength_str,
