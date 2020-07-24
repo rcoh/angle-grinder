@@ -320,8 +320,7 @@ impl Record {
                         }
                     }
                 }
-
-                std::mem::replace(root_record, value);
+                *root_record = value;
             }
             // These should not happen, if so this is a programming error
             // since the data cannot be indexed by BoolUnary / Comparison / Value Exprs.
