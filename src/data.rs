@@ -266,6 +266,10 @@ impl Record {
         self
     }
 
+    pub fn put_mut<T: Into<String>>(&mut self, key: T, value: Value) {
+        self.data.insert(key.into(), value);
+    }
+
     /// Places a Value in the data based on the Expr accessor.
     /// Only works with NestedColumn exprs.
     pub fn put_expr(mut self, key: &Expr, value: Value) -> Result<Record, EvalError> {
