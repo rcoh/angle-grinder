@@ -624,12 +624,13 @@ pub struct Sorter {
 
 impl Sorter {
     pub fn new(columns: Vec<String>, direction: SortDirection) -> Self {
+        let ordering = Box::new(Record::ordering(columns.clone()));
         Sorter {
             state: Vec::new(),
             columns: Vec::new(),
             direction,
-            initial_columns: columns.clone(),
-            ordering: Box::new(Record::ordering(columns)),
+            initial_columns: columns,
+            ordering,
         }
     }
 
@@ -649,15 +650,14 @@ impl AggregateOperator for Sorter {
         let mut sorted_data = self.state.to_vec();
         let order = &self.ordering;
         // potential hotspot with large numbers of columns
-        let additional_columns: Vec<String> = self
+        let additional_columns: Vec<_> = self
             .columns
             .iter()
             .filter(|c| !self.initial_columns.contains(c))
-            .cloned()
             .collect();
         // To produce a deterministic sort, we should also sort by the non-key columns
 
-        let second_ordering = Record::ordering(additional_columns);
+        let second_ordering = Record::ordering_ref(&additional_columns);
 
         if self.direction == SortDirection::Ascending {
             sorted_data.sort_by(|l, r| (order)(l, r).then(second_ordering(l, r)));
@@ -735,8 +735,8 @@ impl AggregateOperator for MultiGrouper {
         let data = self.state.iter().map(|(key_values, agg_map)| {
             let key_values = key_values.iter().cloned();
             let key_cols = self.key_col_headers.iter().map(|s| s.to_owned());
-            let mut res_map: data::VMap =
-                HashMap::from_iter(itertools::zip_eq(key_cols, key_values));
+            let mut res_map = HashMap::with_capacity(key_cols.len() + agg_map.len());
+            res_map.extend(itertools::zip_eq(key_cols, key_values));
             for (k, v) in agg_map {
                 res_map.insert(k.to_string(), v.emit());
             }

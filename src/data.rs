@@ -353,13 +353,29 @@ impl Record {
         }
     }
 
-    pub fn ordering<'a>(
-        columns: Vec<String>,
+    pub fn ordering<'a, T: 'a + AsRef<str> + Send + Sync>(
+        columns: Vec<T>,
     ) -> impl Fn(&VMap, &VMap) -> Ordering + 'a + Send + Sync {
         move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
-                let l_val = rec_l.get(col);
-                let r_val = rec_r.get(col);
+                let l_val = rec_l.get(col.as_ref());
+                let r_val = rec_r.get(col.as_ref());
+                let cmp = l_val.cmp(&r_val);
+                if cmp != Ordering::Equal {
+                    return cmp;
+                }
+            }
+            Ordering::Equal
+        }
+    }
+
+    pub fn ordering_ref<'a, T: 'a + AsRef<str> + Send + Sync>(
+        columns: &'a [T],
+    ) -> impl Fn(&VMap, &VMap) -> Ordering + 'a + Send + Sync {
+        move |rec_l: &VMap, rec_r: &VMap| {
+            for col in columns {
+                let l_val = rec_l.get(col.as_ref());
+                let r_val = rec_r.get(col.as_ref());
                 let cmp = l_val.cmp(&r_val);
                 if cmp != Ordering::Equal {
                     return cmp;
