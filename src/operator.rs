@@ -139,18 +139,16 @@ impl AggregateOperator for PreAggAdapter {
             Row::Record(_) => panic!("PreAgg adaptor should only be used after aggregates"),
             Row::Aggregate(agg) => {
                 let mut op = self.op_builder.build();
-                let mut processed_records: Vec<data::VMap> = {
-                    let records = agg
-                        .data
-                        .into_iter()
-                        .map(|vmap| data::Record {
-                            data: vmap,
-                            raw: "".to_string(),
-                        })
-                        .flat_map(|rec| op.process_mut(rec).unwrap_or(None))
-                        .map(|rec| rec.data);
-                    records.collect()
-                };
+                let mut processed_records: Vec<data::VMap> = agg
+                    .data
+                    .into_iter()
+                    .map(|vmap| data::Record {
+                        data: vmap,
+                        raw: "".to_string(),
+                    })
+                    .flat_map(|rec| op.process_mut(rec).unwrap_or(None))
+                    .map(|rec| rec.data)
+                    .collect();
                 processed_records.extend(op.drain().map(|rec| rec.data));
                 let output_column_set: HashSet<String> = processed_records
                     .iter()
@@ -158,17 +156,18 @@ impl AggregateOperator for PreAggAdapter {
                     .cloned()
                     .collect();
 
-                let input_column_set = HashSet::from_iter(agg.columns.iter().cloned());
-                let new_columns: Vec<String> = output_column_set
-                    .difference(&input_column_set)
-                    .cloned()
-                    .collect();
-                let mut columns = agg.columns;
-                columns.extend(new_columns);
-                let columns: Vec<String> = columns
-                    .into_iter()
-                    .filter(|col| output_column_set.contains(col))
-                    .collect();
+                let mut columns = Vec::with_capacity(output_column_set.len());
+                let filtered_previous_columns = agg
+                    .columns
+                    .iter()
+                    .filter(|col| output_column_set.contains(*col));
+                columns.extend(filtered_previous_columns.cloned());
+                for column in output_column_set {
+                    if !columns.contains(&column) {
+                        columns.push(column);
+                    }
+                }
+
                 self.state = Aggregate {
                     data: processed_records,
                     columns,
