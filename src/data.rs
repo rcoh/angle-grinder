@@ -239,10 +239,10 @@ impl Aggregate {
             });
         });
         let raw_data: Vec<HashMap<String, Value>> = data
-            .iter()
-            .map(|&(ref keycols, ref value)| {
+            .into_iter()
+            .map(|(keycols, value)| {
                 let mut new_map: HashMap<String, Value> = keycols
-                    .iter()
+                    .into_iter()
                     .map(|(keycol, val)| (keycol.clone(), Value::Str(val.clone())))
                     .collect();
                 new_map.insert(agg_column.clone(), value.clone());
@@ -260,8 +260,8 @@ impl Aggregate {
 }
 
 impl Record {
-    pub fn put(mut self, key: &str, value: Value) -> Record {
-        self.data.insert(key.to_string(), value);
+    pub fn put<T: Into<String>>(mut self, key: T, value: Value) -> Record {
+        self.data.insert(key.into(), value);
         self
     }
 
@@ -320,8 +320,7 @@ impl Record {
                         }
                     }
                 }
-
-                std::mem::replace(root_record, value);
+                *root_record = value;
             }
             // These should not happen, if so this is a programming error
             // since the data cannot be indexed by BoolUnary / Comparison / Value Exprs.
@@ -347,10 +346,10 @@ impl Record {
         Ok(self)
     }
 
-    pub fn new(raw: &str) -> Record {
+    pub fn new<T: Into<String>>(raw: T) -> Record {
         Record {
             data: HashMap::new(),
-            raw: raw.to_string(),
+            raw: raw.into(),
         }
     }
 

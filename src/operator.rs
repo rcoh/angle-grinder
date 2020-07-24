@@ -988,27 +988,29 @@ impl ParseJson {
 
 impl UnaryPreAggFunction for ParseJson {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
-        fn json_to_value(v: &JsonValue) -> data::Value {
-            match *v {
-                JsonValue::Number(ref num) => {
+        fn json_to_value(v: JsonValue) -> data::Value {
+            match v {
+                JsonValue::Number(num) => {
                     if num.is_i64() {
                         data::Value::Int(num.as_i64().unwrap())
                     } else {
                         data::Value::from_float(num.as_f64().unwrap())
                     }
                 }
-                JsonValue::String(ref s) => data::Value::Str(s.to_string()),
+                JsonValue::String(s) => data::Value::Str(s),
                 JsonValue::Null => data::Value::None,
                 JsonValue::Bool(b) => data::Value::Bool(b),
-                JsonValue::Object(ref map) => data::Value::Obj(
-                    map.iter()
+                JsonValue::Object(map) => data::Value::Obj(
+                    map.into_iter()
                         .map(|(k, v)| (k.to_string(), json_to_value(v)))
                         .collect::<HashMap<String, data::Value>>()
                         .into(),
                 ),
-                JsonValue::Array(ref vec) => {
-                    data::Value::Array(vec.iter().map(json_to_value).collect::<Vec<data::Value>>())
-                }
+                JsonValue::Array(vec) => data::Value::Array(
+                    vec.into_iter()
+                        .map(json_to_value)
+                        .collect::<Vec<data::Value>>(),
+                ),
             }
         };
         let json: JsonValue = {
@@ -1018,9 +1020,12 @@ impl UnaryPreAggFunction for ParseJson {
             })?
         };
         let res = match json {
-            JsonValue::Object(map) => map
-                .iter()
-                .fold(rec, |record, (k, v)| record.put(k, json_to_value(v))),
+            JsonValue::Object(map) => {
+                let mut rec = rec;
+                rec.data.reserve(map.len());
+                map.into_iter()
+                    .fold(rec, |record, (k, v)| record.put(k, json_to_value(v)))
+            }
             // TODO: we'll implicitly drop non-object root values. Maybe we should produce an EvalError here
             _other => rec,
         };
