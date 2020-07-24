@@ -9,7 +9,6 @@ use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
 use crate::data;
 use crate::data::{Aggregate, DisplayConfig, Record, Row};
-use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -153,16 +152,12 @@ impl AggregateOperator for PreAggAdapter {
                     records.collect()
                 };
                 processed_records.extend(op.drain().map(|rec| rec.data));
-                let resulting_columns: Vec<String> = {
-                    processed_records
-                        .iter()
-                        .flat_map(|vmap| vmap.keys())
-                        .unique()
-                        .cloned()
-                }
-                .collect();
-                let output_column_set: HashSet<String> =
-                    HashSet::from_iter(resulting_columns.iter().cloned());
+                let output_column_set: HashSet<String> = processed_records
+                    .iter()
+                    .flat_map(|vmap| vmap.keys())
+                    .cloned()
+                    .collect();
+
                 let input_column_set = HashSet::from_iter(agg.columns.iter().cloned());
                 let new_columns: Vec<String> = output_column_set
                     .difference(&input_column_set)
