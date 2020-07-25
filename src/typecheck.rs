@@ -41,6 +41,17 @@ impl From<lang::ComparisonOp> for operator::BoolExpr {
     }
 }
 
+impl From<lang::ArithmeticOp> for operator::ArithmeticExpr {
+    fn from(op: lang::ArithmeticOp) -> Self {
+        match op {
+            lang::ArithmeticOp::Add => operator::ArithmeticExpr::Add,
+            lang::ArithmeticOp::Subtract => operator::ArithmeticExpr::Subtract,
+            lang::ArithmeticOp::Multiply => operator::ArithmeticExpr::Multiply,
+            lang::ArithmeticOp::Divide => operator::ArithmeticExpr::Divide,
+        }
+    }
+}
+
 impl TypeCheck<operator::Expr> for lang::Expr {
     fn type_check<E: ErrorBuilder>(self, error_builder: &E) -> Result<operator::Expr, TypeError> {
         match self {
@@ -73,6 +84,15 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
                         operator: com_op.into(),
+                    }))
+                }
+                lang::BinaryOp::Arithmetic(arith_op) => {
+                    Ok(operator::Expr::Arithmetic(operator::BinaryExpr::<
+                        operator::ArithmeticExpr,
+                    > {
+                        left: Box::new((*left).type_check(error_builder)?),
+                        right: Box::new((*right).type_check(error_builder)?),
+                        operator: arith_op.into(),
                     }))
                 }
             },
@@ -241,6 +261,9 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                 input_column.type_check(error_builder)?,
                 output_column,
             ))),
+            lang::InlineOperator::FieldExpression { value, name } => Ok(Box::new(
+                operator::FieldExpressionDef::new(value.type_check(error_builder)?, name),
+            )),
         }
     }
 }

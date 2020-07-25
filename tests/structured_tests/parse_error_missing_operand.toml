@@ -1,0 +1,16 @@
+query = "* | where response_ms *"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+"""
+output = ""
+error = """
+error: expecting an operand for binary operator
+  |
+1 | * | where response_ms *
+  |                       ^
+  |
+  = help: Add the operand or delete the operator
+Error: Failed to parse query
+"""
+succeeds = false

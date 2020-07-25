@@ -24,6 +24,10 @@ pub enum SyntaxErrors {
     UnterminatedSingleQuotedString,
     #[fail(display = "unterminated double quoted string")]
     UnterminatedDoubleQuotedString,
+    #[fail(display = "expecting an operand for binary operator")]
+    MissingOperand,
+    #[fail(display = "expecting a name for the field")]
+    MissingName,
     #[fail(display = "expecting close parentheses")]
     MissingParen,
 
@@ -170,6 +174,10 @@ impl SyntaxErrors {
             SyntaxErrors::MissingParen => {
                 vec!["Insert a right parenthesis to terminate this expression".to_string()]
             }
+            SyntaxErrors::MissingOperand => {
+                vec!["Add the operand or delete the operator".to_string()]
+            }
+            SyntaxErrors::MissingName => vec!["Give the value a name".to_string()],
             SyntaxErrors::InvalidBooleanExpression => {
                 let mut base = vec![format!(
                     "The boolean expression {} is invalid",

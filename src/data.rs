@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Display;
+use std::ops::{Add, Div, Mul, Sub};
 
 pub type VMap = HashMap<String, Value>;
 
@@ -78,10 +79,6 @@ impl serde::Serialize for Value {
     }
 }
 
-pub static FALSE_VALUE: &Value = &Value::Bool(false);
-pub static TRUE_VALUE: &Value = &Value::Bool(true);
-pub static NONE: &Value = &Value::None;
-
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
@@ -120,6 +117,79 @@ impl Display for Value {
             Value::Obj(ref o) => write!(f, "{:?}", o),
             Value::Array(ref o) => write!(f, "{:?}", o),
             Value::None => write!(f, "None"),
+        }
+    }
+}
+
+impl Add for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf + rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li + ri)),
+            // XXX I feel like there should be a nicer way to do this
+            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 + rf.0))),
+            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 + ri as f64))),
+            (left, right) => Err(EvalError::ExpectedNumericOperands {
+                left: format!("{}", left),
+                op: "+",
+                right: format!("{}", right),
+            }),
+        }
+    }
+}
+
+impl Sub for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf - rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li - ri)),
+            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 - rf.0))),
+            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 - ri as f64))),
+            (left, right) => Err(EvalError::ExpectedNumericOperands {
+                left: format!("{}", left),
+                op: "-",
+                right: format!("{}", right),
+            }),
+        }
+    }
+}
+
+impl Mul for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf * rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li * ri)),
+            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 * rf.0))),
+            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 * ri as f64))),
+            (left, right) => Err(EvalError::ExpectedNumericOperands {
+                left: format!("{}", left),
+                op: "*",
+                right: format!("{}", right),
+            }),
+        }
+    }
+}
+
+impl Div for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf / rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li / ri)),
+            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 / rf.0))),
+            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 / ri as f64))),
+            (left, right) => Err(EvalError::ExpectedNumericOperands {
+                left: format!("{}", left),
+                op: "/",
+                right: format!("{}", right),
+            }),
         }
     }
 }
@@ -174,12 +244,8 @@ impl Value {
         }
     }
 
-    pub fn from_bool(b: bool) -> &'static Value {
-        if b {
-            TRUE_VALUE
-        } else {
-            FALSE_VALUE
-        }
+    pub fn from_bool(b: bool) -> Value {
+        Value::Bool(b)
     }
 
     pub fn from_float(f: f64) -> Value {
@@ -339,6 +405,12 @@ impl Record {
                 return Err(EvalError::ExpectedXYZ {
                     expected: "valid expr".to_string(),
                     found: "comparison expr".to_string(),
+                })
+            }
+            Expr::Arithmetic(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "arithmetic expr".to_string(),
                 })
             }
             Expr::Value(_) => {
@@ -523,5 +595,64 @@ mod tests {
 
         let ord = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
         assert_eq!(ord(&r1, &r2), Ordering::Less);
+    }
+
+    #[test]
+    fn arithmetic() {
+        assert_eq!(
+            Value::Float(OrderedFloat(5.)),
+            (Value::Float(OrderedFloat(4.)) + Value::Float(OrderedFloat(1.))).unwrap()
+        );
+        assert_eq!(Value::Int(5), (Value::Int(4) + Value::Int(1)).unwrap());
+        assert_eq!(
+            Value::Float(OrderedFloat(5.)),
+            (Value::Int(4) + Value::Float(OrderedFloat(1.0))).unwrap()
+        );
+        assert_eq!(
+            Value::Float(OrderedFloat(5.)),
+            (Value::Float(OrderedFloat(4.)) + Value::Int(1)).unwrap()
+        );
+
+        assert_eq!(
+            Value::Float(OrderedFloat(3.)),
+            (Value::Float(OrderedFloat(4.)) - Value::Float(OrderedFloat(1.))).unwrap()
+        );
+        assert_eq!(Value::Int(3), (Value::Int(4) - Value::Int(1)).unwrap());
+        assert_eq!(
+            Value::Float(OrderedFloat(3.)),
+            (Value::Int(4) - Value::Float(OrderedFloat(1.0))).unwrap()
+        );
+        assert_eq!(
+            Value::Float(OrderedFloat(3.)),
+            (Value::Float(OrderedFloat(4.)) - Value::Int(1)).unwrap()
+        );
+
+        assert_eq!(
+            Value::Float(OrderedFloat(4.)),
+            (Value::Float(OrderedFloat(4.)) * Value::Float(OrderedFloat(1.))).unwrap()
+        );
+        assert_eq!(Value::Int(4), (Value::Int(4) * Value::Int(1)).unwrap());
+        assert_eq!(
+            Value::Float(OrderedFloat(4.)),
+            (Value::Int(4) * Value::Float(OrderedFloat(1.0))).unwrap()
+        );
+        assert_eq!(
+            Value::Float(OrderedFloat(4.)),
+            (Value::Float(OrderedFloat(4.)) * Value::Int(1)).unwrap()
+        );
+
+        assert_eq!(
+            Value::Float(OrderedFloat(2.)),
+            (Value::Float(OrderedFloat(4.)) / Value::Float(OrderedFloat(2.))).unwrap()
+        );
+        assert_eq!(Value::Int(2), (Value::Int(4) / Value::Int(2)).unwrap());
+        assert_eq!(
+            Value::Float(OrderedFloat(2.)),
+            (Value::Int(4) / Value::Float(OrderedFloat(2.0))).unwrap()
+        );
+        assert_eq!(
+            Value::Float(OrderedFloat(2.)),
+            (Value::Float(OrderedFloat(4.)) / Value::Int(2)).unwrap()
+        );
     }
 }
