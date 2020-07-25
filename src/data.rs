@@ -3,6 +3,7 @@ extern crate ordered_float;
 use self::ordered_float::OrderedFloat;
 use crate::operator::{EvalError, Expr, ValueRef};
 use crate::serde::ser::SerializeMap;
+use itertools::Itertools;
 use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -161,10 +162,9 @@ impl Value {
                 let mut items = o.iter().collect::<Vec<_>>();
                 items.sort();
 
-                let rendered: Vec<String> = items
+                let mut rendered = items
                     .iter()
-                    .map(|(k, v)| format!("{}:{}", k, v.render(render_config)))
-                    .collect();
+                    .map(|(k, v)| format!("{}:{}", k, v.render(render_config)));
                 format!("{{{}}}", rendered.join(", "))
             }
             Value::Array(ref o) => {
@@ -223,6 +223,7 @@ impl Value {
 }
 
 impl Aggregate {
+    #[cfg(test)]
     pub fn new(
         key_columns: &[String],
         agg_column: String,
@@ -263,6 +264,10 @@ impl Record {
     pub fn put<T: Into<String>>(mut self, key: T, value: Value) -> Record {
         self.data.insert(key.into(), value);
         self
+    }
+
+    pub fn put_mut<T: Into<String>>(&mut self, key: T, value: Value) {
+        self.data.insert(key.into(), value);
     }
 
     /// Places a Value in the data based on the Expr accessor.
@@ -353,13 +358,29 @@ impl Record {
         }
     }
 
-    pub fn ordering<'a>(
-        columns: Vec<String>,
+    pub fn ordering<'a, T: 'a + AsRef<str> + Send + Sync>(
+        columns: Vec<T>,
     ) -> impl Fn(&VMap, &VMap) -> Ordering + 'a + Send + Sync {
         move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
-                let l_val = rec_l.get(col);
-                let r_val = rec_r.get(col);
+                let l_val = rec_l.get(col.as_ref());
+                let r_val = rec_r.get(col.as_ref());
+                let cmp = l_val.cmp(&r_val);
+                if cmp != Ordering::Equal {
+                    return cmp;
+                }
+            }
+            Ordering::Equal
+        }
+    }
+
+    pub fn ordering_ref<'a, T: 'a + AsRef<str> + Send + Sync>(
+        columns: &'a [T],
+    ) -> impl Fn(&VMap, &VMap) -> Ordering + 'a + Send + Sync {
+        move |rec_l: &VMap, rec_r: &VMap| {
+            for col in columns {
+                let l_val = rec_l.get(col.as_ref());
+                let r_val = rec_r.get(col.as_ref());
                 let cmp = l_val.cmp(&r_val);
                 if cmp != Ordering::Equal {
                     return cmp;

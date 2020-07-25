@@ -9,7 +9,6 @@ use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
 use crate::data;
 use crate::data::{Aggregate, DisplayConfig, Record, Row};
-use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -140,40 +139,35 @@ impl AggregateOperator for PreAggAdapter {
             Row::Record(_) => panic!("PreAgg adaptor should only be used after aggregates"),
             Row::Aggregate(agg) => {
                 let mut op = self.op_builder.build();
-                let mut processed_records: Vec<data::VMap> = {
-                    let records = agg
-                        .data
-                        .into_iter()
-                        .map(|vmap| data::Record {
-                            data: vmap,
-                            raw: "".to_string(),
-                        })
-                        .flat_map(|rec| op.process_mut(rec).unwrap_or(None))
-                        .map(|rec| rec.data);
-                    records.collect()
-                };
+                let mut processed_records: Vec<data::VMap> = agg
+                    .data
+                    .into_iter()
+                    .map(|vmap| data::Record {
+                        data: vmap,
+                        raw: "".to_string(),
+                    })
+                    .flat_map(|rec| op.process_mut(rec).unwrap_or(None))
+                    .map(|rec| rec.data)
+                    .collect();
                 processed_records.extend(op.drain().map(|rec| rec.data));
-                let resulting_columns: Vec<String> = {
-                    processed_records
-                        .iter()
-                        .flat_map(|vmap| vmap.keys())
-                        .unique()
-                        .cloned()
-                }
-                .collect();
-                let output_column_set: HashSet<String> =
-                    HashSet::from_iter(resulting_columns.iter().cloned());
-                let input_column_set = HashSet::from_iter(agg.columns.iter().cloned());
-                let new_columns: Vec<String> = output_column_set
-                    .difference(&input_column_set)
+                let output_column_set: HashSet<String> = processed_records
+                    .iter()
+                    .flat_map(|vmap| vmap.keys())
                     .cloned()
                     .collect();
-                let mut columns = agg.columns;
-                columns.extend(new_columns);
-                let columns: Vec<String> = columns
-                    .into_iter()
-                    .filter(|col| output_column_set.contains(col))
-                    .collect();
+
+                let mut columns = Vec::with_capacity(output_column_set.len());
+                let filtered_previous_columns = agg
+                    .columns
+                    .iter()
+                    .filter(|col| output_column_set.contains(*col));
+                columns.extend(filtered_previous_columns.cloned());
+                for column in output_column_set {
+                    if !columns.contains(&column) {
+                        columns.push(column);
+                    }
+                }
+
                 self.state = Aggregate {
                     data: processed_records,
                     columns,
@@ -624,12 +618,13 @@ pub struct Sorter {
 
 impl Sorter {
     pub fn new(columns: Vec<String>, direction: SortDirection) -> Self {
+        let ordering = Box::new(Record::ordering(columns.clone()));
         Sorter {
             state: Vec::new(),
             columns: Vec::new(),
             direction,
-            initial_columns: columns.clone(),
-            ordering: Box::new(Record::ordering(columns)),
+            initial_columns: columns,
+            ordering,
         }
     }
 
@@ -649,15 +644,14 @@ impl AggregateOperator for Sorter {
         let mut sorted_data = self.state.to_vec();
         let order = &self.ordering;
         // potential hotspot with large numbers of columns
-        let additional_columns: Vec<String> = self
+        let additional_columns: Vec<_> = self
             .columns
             .iter()
             .filter(|c| !self.initial_columns.contains(c))
-            .cloned()
             .collect();
         // To produce a deterministic sort, we should also sort by the non-key columns
 
-        let second_ordering = Record::ordering(additional_columns);
+        let second_ordering = Record::ordering_ref(&additional_columns);
 
         if self.direction == SortDirection::Ascending {
             sorted_data.sort_by(|l, r| (order)(l, r).then(second_ordering(l, r)));
@@ -735,8 +729,8 @@ impl AggregateOperator for MultiGrouper {
         let data = self.state.iter().map(|(key_values, agg_map)| {
             let key_values = key_values.iter().cloned();
             let key_cols = self.key_col_headers.iter().map(|s| s.to_owned());
-            let mut res_map: data::VMap =
-                HashMap::from_iter(itertools::zip_eq(key_cols, key_values));
+            let mut res_map = HashMap::with_capacity(key_cols.len() + agg_map.len());
+            res_map.extend(itertools::zip_eq(key_cols, key_values));
             for (k, v) in agg_map {
                 res_map.insert(k.to_string(), v.emit());
             }
@@ -1023,8 +1017,10 @@ impl UnaryPreAggFunction for ParseJson {
             JsonValue::Object(map) => {
                 let mut rec = rec;
                 rec.data.reserve(map.len());
-                map.into_iter()
-                    .fold(rec, |record, (k, v)| record.put(k, json_to_value(v)))
+                for (k, v) in map {
+                    rec.put_mut(k, json_to_value(v));
+                }
+                rec
             }
             // TODO: we'll implicitly drop non-object root values. Maybe we should produce an EvalError here
             _other => rec,
