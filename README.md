@@ -222,6 +222,25 @@ first N rows are returned.  If the number is negative, the last N rows are retur
 * | limit -10
 ```
 
+##### Field Expression
+`<expr> as <name>`: The given expression is evaluated and the result is stored
+in a field with the given name for the current row.  The expression can be
+made up of the following:
+
+* `+`, `-`, `*`, `/`: Mathematical operators with the normal precedence rules.
+  The operators work on numeric values and strings that can automatically be
+  converted to numbers.
+* `==`, `!=`, `<=`, `>=`, `<`, `>`: Boolean operators work on most data types.
+* `<field>`: The name of a field in the current row.  If the row does not
+  contain the given field, an error will be reported.
+* Parentheses to group operations
+
+*Examples*
+Multiply `value` by 100 to get the percentage
+```agrind
+* | json | value * 100 as percentage
+```
+
 #### Aggregate Operators
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
 The general syntax is:

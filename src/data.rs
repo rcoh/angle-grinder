@@ -7,7 +7,7 @@ use itertools::Itertools;
 use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fmt::Display;
 use std::ops::{Add, Div, Mul, Sub};
@@ -128,14 +128,7 @@ impl Add for Value {
         match (self, rhs) {
             (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf + rf)),
             (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li + ri)),
-            // XXX I feel like there should be a nicer way to do this
-            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 + rf.0))),
-            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 + ri as f64))),
-            (left, right) => Err(EvalError::ExpectedNumericOperands {
-                left: format!("{}", left),
-                op: "+",
-                right: format!("{}", right),
-            }),
+            (left, right) => left.binary_op(&f64::add, "+", &right),
         }
     }
 }
@@ -147,13 +140,7 @@ impl Sub for Value {
         match (self, rhs) {
             (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf - rf)),
             (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li - ri)),
-            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 - rf.0))),
-            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 - ri as f64))),
-            (left, right) => Err(EvalError::ExpectedNumericOperands {
-                left: format!("{}", left),
-                op: "-",
-                right: format!("{}", right),
-            }),
+            (left, right) => left.binary_op(&f64::sub, "-", &right),
         }
     }
 }
@@ -165,13 +152,7 @@ impl Mul for Value {
         match (self, rhs) {
             (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf * rf)),
             (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li * ri)),
-            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 * rf.0))),
-            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 * ri as f64))),
-            (left, right) => Err(EvalError::ExpectedNumericOperands {
-                left: format!("{}", left),
-                op: "*",
-                right: format!("{}", right),
-            }),
+            (left, right) => left.binary_op(&f64::mul, "*", &right),
         }
     }
 }
@@ -183,13 +164,7 @@ impl Div for Value {
         match (self, rhs) {
             (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf / rf)),
             (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li / ri)),
-            (Value::Int(li), Value::Float(rf)) => Ok(Value::Float(OrderedFloat(li as f64 / rf.0))),
-            (Value::Float(lf), Value::Int(ri)) => Ok(Value::Float(OrderedFloat(lf.0 / ri as f64))),
-            (left, right) => Err(EvalError::ExpectedNumericOperands {
-                left: format!("{}", left),
-                op: "/",
-                right: format!("{}", right),
-            }),
+            (left, right) => left.binary_op(&f64::div, "/", &right),
         }
     }
 }
@@ -285,6 +260,40 @@ impl Value {
             .or_else(|_| float_value.map(Value::from_float))
             .or_else(|_| bool_value.map(Value::Bool))
             .unwrap_or_else(|_| Value::Str(trimmed.into()))
+    }
+
+    pub fn binary_op(
+        &self,
+        op_fn: &dyn Fn(f64, f64) -> f64,
+        op: &'static str,
+        right: &Value,
+    ) -> Result<Value, EvalError> {
+        let left_res: Result<f64, EvalError> = self.try_into();
+        let right_res: Result<f64, EvalError> = right.try_into();
+
+        match (left_res, right_res) {
+            (Ok(lf1), Ok(rf1)) => Ok(Value::Float(OrderedFloat(op_fn(lf1, rf1)))),
+            _ => Err(EvalError::ExpectedNumericOperands {
+                left: format!("{}", self),
+                op,
+                right: format!("{}", right),
+            }),
+        }
+    }
+}
+
+impl TryFrom<&Value> for f64 {
+    type Error = EvalError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(i) => Ok(*i as f64),
+            Value::Float(f) => Ok(f.0),
+            Value::Str(s) => Value::aggressively_to_num(s),
+            _ => Err(EvalError::ExpectedNumber {
+                found: format!("{}", value),
+            }),
+        }
     }
 }
 
