@@ -28,26 +28,32 @@ pub trait TypeCheck<O> {
     fn type_check<E: ErrorBuilder>(self, error_builder: &E) -> Result<O, TypeError>;
 }
 
-impl From<lang::ComparisonOp> for operator::BoolExpr {
-    fn from(op: lang::ComparisonOp) -> Self {
-        match op {
-            lang::ComparisonOp::Eq => operator::BoolExpr::Eq,
-            lang::ComparisonOp::Neq => operator::BoolExpr::Neq,
-            lang::ComparisonOp::Gt => operator::BoolExpr::Gt,
-            lang::ComparisonOp::Lt => operator::BoolExpr::Lt,
-            lang::ComparisonOp::Gte => operator::BoolExpr::Gte,
-            lang::ComparisonOp::Lte => operator::BoolExpr::Lte,
+impl TypeCheck<operator::BoolExpr> for lang::ComparisonOp {
+    fn type_check<E: ErrorBuilder>(
+        self,
+        _error_builder: &E,
+    ) -> Result<operator::BoolExpr, TypeError> {
+        match self {
+            lang::ComparisonOp::Eq => Ok(operator::BoolExpr::Eq),
+            lang::ComparisonOp::Neq => Ok(operator::BoolExpr::Neq),
+            lang::ComparisonOp::Gt => Ok(operator::BoolExpr::Gt),
+            lang::ComparisonOp::Lt => Ok(operator::BoolExpr::Lt),
+            lang::ComparisonOp::Gte => Ok(operator::BoolExpr::Gte),
+            lang::ComparisonOp::Lte => Ok(operator::BoolExpr::Lte),
         }
     }
 }
 
-impl From<lang::ArithmeticOp> for operator::ArithmeticExpr {
-    fn from(op: lang::ArithmeticOp) -> Self {
-        match op {
-            lang::ArithmeticOp::Add => operator::ArithmeticExpr::Add,
-            lang::ArithmeticOp::Subtract => operator::ArithmeticExpr::Subtract,
-            lang::ArithmeticOp::Multiply => operator::ArithmeticExpr::Multiply,
-            lang::ArithmeticOp::Divide => operator::ArithmeticExpr::Divide,
+impl TypeCheck<operator::ArithmeticExpr> for lang::ArithmeticOp {
+    fn type_check<E: ErrorBuilder>(
+        self,
+        _error_builder: &E,
+    ) -> Result<operator::ArithmeticExpr, TypeError> {
+        match self {
+            lang::ArithmeticOp::Add => Ok(operator::ArithmeticExpr::Add),
+            lang::ArithmeticOp::Subtract => Ok(operator::ArithmeticExpr::Subtract),
+            lang::ArithmeticOp::Multiply => Ok(operator::ArithmeticExpr::Multiply),
+            lang::ArithmeticOp::Divide => Ok(operator::ArithmeticExpr::Divide),
         }
     }
 }
@@ -83,7 +89,7 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                     > {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
-                        operator: com_op.into(),
+                        operator: com_op.type_check(error_builder)?,
                     }))
                 }
                 lang::BinaryOp::Arithmetic(arith_op) => {
@@ -92,7 +98,7 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                     > {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
-                        operator: arith_op.into(),
+                        operator: arith_op.type_check(error_builder)?,
                     }))
                 }
             },

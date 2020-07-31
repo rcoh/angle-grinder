@@ -272,7 +272,7 @@ impl Value {
         let right_res: Result<f64, EvalError> = right.try_into();
 
         match (left_res, right_res) {
-            (Ok(lf1), Ok(rf1)) => Ok(Value::Float(OrderedFloat(op_fn(lf1, rf1)))),
+            (Ok(lf1), Ok(rf1)) => Ok(Value::from_float(op_fn(lf1, rf1))),
             _ => Err(EvalError::ExpectedNumericOperands {
                 left: format!("{}", self),
                 op,
@@ -609,59 +609,59 @@ mod tests {
     #[test]
     fn arithmetic() {
         assert_eq!(
-            Value::Float(OrderedFloat(5.)),
-            (Value::Float(OrderedFloat(4.)) + Value::Float(OrderedFloat(1.))).unwrap()
+            Value::from_float(5.),
+            (Value::from_float(4.) + Value::from_float(1.)).unwrap()
         );
         assert_eq!(Value::Int(5), (Value::Int(4) + Value::Int(1)).unwrap());
         assert_eq!(
-            Value::Float(OrderedFloat(5.)),
-            (Value::Int(4) + Value::Float(OrderedFloat(1.0))).unwrap()
+            Value::from_float(5.),
+            (Value::Int(4) + Value::from_float(1.0)).unwrap()
         );
         assert_eq!(
-            Value::Float(OrderedFloat(5.)),
-            (Value::Float(OrderedFloat(4.)) + Value::Int(1)).unwrap()
+            Value::from_float(5.),
+            (Value::from_float(4.) + Value::Int(1)).unwrap()
         );
 
         assert_eq!(
-            Value::Float(OrderedFloat(3.)),
-            (Value::Float(OrderedFloat(4.)) - Value::Float(OrderedFloat(1.))).unwrap()
+            Value::from_float(3.),
+            (Value::from_float(4.) - Value::from_float(1.)).unwrap()
         );
         assert_eq!(Value::Int(3), (Value::Int(4) - Value::Int(1)).unwrap());
         assert_eq!(
-            Value::Float(OrderedFloat(3.)),
-            (Value::Int(4) - Value::Float(OrderedFloat(1.0))).unwrap()
+            Value::from_float(3.),
+            (Value::Int(4) - Value::from_float(1.0)).unwrap()
         );
         assert_eq!(
-            Value::Float(OrderedFloat(3.)),
-            (Value::Float(OrderedFloat(4.)) - Value::Int(1)).unwrap()
+            Value::from_float(3.),
+            (Value::from_float(4.) - Value::Int(1)).unwrap()
         );
 
         assert_eq!(
-            Value::Float(OrderedFloat(4.)),
-            (Value::Float(OrderedFloat(4.)) * Value::Float(OrderedFloat(1.))).unwrap()
+            Value::from_float(4.),
+            (Value::from_float(4.) * Value::from_float(1.)).unwrap()
         );
         assert_eq!(Value::Int(4), (Value::Int(4) * Value::Int(1)).unwrap());
         assert_eq!(
-            Value::Float(OrderedFloat(4.)),
-            (Value::Int(4) * Value::Float(OrderedFloat(1.0))).unwrap()
+            Value::from_float(4.),
+            (Value::Int(4) * Value::from_float(1.0)).unwrap()
         );
         assert_eq!(
-            Value::Float(OrderedFloat(4.)),
-            (Value::Float(OrderedFloat(4.)) * Value::Int(1)).unwrap()
+            Value::from_float(4.),
+            (Value::from_float(4.) * Value::Int(1)).unwrap()
         );
 
         assert_eq!(
-            Value::Float(OrderedFloat(2.)),
-            (Value::Float(OrderedFloat(4.)) / Value::Float(OrderedFloat(2.))).unwrap()
+            Value::from_float(2.),
+            (Value::from_float(4.) / Value::from_float(2.)).unwrap()
         );
         assert_eq!(Value::Int(2), (Value::Int(4) / Value::Int(2)).unwrap());
         assert_eq!(
-            Value::Float(OrderedFloat(2.)),
-            (Value::Int(4) / Value::Float(OrderedFloat(2.0))).unwrap()
+            Value::from_float(2.),
+            (Value::Int(4) / Value::from_float(2.0)).unwrap()
         );
         assert_eq!(
-            Value::Float(OrderedFloat(2.)),
-            (Value::Float(OrderedFloat(4.)) / Value::Int(2)).unwrap()
+            Value::from_float(2.),
+            (Value::from_float(4.) / Value::Int(2)).unwrap()
         );
     }
 }
