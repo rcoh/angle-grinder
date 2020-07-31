@@ -1,0 +1,27 @@
+query = "* | json | num_things * 2 + 6 / 3 as num_things_x2"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1.5}
+{"level": "info", "message": "A thing happened", "num_things": 1103}
+{"level": "info", "message": "A thing happened", "num_things": 1105}
+{"level": "info", "message": "A thing happened", "num_things": "not_a_number"}
+{"level": "info", "message": "A thing happened"}
+{"level": "info", "message": "A thing happened", "num_things": 1105}
+{"level": "info", "message": "A thing happened", "num_things": 1105}
+{"level": "info", "message": "A thing happened", "num_things": 1105}
+{"level": "info", "message": "A thing happened", "num_things": 1105.5}
+{"level": "info", "message": "A thing happened", "num_things": "1105.5"}
+"""
+output = """
+[level=info]         [message=A thing happened]        [num_things=1.50]              [num_things_x2=5]
+[level=info]         [message=A thing happened]        [num_things=1103]              [num_things_x2=2208]
+[level=info]         [message=A thing happened]        [num_things=1105]              [num_things_x2=2212]
+[level=info]         [message=A thing happened]        [num_things=1105]              [num_things_x2=2212]
+[level=info]         [message=A thing happened]        [num_things=1105]              [num_things_x2=2212]
+[level=info]         [message=A thing happened]        [num_things=1105]              [num_things_x2=2212]
+[level=info]         [message=A thing happened]        [num_things=1105.50]           [num_things_x2=2213]
+[level=info]         [message=A thing happened]        [num_things=1105.5]            [num_things_x2=2213]
+"""
+error = """
+error: Expected numeric operands, found not_a_number * 2
+error: No value for key num_things
+"""

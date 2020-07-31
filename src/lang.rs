@@ -124,8 +124,17 @@ pub enum ComparisonOp {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum ArithmeticOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum BinaryOp {
     Comparison(ComparisonOp),
+    Arithmetic(ArithmeticOp),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -263,6 +272,10 @@ pub enum InlineOperator {
         input_column: Expr,
         output_column: String,
     },
+    FieldExpression {
+        value: Expr,
+        name: String,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -388,11 +401,23 @@ named!(e_ident<Span, Expr>,
     ws!(alt_complete!(
       column_ref
     | map!(value, Expr::Value)
-      //expr
     | ws!(add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
           tag!("("),
           expr,
           return_error!(SyntaxErrors::MissingParen.into(), tag!(")")))))
+)));
+
+named!(unary<Span, Expr>, ws!(do_parse!(
+   opt_op: opt!(unary_op) >>
+   atomic: e_ident >>
+   (if let Some(op) = opt_op {
+       Expr::Unary {
+          op: op,
+          operand: Box::new(atomic)
+       }
+    } else {
+       atomic
+    })
 )));
 
 named!(raw_keyword<Span, Span>,
@@ -418,20 +443,73 @@ named!(unary_op<Span, UnaryOp>, ws!(alt_complete!(
     map!(tag!("!"), |_|UnaryOp::Not)
 )));
 
-named!(expr<Span, Expr>, ws!(alt_complete!(
-    do_parse!(
-        l: e_ident >>
-        comp: comp_op >>
-        r: e_ident >>
-        ( Expr::Binary { op: BinaryOp::Comparison(comp), left: Box::new(l), right: Box::new(r)} )
-    )
-    | do_parse!(
-        op: unary_op >>
-        operand: e_ident >>
-        ( Expr::Unary { op, operand: Box::new(operand) } )
-    )
-    | e_ident
+named!(term<Span, Expr>, do_parse!(
+   init: unary >>
+   res: fold_many0!(
+      add_return_error!(SyntaxErrors::StartOfError.into(), pair!(ws!(alt!(
+         map!(tag!("*"), |_|ArithmeticOp::Multiply)
+         | map!(tag!("/"), |_|ArithmeticOp::Divide)
+      )), return_error!(SyntaxErrors::MissingOperand.into(), unary))),
+      init,
+      |left, (op, right)| {
+          Expr::Binary {
+             left: Box::new(left),
+             op: BinaryOp::Arithmetic(op),
+             right: Box::new(right)
+          }
+      }
+   ) >>
+   (res)
+));
+
+named!(arith_expr<Span, Expr>, ws!(do_parse!(
+   init: term >>
+   res: fold_many0!(
+      add_return_error!(SyntaxErrors::StartOfError.into(), pair!(ws!(alt!(
+         map!(tag!("+"), |_|ArithmeticOp::Add)
+         | map!(tag!("-"), |_|ArithmeticOp::Subtract)
+      )), return_error!(SyntaxErrors::MissingOperand.into(), term))),
+      init,
+      |left, (op, right)| {
+         Expr::Binary {
+             left: Box::new(left),
+             op: BinaryOp::Arithmetic(op),
+             right: Box::new(right)
+         }
+      }
+   ) >>
+   (res)
 )));
+
+named!(expr<Span, Expr>, ws!(do_parse!(
+   init: arith_expr >>
+   res: opt!(pair!(comp_op, arith_expr)) >>
+   (if let Some((op, right)) = res {
+       Expr::Binary {
+          left: Box::new(init),
+          op: BinaryOp::Comparison(op),
+          right: Box::new(right)
+       }
+    } else {
+       init
+    })
+)));
+
+named!(req_ident<Span, String>, return_error!(SyntaxErrors::MissingName.into(), ident));
+
+named!(field_expr<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
+   not!(alt_complete!(
+       tag!("count") |
+       tag!("count_frequent")
+   )) >>
+   value: expr >>
+   tag!("as") >>
+   name: req_ident >>
+   (InlineOperator::FieldExpression {
+       value,
+       name,
+    })
+))));
 
 named!(json<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     tag!("json") >>
@@ -659,9 +737,11 @@ named!(alias<Span, Operator>, map!(
     Operator::RenderedAlias
 ));
 
-named!(inline_operator<Span, Operator>,
-    map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split), Operator::Inline)
-);
+named!(inline_operator<Span, Operator>, do_parse!(
+    peek!(did_you_mean_operator) >>
+    res: map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split), Operator::Inline) >>
+    (res)
+));
 
 named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
     peek!(did_you_mean_aggregate) >>
@@ -675,10 +755,10 @@ named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
         p_nn) >> (res)
 ));
 
-named!(operator<Span, Operator>, do_parse!(
-    peek!(did_you_mean_operator) >>
-    res: alt_complete!(inline_operator | sort | alias | multi_aggregate_operator) >> (res)
-));
+named!(operator<Span, Operator>, alt_complete!(
+    map!(field_expr, Operator::Inline) |
+    inline_operator | sort | alias | multi_aggregate_operator)
+);
 
 // count by x,y
 // avg(foo) by x
@@ -970,6 +1050,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_expr_precedence() {
+        expect!(
+            expr,
+            "2 * 3 + 4 * 5 < 4 / 2 + 1",
+            Expr::Binary {
+                left: Box::new(Expr::Binary {
+                    left: Box::new(Expr::Binary {
+                        left: Box::new(Expr::Value(data::Value::Int(2))),
+                        op: BinaryOp::Arithmetic(ArithmeticOp::Multiply),
+                        right: Box::new(Expr::Value(data::Value::Int(3))),
+                    }),
+                    op: BinaryOp::Arithmetic(ArithmeticOp::Add),
+                    right: Box::new(Expr::Binary {
+                        left: Box::new(Expr::Value(data::Value::Int(4))),
+                        op: BinaryOp::Arithmetic(ArithmeticOp::Multiply),
+                        right: Box::new(Expr::Value(data::Value::Int(5))),
+                    }),
+                }),
+                op: BinaryOp::Comparison(ComparisonOp::Lt),
+                right: Box::new(Expr::Binary {
+                    left: Box::new(Expr::Binary {
+                        left: Box::new(Expr::Value(data::Value::Int(4))),
+                        op: BinaryOp::Arithmetic(ArithmeticOp::Divide),
+                        right: Box::new(Expr::Value(data::Value::Int(2))),
+                    }),
+                    op: BinaryOp::Arithmetic(ArithmeticOp::Add),
+                    right: Box::new(Expr::Value(data::Value::Int(1))),
+                })
+            }
+        );
+    }
+
+    #[test]
     fn parse_ident() {
         expect!(ident, "hello123", "hello123".to_string());
         expect!(ident, "x", "x".to_string());
@@ -1039,6 +1152,18 @@ mod tests {
 
     #[test]
     fn parse_operator() {
+        expect!(
+            operator,
+            r#" 1 as one"#,
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(9),
+                value: InlineOperator::FieldExpression {
+                    value: Expr::Value(data::Value::Int(1)),
+                    name: "one".to_string(),
+                },
+            })
+        );
         expect!(
             operator,
             "  json",

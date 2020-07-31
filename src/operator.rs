@@ -44,6 +44,13 @@ pub enum EvalError {
     #[fail(display = "Expected number, found {}", found)]
     ExpectedNumber { found: String },
 
+    #[fail(display = "Expected numeric operands, found {} {} {}", left, op, right)]
+    ExpectedNumericOperands {
+        left: String,
+        op: &'static str,
+        right: String,
+    },
+
     #[fail(display = "Expected boolean, found {}", found)]
     ExpectedBoolean { found: String },
 }
@@ -52,23 +59,19 @@ pub trait Evaluatable<T>: Send + Sync + Clone {
     fn eval(&self, record: &Data) -> Result<T, EvalError>;
 }
 
-pub trait EvaluatableBorrowed<T> {
-    fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a T, EvalError>;
-}
-
 /// Trait for operators that are functional in nature and do not maintain state.
 pub trait UnaryPreAggFunction: Send + Sync {
     fn process(&self, rec: Record) -> Result<Option<Record>, EvalError>;
 }
 
 /// Get a column from the given record.
-fn get_input<'a>(rec: &'a Record, col: &Option<Expr>) -> Result<&'a str, EvalError> {
+fn get_input(rec: &Record, col: &Option<Expr>) -> Result<String, EvalError> {
     match col {
         Some(expr) => {
-            let res: &String = expr.eval_borrowed(&rec.data)?;
-            Ok(res)
+            let res: String = expr.eval(&rec.data)?;
+            Ok(res.to_string())
         }
-        None => Ok(&rec.raw),
+        None => Ok(rec.raw.clone()),
     }
 }
 
@@ -200,6 +203,7 @@ pub enum Expr {
     NestedColumn { head: String, rest: Vec<ValueRef> },
     BoolUnary(UnaryExpr<BoolUnaryExpr>),
     Comparison(BinaryExpr<BoolExpr>),
+    Arithmetic(BinaryExpr<ArithmeticExpr>),
     Value(&'static data::Value),
 }
 
@@ -231,6 +235,14 @@ pub enum BoolExpr {
     Lte,
 }
 
+#[derive(Clone, Debug)]
+pub enum ArithmeticExpr {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
 impl<T: Copy + Send + Sync> Evaluatable<T> for T {
     fn eval(&self, _record: &HashMap<String, data::Value>) -> Result<T, EvalError> {
         Ok(*self)
@@ -239,8 +251,8 @@ impl<T: Copy + Send + Sync> Evaluatable<T> for T {
 
 impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
-        let l: &data::Value = self.left.eval_borrowed(record)?;
-        let r: &data::Value = self.right.eval_borrowed(record)?;
+        let l: data::Value = self.left.eval(record)?;
+        let r: data::Value = self.right.eval(record)?;
         let result = match self.operator {
             BoolExpr::Eq => l == r,
             BoolExpr::Neq => l != r,
@@ -253,9 +265,22 @@ impl Evaluatable<bool> for BinaryExpr<BoolExpr> {
     }
 }
 
+impl Evaluatable<data::Value> for BinaryExpr<ArithmeticExpr> {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<data::Value, EvalError> {
+        let l: data::Value = self.left.eval(record)?;
+        let r: data::Value = self.right.eval(record)?;
+        match self.operator {
+            ArithmeticExpr::Add => l + r,
+            ArithmeticExpr::Subtract => l - r,
+            ArithmeticExpr::Multiply => l * r,
+            ArithmeticExpr::Divide => l / r,
+        }
+    }
+}
+
 impl Evaluatable<bool> for UnaryExpr<BoolUnaryExpr> {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
-        let bool_res: &data::Value = self.operand.eval_borrowed(record)?;
+        let bool_res: data::Value = self.operand.eval(record)?;
 
         match bool_res {
             data::Value::Bool(true) => Ok(false),
@@ -269,8 +294,8 @@ impl Evaluatable<bool> for UnaryExpr<BoolUnaryExpr> {
 
 impl Evaluatable<bool> for Expr {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<bool, EvalError> {
-        match self.eval_borrowed(record)? {
-            data::Value::Bool(bool_value) => Ok(*bool_value),
+        match self.eval(record)? {
+            data::Value::Bool(bool_value) => Ok(bool_value),
             other => Err(EvalError::ExpectedBoolean {
                 found: other.to_string(),
             }),
@@ -278,11 +303,8 @@ impl Evaluatable<bool> for Expr {
     }
 }
 
-impl EvaluatableBorrowed<data::Value> for Expr {
-    fn eval_borrowed<'a>(
-        &self,
-        record: &'a HashMap<String, data::Value>,
-    ) -> Result<&'a data::Value, EvalError> {
+impl Evaluatable<data::Value> for Expr {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<data::Value, EvalError> {
         match *self {
             Expr::NestedColumn { ref head, ref rest } => {
                 let mut root_record: &data::Value = record
@@ -320,7 +342,7 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                         }
                     }
                 }
-                Ok(root_record)
+                Ok(root_record.clone())
             }
             Expr::BoolUnary(
                 ref
@@ -338,16 +360,17 @@ impl EvaluatableBorrowed<data::Value> for Expr {
                 let bool_res = binary_expr.eval(record)?;
                 Ok(data::Value::from_bool(bool_res))
             }
-            Expr::Value(ref v) => Ok(v),
+            Expr::Arithmetic(ref binary_expr) => binary_expr.eval(record),
+            Expr::Value(v) => Ok(v.clone()),
         }
     }
 }
 
 impl Evaluatable<f64> for Expr {
     fn eval(&self, record: &HashMap<String, data::Value>) -> Result<f64, EvalError> {
-        let value: &data::Value = self.eval_borrowed(record)?;
+        let value: data::Value = self.eval(record)?;
         match value {
-            data::Value::Int(i) => Ok(*i as f64),
+            data::Value::Int(i) => Ok(i as f64),
             data::Value::Float(f) => Ok(f.into_inner()),
             data::Value::Str(s) => data::Value::aggressively_to_num(s),
             other => Err(EvalError::ExpectedNumber {
@@ -357,14 +380,14 @@ impl Evaluatable<f64> for Expr {
     }
 }
 
-impl EvaluatableBorrowed<String> for Expr {
-    fn eval_borrowed<'a>(&self, record: &'a Data) -> Result<&'a String, EvalError> {
-        let as_value: &data::Value = self.eval_borrowed(record)?;
+impl Evaluatable<String> for Expr {
+    fn eval(&self, record: &Data) -> Result<String, EvalError> {
+        let as_value: data::Value = self.eval(record)?;
         match as_value {
             data::Value::None => Err(EvalError::UnexpectedNone {
                 tpe: "String".to_string(),
             }),
-            data::Value::Str(ref s) => Ok(s),
+            data::Value::Str(ref s) => Ok(s.to_owned()),
             _ => Err(EvalError::ExpectedString {
                 found: "other".to_string(),
             }),
@@ -444,7 +467,7 @@ impl CountDistinct {
 
 impl AggregateFunction for CountDistinct {
     fn process(&mut self, rec: &Data) -> Result<(), EvalError> {
-        let value: &data::Value = self.column.eval_borrowed(rec)?;
+        let value: data::Value = self.column.eval(rec)?;
         self.state.insert(value.clone());
         Ok(())
     }
@@ -703,10 +726,9 @@ impl MultiGrouper {
         }
     }
     fn process_map(&mut self, data: &Data) {
-        let key_values = self.key_cols.iter().map(|expr| expr.eval_borrowed(data));
+        let key_values = self.key_cols.iter().map(|expr| expr.eval(data));
         let key_columns: Vec<data::Value> = key_values
-            .map(|value_res| value_res.unwrap_or_else(|_| data::NONE))
-            .cloned()
+            .map(|value_res| value_res.unwrap_or_else(|_| data::Value::None))
             .collect();
         let agg_col = &self.agg_col;
         let row = self.state.entry(key_columns).or_insert_with(|| {
@@ -895,6 +917,26 @@ impl UnaryPreAggOperator for Total {
         self.total += val;
         let rec = rec.put(&self.output_column, data::Value::from_float(self.total));
         Ok(Some(rec))
+    }
+}
+
+#[derive(Clone)]
+pub struct FieldExpressionDef {
+    value: Expr,
+    name: String,
+}
+
+impl FieldExpressionDef {
+    pub fn new(value: Expr, name: String) -> FieldExpressionDef {
+        FieldExpressionDef { value, name }
+    }
+}
+
+impl UnaryPreAggFunction for FieldExpressionDef {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        let res = self.value.eval(&rec.data)?;
+
+        Ok(Some(rec.put(&self.name, res)))
     }
 }
 
@@ -1175,8 +1217,8 @@ mod tests {
             head: "k1".to_string(),
             rest: vec![ValueRef::Field("k2".to_string())],
         };
-        let data: &data::Value = expr.eval_borrowed(&rec.data).unwrap();
-        assert_eq!(data, &data::Value::from_float(5.5));
+        let data: data::Value = expr.eval(&rec.data).unwrap();
+        assert_eq!(data, data::Value::from_float(5.5));
     }
 
     #[test]
@@ -1190,7 +1232,7 @@ mod tests {
             head: "k1".to_string(),
             rest: vec![ValueRef::Field("k11".to_string())],
         };
-        let res: Result<&data::Value, EvalError> = expr.eval_borrowed(&rec.data);
+        let res: Result<data::Value, EvalError> = expr.eval(&rec.data);
         match res {
             Ok(_) => assert_eq!(false, true),
             Err(eval_error) => assert_eq!(

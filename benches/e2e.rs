@@ -3,6 +3,7 @@ use annotate_snippets::snippet::Snippet;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
+use std::time::Duration;
 
 /// An ErrorReporter that writes errors related to the query string to the terminal
 struct NopErrorReporter {}
@@ -53,6 +54,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let num_elems = BufReader::new(File::open(&test.file).unwrap())
             .lines()
             .count();
+        group.measurement_time(Duration::from_secs(25));
         group.throughput(Throughput::Elements(num_elems as u64));
 
         let name = test.name;

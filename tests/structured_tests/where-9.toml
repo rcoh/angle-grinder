@@ -1,0 +1,16 @@
+query = """* | json | where (response_ms / 2) < 4"""
+input = """
+{"response_ms": 10}
+{"response_ms": 6}
+{}
+{"response_ms": 2}
+{"response_ms": "five"}
+"""
+output = """
+[response_ms=6]
+[response_ms=2]
+"""
+error = """
+error: No value for key response_ms
+error: Expected numeric operands, found five / 2
+"""

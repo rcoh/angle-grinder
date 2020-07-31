@@ -7,9 +7,10 @@ use itertools::Itertools;
 use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fmt::Display;
+use std::ops::{Add, Div, Mul, Sub};
 
 pub type VMap = HashMap<String, Value>;
 
@@ -78,10 +79,6 @@ impl serde::Serialize for Value {
     }
 }
 
-pub static FALSE_VALUE: &Value = &Value::Bool(false);
-pub static TRUE_VALUE: &Value = &Value::Bool(true);
-pub static NONE: &Value = &Value::None;
-
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
@@ -120,6 +117,54 @@ impl Display for Value {
             Value::Obj(ref o) => write!(f, "{:?}", o),
             Value::Array(ref o) => write!(f, "{:?}", o),
             Value::None => write!(f, "None"),
+        }
+    }
+}
+
+impl Add for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf + rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li + ri)),
+            (left, right) => left.binary_op(&f64::add, "+", &right),
+        }
+    }
+}
+
+impl Sub for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf - rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li - ri)),
+            (left, right) => left.binary_op(&f64::sub, "-", &right),
+        }
+    }
+}
+
+impl Mul for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf * rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li * ri)),
+            (left, right) => left.binary_op(&f64::mul, "*", &right),
+        }
+    }
+}
+
+impl Div for Value {
+    type Output = Result<Value, EvalError>;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf / rf)),
+            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li / ri)),
+            (left, right) => left.binary_op(&f64::div, "/", &right),
         }
     }
 }
@@ -174,12 +219,8 @@ impl Value {
         }
     }
 
-    pub fn from_bool(b: bool) -> &'static Value {
-        if b {
-            TRUE_VALUE
-        } else {
-            FALSE_VALUE
-        }
+    pub fn from_bool(b: bool) -> Value {
+        Value::Bool(b)
     }
 
     pub fn from_float(f: f64) -> Value {
@@ -219,6 +260,40 @@ impl Value {
             .or_else(|_| float_value.map(Value::from_float))
             .or_else(|_| bool_value.map(Value::Bool))
             .unwrap_or_else(|_| Value::Str(trimmed.into()))
+    }
+
+    pub fn binary_op(
+        &self,
+        op_fn: &dyn Fn(f64, f64) -> f64,
+        op: &'static str,
+        right: &Value,
+    ) -> Result<Value, EvalError> {
+        let left_res: Result<f64, EvalError> = self.try_into();
+        let right_res: Result<f64, EvalError> = right.try_into();
+
+        match (left_res, right_res) {
+            (Ok(lf1), Ok(rf1)) => Ok(Value::from_float(op_fn(lf1, rf1))),
+            _ => Err(EvalError::ExpectedNumericOperands {
+                left: format!("{}", self),
+                op,
+                right: format!("{}", right),
+            }),
+        }
+    }
+}
+
+impl TryFrom<&Value> for f64 {
+    type Error = EvalError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(i) => Ok(*i as f64),
+            Value::Float(f) => Ok(f.0),
+            Value::Str(s) => Value::aggressively_to_num(s),
+            _ => Err(EvalError::ExpectedNumber {
+                found: format!("{}", value),
+            }),
+        }
     }
 }
 
@@ -339,6 +414,12 @@ impl Record {
                 return Err(EvalError::ExpectedXYZ {
                     expected: "valid expr".to_string(),
                     found: "comparison expr".to_string(),
+                })
+            }
+            Expr::Arithmetic(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "arithmetic expr".to_string(),
                 })
             }
             Expr::Value(_) => {
@@ -523,5 +604,64 @@ mod tests {
 
         let ord = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
         assert_eq!(ord(&r1, &r2), Ordering::Less);
+    }
+
+    #[test]
+    fn arithmetic() {
+        assert_eq!(
+            Value::from_float(5.),
+            (Value::from_float(4.) + Value::from_float(1.)).unwrap()
+        );
+        assert_eq!(Value::Int(5), (Value::Int(4) + Value::Int(1)).unwrap());
+        assert_eq!(
+            Value::from_float(5.),
+            (Value::Int(4) + Value::from_float(1.0)).unwrap()
+        );
+        assert_eq!(
+            Value::from_float(5.),
+            (Value::from_float(4.) + Value::Int(1)).unwrap()
+        );
+
+        assert_eq!(
+            Value::from_float(3.),
+            (Value::from_float(4.) - Value::from_float(1.)).unwrap()
+        );
+        assert_eq!(Value::Int(3), (Value::Int(4) - Value::Int(1)).unwrap());
+        assert_eq!(
+            Value::from_float(3.),
+            (Value::Int(4) - Value::from_float(1.0)).unwrap()
+        );
+        assert_eq!(
+            Value::from_float(3.),
+            (Value::from_float(4.) - Value::Int(1)).unwrap()
+        );
+
+        assert_eq!(
+            Value::from_float(4.),
+            (Value::from_float(4.) * Value::from_float(1.)).unwrap()
+        );
+        assert_eq!(Value::Int(4), (Value::Int(4) * Value::Int(1)).unwrap());
+        assert_eq!(
+            Value::from_float(4.),
+            (Value::Int(4) * Value::from_float(1.0)).unwrap()
+        );
+        assert_eq!(
+            Value::from_float(4.),
+            (Value::from_float(4.) * Value::Int(1)).unwrap()
+        );
+
+        assert_eq!(
+            Value::from_float(2.),
+            (Value::from_float(4.) / Value::from_float(2.)).unwrap()
+        );
+        assert_eq!(Value::Int(2), (Value::Int(4) / Value::Int(2)).unwrap());
+        assert_eq!(
+            Value::from_float(2.),
+            (Value::Int(4) / Value::from_float(2.0)).unwrap()
+        );
+        assert_eq!(
+            Value::from_float(2.),
+            (Value::from_float(4.) / Value::Int(2)).unwrap()
+        );
     }
 }

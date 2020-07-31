@@ -1,0 +1,16 @@
+query = "* | 1 as 1"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+"""
+output = ""
+error = """
+error: expecting a name for the field
+  |
+1 | * | 1 as 1
+  |          ^
+  |
+  = help: Give the value a name
+Error: Failed to parse query
+"""
+succeeds = false
