@@ -5,6 +5,7 @@ main() {
     if [ $TRAVIS_OS_NAME = linux ]; then
         target=x86_64-unknown-linux-musl
         sort=sort
+        apt-get install -y libssl-dev
     else
         target=x86_64-apple-darwin
         sort=gsort  # for `sort --sort-version`, from brew's coreutils.
