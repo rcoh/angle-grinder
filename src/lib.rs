@@ -18,6 +18,7 @@ mod alias;
 pub mod data;
 mod errors;
 mod filter;
+mod funcs;
 pub mod lang;
 pub mod operator;
 mod printer;

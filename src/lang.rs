@@ -163,6 +163,10 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    FunctionCall {
+        name: String,
+        args: Vec<Expr>,
+    },
     Value(data::Value),
 }
 
@@ -397,9 +401,16 @@ named!(ident<Span, String>, do_parse!(
     (start.fragment.0.to_owned() + rest.fragment.0)
 ));
 
+named!(arguments<Span, Vec<Expr>>, add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
+   tag!("("),
+   separated_list!(tag!(","), expr),
+   return_error!(SyntaxErrors::MissingParen.into(), tag!(")"))
+)));
+
 named!(e_ident<Span, Expr>,
     ws!(alt_complete!(
-      column_ref
+      map!(pair!(ident, arguments), |(name, args)| Expr::FunctionCall { name, args })
+    | column_ref
     | map!(value, Expr::Value)
     | ws!(add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
           tag!("("),
@@ -500,7 +511,8 @@ named!(req_ident<Span, String>, return_error!(SyntaxErrors::MissingName.into(), 
 named!(field_expr<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
    not!(alt_complete!(
        tag!("count") |
-       tag!("count_frequent")
+       tag!("count_frequent") |
+       tag!("total")
    )) >>
    value: expr >>
    tag!("as") >>
@@ -1015,6 +1027,28 @@ mod tests {
                 op: BinaryOp::Comparison(ComparisonOp::Eq),
                 left: Box::new(Expr::column("a")),
                 right: Box::new(Expr::column("b")),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_func_call() {
+        expect!(
+            field_expr,
+            "parseDate(abc) as foo",
+            Positioned {
+                start_pos: QueryPosition(0),
+                end_pos: QueryPosition(21),
+                value: InlineOperator::FieldExpression {
+                    value: Expr::FunctionCall {
+                        name: "parseDate".to_string(),
+                        args: vec!(Expr::Column {
+                            head: DataAccessAtom::Key("abc".to_string()),
+                            rest: vec!()
+                        })
+                    },
+                    name: "foo".to_string()
+                }
             }
         );
     }

@@ -1,0 +1,15 @@
+query = """* | json | parseDate(ts) as pts"""
+input = """
+{"ts": "2014-01-01T10:20:30Z"}
+{"ts": "21/Jan/2014 14:18:17"}
+{"ts": "abc"}
+{"ts": false}
+"""
+output = """
+[pts=2014-01-01 10:20:30 UTC]        [ts=2014-01-01T10:20:30Z]
+[pts=2014-01-21 14:18:17 UTC]        [ts=21/Jan/2014 14:18:17]
+"""
+error = """
+error: The 'parseDate' function failed with the error: UnrecognizedToken("abc")
+error: The 'parseDate' function failed with the error: UnrecognizedToken("false")
+"""

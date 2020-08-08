@@ -1,5 +1,6 @@
 use crate::data::Value;
 use crate::errors::ErrorBuilder;
+use crate::funcs;
 use crate::lang;
 use crate::operator;
 
@@ -22,6 +23,9 @@ pub enum TypeError {
 
     #[fail(display = "Limit must be a non-zero integer, found {}", limit)]
     InvalidLimit { limit: f64 },
+
+    #[fail(display = "Unknown function {}", name)]
+    UnknownFunction { name: String },
 }
 
 pub trait TypeCheck<O> {
@@ -102,6 +106,20 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                     }))
                 }
             },
+            lang::Expr::FunctionCall { name, args } => {
+                let converted_args: Result<Vec<operator::Expr>, TypeError> = args
+                    .into_iter()
+                    .map(|arg| arg.type_check(error_builder))
+                    .collect();
+                if let Some(func) = funcs::FUNC_MAP.get(name.as_str()) {
+                    Ok(operator::Expr::FunctionCall {
+                        func,
+                        args: converted_args?,
+                    })
+                } else {
+                    Err(TypeError::UnknownFunction { name })
+                }
+            }
             lang::Expr::Value(value) => {
                 let boxed = Box::new(value);
                 let static_value: &'static mut Value = Box::leak(boxed);
