@@ -148,11 +148,9 @@ fn parse_output(output_param: &str) -> Result<OutputMode, InvalidArgs> {
 }
 
 fn update() -> CliResult {
-    let target = self_update::get_target()?;
-    let status = self_update::backends::github::Update::configure()?
+    let status = self_update::backends::github::Update::configure()
         .repo_owner("rcoh")
         .repo_name("angle-grinder")
-        .target(&target)
         .bin_name("agrind")
         .show_download_progress(true)
         .current_version(cargo_crate_version!())
