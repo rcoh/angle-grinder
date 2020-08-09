@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
@@ -39,38 +39,47 @@ impl FunctionContainer {
         FunctionContainer { name, func }
     }
 
+    fn eval1<'v, A: TryFrom<&'v data::Value, Error = EvalError>, O: Into<data::Value>>(
+        &self,
+        f: fn(A) -> O,
+        args: &'v Vec<data::Value>,
+    ) -> Result<data::Value, EvalError> {
+        match args.as_slice() {
+            [arg0] => {
+                let arg0_a = arg0.try_into()?;
+                Ok(f(arg0_a).into())
+            }
+            _ => Err(EvalError::InvalidFunctionArguments {
+                name: self.name,
+                expected: 1,
+                found: args.len(),
+            }),
+        }
+    }
+
+    fn eval2<'v, A: TryFrom<&'v data::Value, Error = EvalError>, O: Into<data::Value>>(
+        &self,
+        f: fn(A, A) -> O,
+        args: &'v Vec<data::Value>,
+    ) -> Result<data::Value, EvalError> {
+        match args.as_slice() {
+            [arg0, arg1] => {
+                let arg0_a = arg0.try_into()?;
+                let arg1_a = arg1.try_into()?;
+                Ok(f(arg0_a, arg1_a).into())
+            }
+            _ => Err(EvalError::InvalidFunctionArguments {
+                name: self.name,
+                expected: 1,
+                found: args.len(),
+            }),
+        }
+    }
+
     pub fn eval_func(&self, args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
         match self.func {
-            FunctionWrapper::Float1(func) => match args.as_slice() {
-                [data::Value::Float(fl)] => Ok(data::Value::from_float(func(fl.0))),
-                [data::Value::Int(i)] => Ok(data::Value::from_float(func(*i as f64))),
-                [arg0] => {
-                    let arg0_res: Result<f64, EvalError> = arg0.try_into();
-
-                    Ok(data::Value::from_float(func(arg0_res?)))
-                }
-                _ => Err(EvalError::InvalidFunctionArguments {
-                    name: self.name,
-                    expected: 1,
-                    found: args.len(),
-                }),
-            },
-            FunctionWrapper::Float2(func) => match args.as_slice() {
-                [data::Value::Float(fl1), data::Value::Float(fl2)] => {
-                    Ok(data::Value::from_float(func(fl1.0, fl2.0)))
-                }
-                [arg0, arg1] => {
-                    let arg0_res: Result<f64, EvalError> = arg0.try_into();
-                    let arg1_res: Result<f64, EvalError> = arg1.try_into();
-
-                    Ok(data::Value::from_float(func(arg0_res?, arg1_res?)))
-                }
-                _ => Err(EvalError::InvalidFunctionArguments {
-                    name: self.name,
-                    expected: 2,
-                    found: args.len(),
-                }),
-            },
+            FunctionWrapper::Float1(func) => self.eval1(func, args),
+            FunctionWrapper::Float2(func) => self.eval2(func, args),
             FunctionWrapper::String1(func) => {
                 if let [arg0] = args.as_slice() {
                     func(arg0.to_string().as_str())
@@ -232,6 +241,45 @@ mod tests {
         assert_eq!(
             data::Value::from_bool(true),
             contains("abc \u{2603} def", "\u{2603}").unwrap()
+        );
+    }
+
+    #[test]
+    fn substring_no_args() {
+        assert_eq!(
+            Err(EvalError::InvalidFunctionArguments {
+                name: "substring",
+                expected: 2,
+                found: 0,
+            }),
+            substring(&Vec::new())
+        );
+    }
+
+    #[test]
+    fn substring_of_num() {
+        assert_eq!(
+            Ok(data::Value::Str("12".to_string())),
+            substring(&vec!(
+                data::Value::Int(123),
+                data::Value::Int(0),
+                data::Value::Int(2)
+            ))
+        );
+    }
+
+    #[test]
+    fn substring_end_lt_start() {
+        assert_eq!(
+            Err(EvalError::FunctionFailed {
+                name: "substring",
+                msg: "end offset (0) is less than the start offset (2)".to_string()
+            }),
+            substring(&vec!(
+                data::Value::Int(123),
+                data::Value::Str("2".to_string()),
+                data::Value::Int(0)
+            ))
         );
     }
 }

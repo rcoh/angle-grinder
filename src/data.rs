@@ -289,6 +289,12 @@ impl Value {
     }
 }
 
+impl From<f64> for Value {
+    fn from(f: f64) -> Self {
+        Value::from_float(f)
+    }
+}
+
 impl TryFrom<&Value> for f64 {
     type Error = EvalError;
 
