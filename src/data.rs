@@ -3,6 +3,7 @@ extern crate ordered_float;
 use self::ordered_float::OrderedFloat;
 use crate::operator::{EvalError, Expr, ValueRef};
 use crate::serde::ser::SerializeMap;
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::Serializer;
 use std::cmp::Ordering;
@@ -51,6 +52,7 @@ pub enum Value {
     Int(i64),
     Float(OrderedFloat<f64>),
     Bool(bool),
+    DateTime(DateTime<Utc>),
     Obj(im::HashMap<String, Value>),
     Array(Vec<Value>),
     None,
@@ -66,6 +68,7 @@ impl serde::Serialize for Value {
             Value::Int(i) => serializer.serialize_i64(*i),
             Value::Float(ofloat) => serializer.serialize_f64(ofloat.0),
             Value::Bool(b) => serializer.serialize_bool(*b),
+            Value::DateTime(dt) => serializer.serialize_str(dt.to_rfc3339().as_str()),
             Value::Obj(map) => {
                 let mut m = serializer.serialize_map(Some(map.len()))?;
                 for (k, v) in map {
@@ -94,6 +97,7 @@ impl Ord for Value {
             (&Value::Int(ref l), &Value::Int(ref r)) => l.cmp(r),
             (&Value::Str(ref l), &Value::Str(ref r)) => l.cmp(r),
             (&Value::Bool(l), &Value::Bool(r)) => l.cmp(&r),
+            (&Value::DateTime(l), &Value::DateTime(r)) => l.cmp(&r),
             (&Value::Obj(ref l), &Value::Obj(ref r)) => l.cmp(r),
             // All these remaining cases aren't directly comparable
             (unrelated_l, unrelated_r) => unrelated_l.rank().cmp(&unrelated_r.rank()),
@@ -114,6 +118,7 @@ impl Display for Value {
             Value::Int(ref s) => write!(f, "{}", s),
             Value::Float(ref s) => write!(f, "{}", s),
             Value::Bool(ref s) => write!(f, "{}", s),
+            Value::DateTime(ref dt) => write!(f, "{:?}", dt),
             Value::Obj(ref o) => write!(f, "{:?}", o),
             Value::Array(ref o) => write!(f, "{:?}", o),
             Value::None => write!(f, "None"),
@@ -189,8 +194,9 @@ impl Value {
             Value::Int(_) => 2,
             Value::Float(_) => 2,
             Value::Str(_) => 3,
-            Value::Array(_) => 4,
-            Value::Obj(_) => 5,
+            Value::DateTime(_) => 4,
+            Value::Array(_) => 5,
+            Value::Obj(_) => 6,
         }
     }
 
@@ -201,6 +207,7 @@ impl Value {
             Value::None => "None".to_string(),
             Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
             Value::Bool(ref s) => format!("{}", s),
+            Value::DateTime(ref dt) => format!("{}", dt),
             Value::Obj(ref o) => {
                 // todo: this is pretty janky...
                 // These values are sorted so the output is deterministic.
@@ -282,6 +289,12 @@ impl Value {
     }
 }
 
+impl From<f64> for Value {
+    fn from(f: f64) -> Self {
+        Value::from_float(f)
+    }
+}
+
 impl TryFrom<&Value> for f64 {
     type Error = EvalError;
 
@@ -291,6 +304,31 @@ impl TryFrom<&Value> for f64 {
             Value::Float(f) => Ok(f.0),
             Value::Str(s) => Value::aggressively_to_num(s),
             _ => Err(EvalError::ExpectedNumber {
+                found: format!("{}", value),
+            }),
+        }
+    }
+}
+
+impl TryFrom<&Value> for usize {
+    type Error = EvalError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(i) if *i >= 0 => Ok(*i as usize),
+            Value::Float(f) if f.0 >= 0.0 => Ok(f.0 as usize),
+            Value::Str(s) => {
+                let num = Value::aggressively_to_num(s)?;
+
+                if num < 0.0 {
+                    Err(EvalError::ExpectedPositiveNumber {
+                        found: format!("{}", value),
+                    })
+                } else {
+                    Ok(num as usize)
+                }
+            }
+            _ => Err(EvalError::ExpectedPositiveNumber {
                 found: format!("{}", value),
             }),
         }
@@ -420,6 +458,12 @@ impl Record {
                 return Err(EvalError::ExpectedXYZ {
                     expected: "valid expr".to_string(),
                     found: "arithmetic expr".to_string(),
+                })
+            }
+            Expr::FunctionCall { .. } => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "function call".to_string(),
                 })
             }
             Expr::Value(_) => {

@@ -1,0 +1,14 @@
+query = "* | json | min(floor(num_things)), max(ceil(num_things))"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102.5}
+{"level": "error", "message": "Oh now an error!"}
+{"level": "error", "message": "So many more errors!", "num_things": 0.1}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A different event", "event_duration": 1002.5}
+{"level": null}
+"""
+output = """
+_min        _max
+------------------------
+0           1103
+"""

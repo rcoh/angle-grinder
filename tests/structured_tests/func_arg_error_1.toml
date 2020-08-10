@@ -1,0 +1,10 @@
+query = "* | json | abs(1, 2) as a"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+"""
+output = ""
+error = """
+error: The 'abs' function expects 1 arguments, found 2
+error: The 'abs' function expects 1 arguments, found 2
+"""

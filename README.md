@@ -235,6 +235,19 @@ made up of the following:
   contain the given field, an error will be reported.
 * Parentheses to group operations
 
+The following functions are supported within expressions:
+
+* Mathematical functions: abs(), acos(), asin(), atan(), atan2(), cbrt(),
+  ceil(), cos(), cosh(), exp(), expm1(), floor(), hypot(), log(), log10(),
+  log1p(), round(), sin(), sinh(), sqrt(), tan(), tanh(), toDegrees(),
+  toRadians()
+* concat(arg0, ..., argN) - Concatenate the arguments into a string
+* contains(haystack, needle) - Return true if the haystack contains the needle.
+* length(str) - Returns the number of characters in "str".
+* parseDate(str) - Attempt to parse a date from the given string.
+* substring(str, startOffset, \[endOffset\]) - Returns the part of the string
+  specified by the given starting offset up to the end offset (if specified).
+
 *Examples*
 Multiply `value` by 100 to get the percentage
 ```agrind

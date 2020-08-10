@@ -9,6 +9,8 @@ use self::quantiles::ckms::CKMS;
 use self::serde_json::Value as JsonValue;
 use crate::data;
 use crate::data::{Aggregate, DisplayConfig, Record, Row};
+use crate::funcs;
+use failure::_core::fmt::Debug;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -44,6 +46,9 @@ pub enum EvalError {
     #[fail(display = "Expected number, found {}", found)]
     ExpectedNumber { found: String },
 
+    #[fail(display = "Expected positive number, found {}", found)]
+    ExpectedPositiveNumber { found: String },
+
     #[fail(display = "Expected numeric operands, found {} {} {}", left, op, right)]
     ExpectedNumericOperands {
         left: String,
@@ -53,6 +58,22 @@ pub enum EvalError {
 
     #[fail(display = "Expected boolean, found {}", found)]
     ExpectedBoolean { found: String },
+
+    #[fail(display = "Unknown function {}", name)]
+    UnknownFunction { name: String },
+
+    #[fail(
+        display = "The '{}' function expects {} arguments, found {}",
+        name, expected, found
+    )]
+    InvalidFunctionArguments {
+        name: &'static str,
+        expected: usize,
+        found: usize,
+    },
+
+    #[fail(display = "The '{}' function failed with the error: {}", name, msg)]
+    FunctionFailed { name: &'static str, msg: String },
 }
 
 pub trait Evaluatable<T>: Send + Sync + Clone {
@@ -200,10 +221,17 @@ pub enum ValueRef {
 #[derive(Debug, Clone)]
 pub enum Expr {
     // First record can only be a String, after that, you can do things like `[0]` in addition to `.foo`
-    NestedColumn { head: String, rest: Vec<ValueRef> },
+    NestedColumn {
+        head: String,
+        rest: Vec<ValueRef>,
+    },
     BoolUnary(UnaryExpr<BoolUnaryExpr>),
     Comparison(BinaryExpr<BoolExpr>),
     Arithmetic(BinaryExpr<ArithmeticExpr>),
+    FunctionCall {
+        func: &'static funcs::FunctionContainer,
+        args: Vec<Expr>,
+    },
     Value(&'static data::Value),
 }
 
@@ -361,6 +389,12 @@ impl Evaluatable<data::Value> for Expr {
                 Ok(data::Value::from_bool(bool_res))
             }
             Expr::Arithmetic(ref binary_expr) => binary_expr.eval(record),
+            Expr::FunctionCall { ref func, ref args } => {
+                let evaluated_args: Result<Vec<data::Value>, EvalError> =
+                    args.into_iter().map(|expr| expr.eval(record)).collect();
+
+                func.eval_func(&evaluated_args?)
+            }
             Expr::Value(v) => Ok(v.clone()),
         }
     }

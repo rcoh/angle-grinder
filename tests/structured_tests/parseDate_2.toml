@@ -1,0 +1,9 @@
+query = """* | json | parseDate(ts, 123) as pts"""
+input = """
+{"ts": "2014-01-01T10:20:30Z"}
+"""
+output = """
+"""
+error = """
+error: The 'parseDate' function expects 1 arguments, found 2
+"""

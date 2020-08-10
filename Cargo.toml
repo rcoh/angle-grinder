@@ -45,6 +45,8 @@ include_dir = "0.2.1"
 toml = "0.4.10"
 serde = "1.0.82"
 serde_derive = "1.0.82"
+chrono = "0.4"
+dtparse = "1.1"
 
 [dev-dependencies]
 assert_cli = "0.6.3"

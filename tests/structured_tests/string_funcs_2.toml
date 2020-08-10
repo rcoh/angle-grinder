@@ -1,0 +1,15 @@
+query = """* | json | substring(f0, 1) as f1 | substring(f0, 0, 1) as f2"""
+input = """
+{"f0": "\u2603 abc"}
+{"f0": "\u2603 def"}
+{"f0": "ghijkl"}
+{"f0": \"\"}
+"""
+output = """
+[f0=☃ abc]          [f1= abc]        [f2=☃]
+[f0=☃ def]          [f1= def]        [f2=☃]
+[f0=ghijkl]         [f1=hijkl]       [f2=g]
+[f0=]               [f1=]            [f2=]
+"""
+error = """
+"""

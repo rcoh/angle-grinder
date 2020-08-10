@@ -1,0 +1,15 @@
+query = """* | json | concat('123', ts) as msg | length(msg) as msg_len"""
+input = """
+{"ts": "2014-01-01T10:20:30Z"}
+{"ts": "21/Jan/2014 14:18:17"}
+{"ts": "abc"}
+{"ts": false}
+"""
+output = """
+[msg=1232014-01-01T10:20:30Z]        [msg_len=23]             [ts=2014-01-01T10:20:30Z]
+[msg=12321/Jan/2014 14:18:17]        [msg_len=23]             [ts=21/Jan/2014 14:18:17]
+[msg=123abc]                         [msg_len=6]              [ts=abc]
+[msg=123false]                       [msg_len=8]              [ts=false]
+"""
+error = """
+"""
