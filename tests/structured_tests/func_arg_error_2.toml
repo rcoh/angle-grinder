@@ -1,0 +1,10 @@
+query = "* | json | atan2(1) as a"
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+"""
+output = ""
+error = """
+error: The 'atan2' function expects 2 arguments, found 1
+error: The 'atan2' function expects 2 arguments, found 1
+"""

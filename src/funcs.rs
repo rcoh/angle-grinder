@@ -70,7 +70,7 @@ impl FunctionContainer {
             }
             _ => Err(EvalError::InvalidFunctionArguments {
                 name: self.name,
-                expected: 1,
+                expected: 2,
                 found: args.len(),
             }),
         }
