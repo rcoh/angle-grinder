@@ -166,11 +166,7 @@ impl Div for Value {
     type Output = Result<Value, EvalError>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf / rf)),
-            (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li / ri)),
-            (left, right) => left.binary_op(&f64::div, "/", &right),
-        }
+        self.binary_op(&f64::div, "/", &rhs)
     }
 }
 
