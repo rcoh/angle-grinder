@@ -1,15 +1,15 @@
-query = """* | json | abs(num) as num_abs | round(num / 100) as round_num"""
+query = """* | json | abs(num) as num_abs | num / other_num as division_result | round(num / 100) as round_num"""
 input = """
-{"num": 123}
-{"num": -456}
-{"num": 789}
-{"num": "321"}
+{"num": 123, "other_num": 456}
+{"num": -456, "other_num": 123.0}
+{"num": 789, "other_num": "cow"}
+{"num": "321", "other_num": -10000}
 """
 output = """
-[num=123]        [num_abs=123]            [round_num=1]
-[num=-456]       [num_abs=456]            [round_num=-4]
-[num=789]        [num_abs=789]            [round_num=7]
-[num=321]        [num_abs=321]            [round_num=3]
+[division_result=0.27]                   [num=123]        [num_abs=123]            [other_num=456]              [round_num=1]
+[division_result=-3.71]                  [num=-456]       [num_abs=456]            [other_num=123]              [round_num=-5]
+[division_result=-0.03]                  [num=321]        [num_abs=321]            [other_num=-10000]           [round_num=3]
 """
 error = """
+error: Expected numeric operands, found 789 / cow
 """
