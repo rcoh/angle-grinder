@@ -121,8 +121,17 @@ fn contains(left: &str, right: &str) -> Result<data::Value, EvalError> {
     Ok(data::Value::from_bool(left.contains(right)))
 }
 
-fn length(s: &str) -> Result<data::Value, EvalError> {
-    Ok(data::Value::Int(s.chars().count() as i64))
+fn length(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+    match args.as_slice() {
+        [data::Value::Array(vec)] => Ok(data::Value::Int(vec.len() as i64)),
+        [data::Value::Obj(map)] => Ok(data::Value::Int(map.len() as i64)),
+        [arg0] => Ok(data::Value::Int(arg0.to_string().chars().count() as i64)),
+        _ => Err(EvalError::InvalidFunctionArguments {
+            name: "length",
+            expected: 1,
+            found: args.len(),
+        }),
+    }
 }
 
 fn parse_date(date_str: &str) -> Result<data::Value, EvalError> {
@@ -209,7 +218,7 @@ lazy_static! {
             // string
             FunctionContainer::new("concat", FunctionWrapper::Generic(concat)),
             FunctionContainer::new("contains", FunctionWrapper::String2(contains)),
-            FunctionContainer::new("length", FunctionWrapper::String1(length)),
+            FunctionContainer::new("length", FunctionWrapper::Generic(length)),
             FunctionContainer::new("parseDate", FunctionWrapper::String1(parse_date)),
             FunctionContainer::new("substring", FunctionWrapper::Generic(substring)),
         ]
@@ -225,7 +234,40 @@ mod tests {
 
     #[test]
     fn unicode_length() {
-        assert_eq!(data::Value::Int(1), length("\u{2603}").unwrap());
+        assert_eq!(
+            data::Value::Int(1),
+            length(&vec!(data::Value::Str("\u{2603}".to_string()))).unwrap()
+        );
+    }
+
+    #[test]
+    fn array_length() {
+        assert_eq!(
+            Ok(data::Value::Int(3)),
+            length(&vec!(data::Value::Array(vec!(
+                data::Value::Int(0),
+                data::Value::Int(1),
+                data::Value::Int(2)
+            ))))
+        );
+    }
+
+    #[test]
+    fn int_length() {
+        assert_eq!(
+            Ok(data::Value::Int(3)),
+            length(&vec!(data::Value::Int(123)))
+        );
+    }
+
+    #[test]
+    fn object_length() {
+        let mut map = im::HashMap::new();
+        map.insert("abc".to_string(), data::Value::from_bool(true));
+        assert_eq!(
+            Ok(data::Value::Int(1)),
+            length(&vec!(data::Value::Obj(map)))
+        );
     }
 
     #[test]
