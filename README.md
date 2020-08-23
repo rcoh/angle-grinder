@@ -335,11 +335,21 @@ Count number of source_hosts:
 ```
 
 ##### Sort
-`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending.
+`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
 
 *Examples*:
 ```agrind
 * | json | count by endpoint_url, status_code | sort by endpoint_url desc
+```
+
+In addition to columns, `sort` can also sort an arbitrary expressions.
+```agrind
+* | json | sort by num_requests / num_responses
+```
+
+
+```agrind
+* | json | sort by length(endpoint_url)
 ```
 
 ##### Total

@@ -79,12 +79,20 @@ pub mod pipeline {
     }
 
     impl Pipeline {
-        fn convert_sort(op: SortOperator) -> Box<dyn operator::AggregateOperator> {
+        fn convert_sort(
+            op: SortOperator,
+            pipeline: &QueryContainer,
+        ) -> Result<Box<dyn operator::AggregateOperator>, TypeError> {
             let mode = match op.direction {
                 SortMode::Ascending => operator::SortDirection::Ascending,
                 SortMode::Descending => operator::SortDirection::Descending,
             };
-            Box::new(operator::Sorter::new(op.sort_cols, mode))
+            let sort_cols: Vec<operator::Expr> = op
+                .sort_cols
+                .into_iter()
+                .map(|expr| expr.type_check(pipeline))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Box::new(operator::Sorter::new(sort_cols, mode)))
         }
 
         fn convert_multi_agg(
@@ -114,8 +122,7 @@ pub mod pipeline {
                 sort_cols: multi_agg
                     .aggregate_functions
                     .iter()
-                    .map(|&(ref k, _)| k)
-                    .cloned()
+                    .map(|&(ref k, _)| Expr::column(k))
                     .collect(),
                 direction: SortMode::Descending,
             }
@@ -178,13 +185,15 @@ pub mod pipeline {
                                 _ => false,
                             };
                             if needs_sort {
-                                post_agg.push(Pipeline::convert_sort(sorter));
+                                post_agg.push(Pipeline::convert_sort(sorter, pipeline)?);
                             }
                         } else {
                             has_errors = true;
                         }
                     }
-                    Operator::Sort(sort_op) => post_agg.push(Pipeline::convert_sort(sort_op)),
+                    Operator::Sort(sort_op) => {
+                        post_agg.push(Pipeline::convert_sort(sort_op, pipeline)?)
+                    }
                 }
             }
             if has_errors {

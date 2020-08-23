@@ -1,7 +1,7 @@
 extern crate ordered_float;
 
 use self::ordered_float::OrderedFloat;
-use crate::operator::{EvalError, Expr, ValueRef};
+use crate::operator::{EvalError, Evaluatable, Expr, ValueRef};
 use crate::serde::ser::SerializeMap;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -479,19 +479,20 @@ impl Record {
         }
     }
 
-    pub fn ordering<'a, T: 'a + AsRef<str> + Send + Sync>(
+    pub fn ordering<T: Into<Expr> + Send + Sync>(
         columns: Vec<T>,
-    ) -> impl Fn(&VMap, &VMap) -> Ordering + 'a + Send + Sync {
+    ) -> impl Fn(&VMap, &VMap) -> Result<Ordering, EvalError> + Send + Sync {
+        let columns: Vec<Expr> = columns.into_iter().map(|col| col.into()).collect();
         move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
-                let l_val = rec_l.get(col.as_ref());
-                let r_val = rec_r.get(col.as_ref());
+                let l_val: Value = col.eval(rec_l)?;
+                let r_val: Value = col.eval(rec_r)?;
                 let cmp = l_val.cmp(&r_val);
                 if cmp != Ordering::Equal {
-                    return cmp;
+                    return Ok(cmp);
                 }
             }
-            Ordering::Equal
+            Ok(Ordering::Equal)
         }
     }
 
@@ -614,22 +615,22 @@ mod tests {
         r2.insert("k2".to_string(), Value::Str("xyz".to_string()));
         r2.insert("k3".to_string(), Value::from_float(0.1));
         let ord1 = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
-        assert_eq!(ord1(&r1, &r2), Ordering::Greater);
-        assert_eq!(ord1(&r1, &r1), Ordering::Equal);
-        assert_eq!(ord1(&r2, &r1), Ordering::Less);
+        assert_eq!(ord1(&r1, &r2), Ok(Ordering::Greater));
+        assert_eq!(ord1(&r1, &r1), Ok(Ordering::Equal));
+        assert_eq!(ord1(&r2, &r1), Ok(Ordering::Less));
 
         let ord2 = Record::ordering(vec!["k2".to_string(), "k1".to_string()]);
-        assert_eq!(ord2(&r1, &r2), Ordering::Less);
-        assert_eq!(ord2(&r1, &r1), Ordering::Equal);
-        assert_eq!(ord2(&r2, &r1), Ordering::Greater);
+        assert_eq!(ord2(&r1, &r2), Ok(Ordering::Less));
+        assert_eq!(ord2(&r1, &r1), Ok(Ordering::Equal));
+        assert_eq!(ord2(&r2, &r1), Ok(Ordering::Greater));
 
         let ord3 = Record::ordering(vec!["k3".to_string()]);
-        assert_eq!(ord3(&r1, &r2), Ordering::Equal);
+        assert_eq!(ord3(&r1, &r2), Ok(Ordering::Equal));
 
         let ord4 = Record::ordering(vec!["k3".to_string(), "k1".to_string()]);
-        assert_eq!(ord4(&r1, &r2), Ordering::Greater);
-        assert_eq!(ord4(&r1, &r1), Ordering::Equal);
-        assert_eq!(ord4(&r2, &r1), Ordering::Less);
+        assert_eq!(ord4(&r1, &r2), Ok(Ordering::Greater));
+        assert_eq!(ord4(&r1, &r1), Ok(Ordering::Equal));
+        assert_eq!(ord4(&r2, &r1), Ok(Ordering::Less));
     }
 
     #[test]
@@ -643,7 +644,7 @@ mod tests {
         r2.insert("k2".to_string(), Value::Int(7));
 
         let ord = Record::ordering(vec!["k1".to_string(), "k2".to_string()]);
-        assert_eq!(ord(&r1, &r2), Ordering::Less);
+        assert_eq!(ord(&r1, &r2), Ok(Ordering::Less));
     }
 
     #[test]

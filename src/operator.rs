@@ -235,6 +235,15 @@ pub enum Expr {
     Value(&'static data::Value),
 }
 
+impl Expr {
+    pub fn column(key: &str) -> Expr {
+        Expr::NestedColumn {
+            head: key.to_owned(),
+            rest: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UnaryExpr<T> {
     pub operator: T,
@@ -667,20 +676,18 @@ pub enum SortDirection {
 
 pub struct Sorter {
     columns: Vec<String>,
-    initial_columns: Vec<String>,
     state: Vec<Data>,
-    ordering: Box<dyn Fn(&Data, &Data) -> Ordering + Send + Sync>,
+    ordering: Box<dyn Fn(&Data, &Data) -> Result<Ordering, EvalError> + Send + Sync>,
     direction: SortDirection,
 }
 
 impl Sorter {
-    pub fn new(columns: Vec<String>, direction: SortDirection) -> Self {
-        let ordering = Box::new(Record::ordering(columns.clone()));
+    pub fn new(exprs: Vec<Expr>, direction: SortDirection) -> Self {
+        let ordering = Box::new(Record::ordering(exprs));
         Sorter {
             state: Vec::new(),
             columns: Vec::new(),
             direction,
-            initial_columns: columns,
             ordering,
         }
     }
@@ -700,20 +707,22 @@ impl AggregateOperator for Sorter {
     fn emit(&self) -> data::Aggregate {
         let mut sorted_data = self.state.to_vec();
         let order = &self.ordering;
-        // potential hotspot with large numbers of columns
-        let additional_columns: Vec<_> = self
-            .columns
-            .iter()
-            .filter(|c| !self.initial_columns.contains(c))
-            .collect();
         // To produce a deterministic sort, we should also sort by the non-key columns
+        let second_ordering = Record::ordering_ref(&self.columns);
 
-        let second_ordering = Record::ordering_ref(&additional_columns);
-
+        // TODO: output errors here
         if self.direction == SortDirection::Ascending {
-            sorted_data.sort_by(|l, r| (order)(l, r).then(second_ordering(l, r)));
+            sorted_data.sort_by(|l, r| {
+                ((order)(l, r))
+                    .unwrap_or(Ordering::Less)
+                    .then(second_ordering(l, r))
+            });
         } else {
-            sorted_data.sort_by(|l, r| (order)(r, l).then(second_ordering(l, r)));
+            sorted_data.sort_by(|l, r| {
+                ((order)(r, l))
+                    .unwrap_or(Ordering::Less)
+                    .then(second_ordering(l, r))
+            });
         }
         Aggregate {
             data: sorted_data,
@@ -731,7 +740,8 @@ impl AggregateOperator for Sorter {
             Row::Record(rec) => {
                 let new_cols = self.new_columns(&rec.data);
                 self.state.push(rec.data);
-                self.state.sort_by(|l, r| (order)(l, r));
+                self.state
+                    .sort_by(|l, r| ((order)(l, r)).unwrap_or(Ordering::Less));
                 self.columns.extend(new_cols);
             }
         }
@@ -1225,15 +1235,6 @@ mod tests {
     use crate::lang;
     use maplit::hashmap;
 
-    impl Expr {
-        fn column(key: &str) -> Expr {
-            Expr::NestedColumn {
-                head: key.to_owned(),
-                rest: vec![],
-            }
-        }
-    }
-
     impl<S: Into<String>> From<S> for Expr {
         fn from(inp: S) -> Self {
             Expr::column(&inp.into())
@@ -1552,7 +1553,7 @@ mod tests {
         let agg = grouper.emit();
         let mut sorted_data = agg.data.clone();
         let ordering = Record::ordering(vec!["_count".to_string()]);
-        sorted_data.sort_by(|l, r| ordering(l, r));
+        sorted_data.sort_by(|l, r| ordering(l, r).unwrap_or(Ordering::Less));
         sorted_data.reverse();
         assert_eq!(
             sorted_data,
@@ -1607,7 +1608,7 @@ mod tests {
         let agg = count_agg.emit();
         let mut sorted_data = agg.data.clone();
         let ordering = Record::ordering(vec!["_count".to_string()]);
-        sorted_data.sort_by(|l, r| ordering(l, r));
+        sorted_data.sort_by(|l, r| ordering(l, r).unwrap_or(Ordering::Less));
         sorted_data.reverse();
         assert_eq!(
             sorted_data,
@@ -1651,11 +1652,11 @@ mod tests {
                 ),
             ],
         );
-        let mut sorter = Sorter::new(vec!["count".to_string()], SortDirection::Ascending);
+        let mut sorter = Sorter::new(vec![Expr::column("count")], SortDirection::Ascending);
         sorter.process(data::Row::Aggregate(agg.clone()));
         assert_eq!(sorter.emit(), agg.clone());
 
-        let mut sorter = Sorter::new(vec!["count".to_string()], SortDirection::Descending);
+        let mut sorter = Sorter::new(vec![Expr::column("count")], SortDirection::Descending);
         sorter.process(data::Row::Aggregate(agg.clone()));
 
         let mut revagg = agg.clone();
