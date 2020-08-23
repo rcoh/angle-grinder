@@ -305,7 +305,9 @@ pub enum SortMode {
 
 #[derive(Debug, PartialEq)]
 pub enum AggregateFunction {
-    Count,
+    Count {
+        condition: Option<Expr>,
+    },
     Sum {
         column: Expr,
     },
@@ -520,7 +522,7 @@ named!(req_ident<Span, String>, return_error!(SyntaxErrors::MissingName.into(), 
 named!(field_expr<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
    not!(alt_complete!(
        tag!("count") |
-       tag!("count_frequent") |
+       tag!("count_distinct") |
        tag!("total")
    )) >>
    value: expr >>
@@ -689,9 +691,11 @@ named!(arg_list<Span, Positioned<Vec<Expr>>>, add_return_error!(
         return_error!(SyntaxErrors::MissingParen.into(), tag!(")"))))
 ));
 
-named!(count<Span, Positioned<AggregateFunction>>, with_pos!(map!(tag!("count"),
-    |_s|AggregateFunction::Count{}))
-);
+named!(count<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
+    tag!("count") >>
+    condition: opt!(delimited!(tag!("("), expr ,tag!(")"))) >>
+    (AggregateFunction::Count { condition })
+))));
 
 named!(min<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
     tag!("min") >>
@@ -1330,9 +1334,9 @@ mod tests {
                 aggregate_functions: vec![(
                     "renamed".to_string(),
                     Positioned {
-                        value: AggregateFunction::Count,
+                        value: AggregateFunction::Count { condition: None },
                         start_pos: QueryPosition(0),
-                        end_pos: QueryPosition(5)
+                        end_pos: QueryPosition(6)
                     }
                 )],
             })
@@ -1510,9 +1514,9 @@ mod tests {
                         aggregate_functions: vec![(
                             "_count".to_string(),
                             Positioned {
-                                value: AggregateFunction::Count {},
+                                value: AggregateFunction::Count { condition: None },
                                 start_pos: QueryPosition(43),
-                                end_pos: QueryPosition(48),
+                                end_pos: QueryPosition(49),
                             }
                         ),],
                     }),

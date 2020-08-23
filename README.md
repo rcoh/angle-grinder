@@ -282,7 +282,8 @@ In the simplest form, key fields refer to columns, but they can also be generali
 There are several aggregate operators available.
 
 ##### Count
-`count [as count_column]`: Counts the numer of input rows. Output column Defaults to `_count`
+`count[(condition)] [as count_column]`: Counts the number of input rows. Output column defaults to `_count`. Optionally, you
+can provide a condition -- this will count all rows for which the condition evaluates to true.
 
 *Examples*:
 
@@ -293,6 +294,11 @@ Count number of rows by `source_host`:
 Count number of source_hosts:
 ```agrind
 * | count by source_host | count
+```
+
+Count the number of info vs. error logs:
+```agrind
+* | json | count(level == "info") as info_logs, count(level == "error") as error_logs
 ```
 
 ##### Sum

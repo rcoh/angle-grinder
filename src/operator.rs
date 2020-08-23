@@ -439,19 +439,29 @@ impl Evaluatable<String> for Expr {
 }
 
 #[derive(Default)]
-pub struct Count {
+pub struct Count<T> {
     count: i64,
+    condition: Option<T>,
 }
 
-impl Count {
-    pub fn new() -> Count {
-        Count { count: 0 }
+impl<T> Count<T> {
+    pub fn new(condition: Option<T>) -> Count<T> {
+        Count {
+            count: 0,
+            condition,
+        }
     }
 }
 
-impl AggregateFunction for Count {
-    fn process(&mut self, _rec: &Data) -> Result<(), EvalError> {
-        self.count += 1;
+impl<T: 'static + Send + Sync + Evaluatable<bool>> AggregateFunction for Count<T> {
+    fn process(&mut self, data: &Data) -> Result<(), EvalError> {
+        let count_record = match &self.condition {
+            Some(cond) => cond.eval(data)?,
+            None => true,
+        };
+        if count_record {
+            self.count += 1;
+        }
         Ok(())
     }
 
@@ -460,7 +470,7 @@ impl AggregateFunction for Count {
     }
 
     fn empty_box(&self) -> Box<dyn AggregateFunction> {
-        Box::new(Count::new())
+        Box::new(Count::new(self.condition.clone()))
     }
 }
 
@@ -1241,6 +1251,15 @@ mod tests {
         }
     }
 
+    impl Count<Expr> {
+        pub fn unconditional() -> Count<Expr> {
+            Count {
+                count: 0,
+                condition: None,
+            }
+        }
+    }
+
     #[test]
     fn test_nested_eval() {
         let rec = Record::new(
@@ -1493,7 +1512,7 @@ mod tests {
     #[test]
     fn count_no_groups() {
         let ops: Vec<(String, Box<dyn AggregateFunction>)> =
-            vec![("_count".to_string(), Box::new(Count::new()))];
+            vec![("_count".to_string(), Box::new(Count::unconditional()))];
         let mut count_agg = MultiGrouper::new(&[], vec![], ops);
         (0..10)
             .map(|n| Record::new(&n.to_string()))
@@ -1516,7 +1535,7 @@ mod tests {
     #[test]
     fn multi_grouper() {
         let ops: Vec<(String, Box<dyn AggregateFunction>)> = vec![
-            ("_count".to_string(), Box::new(Count::new())),
+            ("_count".to_string(), Box::new(Count::unconditional())),
             ("_sum".to_string(), Box::new(Sum::empty("v1"))),
             ("_min".to_string(), Box::new(Min::empty("v1"))),
             ("_max".to_string(), Box::new(Max::empty("v1"))),
@@ -1589,7 +1608,7 @@ mod tests {
     #[test]
     fn count_groups() {
         let ops: Vec<(String, Box<dyn AggregateFunction>)> =
-            vec![("_count".to_string(), Box::new(Count::new()))];
+            vec![("_count".to_string(), Box::new(Count::unconditional()))];
         let mut count_agg = MultiGrouper::new(&[Expr::column("k1")], vec!["k1".to_string()], ops);
         (0..10).for_each(|n| {
             let rec = Record::new(&n.to_string());

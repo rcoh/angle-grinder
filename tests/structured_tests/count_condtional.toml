@@ -1,0 +1,14 @@
+query = """* | json | count(level == "error") as num_errors, count(level == "info") as num_info"""
+input = """
+{"level": "info", "message": "A thing happened", "num_things": 1102}
+{"level": "error", "message": "Oh now an error!"}
+{"level": "error", "message": "So many more errors!"}
+{"level": "info", "message": "A thing happened", "num_things": 12}
+{"level": "info", "message": "A different event", "event_duration": 1002.5}
+{"level": null}
+"""
+output = """
+num_errors        num_info
+----------------------------------
+2                 3
+"""
