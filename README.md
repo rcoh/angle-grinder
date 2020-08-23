@@ -23,6 +23,12 @@ Binaries are available for Linux and OS X. Many more platforms (including Window
 brew install angle-grinder
 ```
 
+### With MacPorts (OS X)
+```bash
+sudo port selfupdate
+sudo port install angle-grinder
+```
+
 ### With Curl (Single binary)
 Linux:
 ```bash
