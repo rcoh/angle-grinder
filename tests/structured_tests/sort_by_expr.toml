@@ -1,0 +1,21 @@
+query = "* | json | sort  by length(message), num_things.k"
+input = """
+{"level": "info", "message": "A thing", "num_things": { "k": 1102} }
+{"level": "info", "message": "A thing", "num_things": { "k": 1103} }
+{"level": "info", "message": "A thing ha", "num_things": 2}
+{"level": "info", "message": "A different", "num_things": 2.000001}
+{"level": "info", "message": "A different e", "num_things": 0.2000001}
+{"level": "info", "message": "A different ev", "num_things": "whoops not a number"}
+{"level": null}
+"""
+output = """
+level        message              num_things
+-------------------------------------------------------------
+info         A thing              {k:1102}
+info         A thing              {k:1103}
+info         A thing ha           2
+info         A different          2.00
+info         A different e        0.20
+info         A different ev       whoops not a number
+None         None                 None
+"""

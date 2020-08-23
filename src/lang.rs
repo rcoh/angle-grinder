@@ -170,6 +170,15 @@ pub enum Expr {
     Value(data::Value),
 }
 
+impl Expr {
+    pub fn column(key: &str) -> Expr {
+        Expr::Column {
+            head: DataAccessAtom::Key(key.to_owned()),
+            rest: vec![],
+        }
+    }
+}
+
 /// The KeywordType determines how a keyword string should be interpreted.
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum KeywordType {
@@ -328,7 +337,7 @@ pub struct MultiAggregateOperator {
 
 #[derive(Debug, PartialEq)]
 pub struct SortOperator {
-    pub sort_cols: Vec<String>,
+    pub sort_cols: Vec<Expr>,
     pub direction: SortMode,
 }
 
@@ -826,10 +835,10 @@ named!(sort_mode<Span, SortMode>, alt_complete!(
 
 named!(sort<Span, Operator>, ws!(do_parse!(
     tag!("sort") >>
-    key_cols_opt: opt!(preceded!(opt!(tag!("by")), var_list)) >>
+    key_cols_opt: opt!(preceded!(opt!(tag!("by")), sourced_expr_list)) >>
     dir: opt!(sort_mode) >>
     (Operator::Sort(SortOperator{
-        sort_cols: key_cols_opt.unwrap_or_default(),
+        sort_cols: key_cols_opt.unwrap_or_default().into_iter().map(|(_source,expr)|expr).collect(),
         direction: dir.unwrap_or(SortMode::Ascending) ,
      })))
 ));
@@ -943,14 +952,6 @@ named!(pub operator_list<Span, Vec<Operator>>, ws!(separated_nonempty_list!(tag!
 #[cfg(test)]
 mod tests {
     use super::*;
-    impl Expr {
-        fn column(key: &str) -> Expr {
-            Expr::Column {
-                head: DataAccessAtom::Key(key.to_owned()),
-                rest: vec![],
-            }
-        }
-    }
 
     macro_rules! expect {
         ($f:expr, $inp:expr, $res:expr) => {{
@@ -1516,7 +1517,7 @@ mod tests {
                         ),],
                     }),
                     Operator::Sort(SortOperator {
-                        sort_cols: vec!["foo".to_string()],
+                        sort_cols: vec![Expr::column("foo")],
                         direction: SortMode::Descending,
                     }),
                 ],
@@ -1541,7 +1542,7 @@ mod tests {
                         }
                     }),
                     Operator::Sort(SortOperator {
-                        sort_cols: vec!["foo".to_string()],
+                        sort_cols: vec![Expr::column("foo")],
                         direction: SortMode::Descending,
                     }),
                 ],
