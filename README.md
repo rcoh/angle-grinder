@@ -282,7 +282,7 @@ In the simplest form, key fields refer to columns, but they can also be generali
 There are several aggregate operators available.
 
 ##### Count
-`count[(condition)] [as count_column]`: Counts the number of input rows. Output column Defaults to `_count`. Optionally, you
+`count[(condition)] [as count_column]`: Counts the number of input rows. Output column defaults to `_count`. Optionally, you
 can provide a condition -- this will count all rows for which the condition evaluates to true.
 
 *Examples*:

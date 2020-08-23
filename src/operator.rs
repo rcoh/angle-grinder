@@ -445,7 +445,7 @@ pub struct Count<T> {
 }
 
 impl<T> Count<T> {
-    pub fn new_with_condition(condition: Option<T>) -> Count<T> {
+    pub fn new(condition: Option<T>) -> Count<T> {
         Count {
             count: 0,
             condition,
@@ -470,7 +470,7 @@ impl<T: 'static + Send + Sync + Evaluatable<bool>> AggregateFunction for Count<T
     }
 
     fn empty_box(&self) -> Box<dyn AggregateFunction> {
-        Box::new(Count::new_with_condition(self.condition.clone()))
+        Box::new(Count::new(self.condition.clone()))
     }
 }
 
