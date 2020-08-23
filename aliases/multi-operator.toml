@@ -1,4 +1,4 @@
 keyword = "testmultioperator"
 template = """
-json | count(abc)
+json | count
 """

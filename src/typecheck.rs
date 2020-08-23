@@ -298,7 +298,10 @@ impl TypeCheck<Box<dyn operator::AggregateFunction>> for lang::Positioned<lang::
         error_builder: &T,
     ) -> Result<Box<dyn operator::AggregateFunction>, TypeError> {
         match self.value {
-            lang::AggregateFunction::Count => Ok(Box::new(operator::Count::new())),
+            lang::AggregateFunction::Count { condition } => {
+                let expr = condition.map(|c| c.type_check(error_builder)).transpose()?;
+                Ok(Box::new(operator::Count::new_with_condition(expr)))
+            }
             lang::AggregateFunction::Min { column } => Ok(Box::new(operator::Min::empty(
                 column.type_check(error_builder)?,
             ))),
