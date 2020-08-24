@@ -17,7 +17,7 @@ checksum = "ee2a4ec343196209d6594e19543ae87a39f96d5534d7174822a3ad825dd6ed7e"
 
 [[package]]
 name = "ag"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "annotate-snippets",
  "assert_cli",

@@ -1,6 +1,6 @@
 [package]
 name = "ag"
-version = "0.14.1"
+version = "0.15.0"
 authors = ["Russell Cohen <russell.r.cohen@gmail.com>"]
 description = "CLI App to slice and dice logfiles"
 license = "MIT"
