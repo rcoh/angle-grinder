@@ -3,8 +3,9 @@ use annotate_snippets::snippet::Snippet;
 use atty::Stream;
 use human_panic::setup_panic;
 use quicli::prelude::*;
+
+#[cfg(feature = "self_update")]
 use self_update;
-use self_update::cargo_crate_version;
 use std::env;
 use std::fs::File;
 use std::io;
@@ -32,6 +33,7 @@ struct Cli {
     #[structopt(group = "main")]
     query: Option<String>,
 
+    #[cfg(feature = "self_update")]
     /// Update agrind to the latest published version Github (https://github.com/rcoh/angle-grinder)
     #[structopt(long = "self-update", group = "main")]
     update: bool,
@@ -93,6 +95,7 @@ impl ErrorReporter for TermErrorReporter {
 fn main() -> CliResult {
     setup_panic!();
     let args = Cli::from_args();
+    #[cfg(feature = "self_update")]
     if args.update {
         return update();
     }
@@ -147,17 +150,19 @@ fn parse_output(output_param: &str) -> Result<OutputMode, InvalidArgs> {
     }
 }
 
+#[cfg(feature = "self_update")]
 fn update() -> CliResult {
+    let crate_version = self_update::cargo_crate_version!();
     let status = self_update::backends::github::Update::configure()
         .repo_owner("rcoh")
         .repo_name("angle-grinder")
         .bin_name("agrind")
         .show_download_progress(true)
-        .current_version(cargo_crate_version!())
+        .current_version(crate_version)
         .build()?
         .update()?;
 
-    if cargo_crate_version!() == status.version() {
+    if crate_version == status.version() {
         println!(
             "Currently running the latest version publicly available ({}). No changes",
             status.version()
