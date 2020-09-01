@@ -5,7 +5,7 @@ extern crate pulldown_cmark;
 extern crate test_generator;
 extern crate toml;
 
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use test_generator::test_resources;
 
 mod code_blocks;

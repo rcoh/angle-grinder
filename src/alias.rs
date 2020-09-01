@@ -7,6 +7,7 @@
 use lazy_static::lazy_static;
 
 use include_dir::Dir;
+use serde::Deserialize;
 
 const ALIASES_DIR: Dir = include_dir!("aliases");
 
