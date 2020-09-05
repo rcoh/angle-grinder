@@ -16,35 +16,35 @@ Angle grinder can process well above 1M rows per second (simple pipelines as hig
     * Aggregators: [count](#count) [sum](#sum) [min](#min) [max](#max) [percentile](#percentile) [sort](#sort) [total](#total) [count distinct](#count-distinct)
 * [Output Control](#rendering)
 ## Installation
-Binaries are available for Linux and OS X. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`. Starting with `v0.9.0`, `agrind` can self-update via the `--self-update` flag.
+Binaries are available for Linux and OSX. Many more platforms (including Windows) are available if you compile from source. In all of the commands below, the resulting binary will be called `agrind`. Starting with `v0.9.0`, `agrind` can self-update via the `--self-update` flag. Thanks to the many volunteers who maintain angle-grinder on different package managers & environments!
 
-### With Brew (OS X)
+### OSX
+**Brew**
 ```bash
 brew install angle-grinder
 ```
 
-### With MacPorts (OS X)
+**Macports**
 ```bash
 sudo port selfupdate
 sudo port install angle-grinder
 ```
 
-### With Curl (Single binary)
-Linux:
+### [FreeBSD](https://www.freshports.org/textproc/angle-grinder/)
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.12.0/angle_grinder-v0.12.0-x86_64-unknown-linux-musl.tar.gz \
-  | tar Ozxf - \
-  | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
+pkg install angle-grinder
 ```
 
-OS X:
+### Linux (any MUSL compatible variant)
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.12.0/angle_grinder-v0.12.0-x86_64-apple-darwin.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.15.0/angle_grinder-v0.15.0-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
+  
+agrind --self-update  
 ```
 
-### From Source
+### Cargo (most platforms)
 
 If you have Cargo installed, you can compile & install from source: (Works with Stable Rust >=1.26)
 ```bash
