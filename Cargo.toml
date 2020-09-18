@@ -17,7 +17,8 @@ extended-description = """Angle-grinder allows you to parse, aggregate, sum, ave
                         Angle grinder is a bare bones functional programming language coupled with a pretty terminal UI."""
 
 [features]
-default = ["self_update"]
+default = []
+self-update = ["self_update"]
 
 [dependencies]
 jemallocator = "0.3.2"
