@@ -73,7 +73,7 @@ mod integration {
             .fails()
             .and()
             .stderr()
-            .contains("[OPTIONS] <query|--self-update>")
+            .contains("[OPTIONS]")
             .unwrap();
     }
 
