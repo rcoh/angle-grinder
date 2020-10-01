@@ -1,6 +1,5 @@
 #![cfg(test)]
 extern crate ag;
-extern crate assert_cli;
 extern crate pulldown_cmark;
 extern crate test_generator;
 extern crate toml;
@@ -24,8 +23,8 @@ struct TestDefinition {
 mod integration {
     use super::*;
     use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
-    use assert_cli;
-    use std::borrow::Borrow;
+    use assert_cmd::Command;
+    use predicates::prelude::predicate;
     use std::fs;
     use std::io::stdout;
     use toml;
@@ -33,6 +32,10 @@ mod integration {
     pub struct EmptyErrorReporter;
 
     impl ErrorReporter for EmptyErrorReporter {}
+
+    fn run() -> Command {
+        Command::cargo_bin("agrind").unwrap()
+    }
 
     #[test_resources("tests/structured_tests/*.toml")]
     fn integration(path: &str) {
@@ -47,230 +50,149 @@ mod integration {
     fn structured_test(path: &str) {
         let contents = fs::read_to_string(path).unwrap();
         let conf: TestDefinition = toml::from_str(&contents).unwrap();
-        let out: &str = conf.output.borrow();
         let err = conf.error.unwrap_or("".to_string());
-        let env = assert_cli::Environment::inherit().insert("RUST_BACKTRACE", "0");
-        let mut asserter = assert_cli::Assert::main_binary()
-            .with_env(env)
-            .stdin(conf.input)
-            .with_args(&[&conf.query])
-            .stdout()
-            .is(out)
-            .stderr()
-            .is(err.as_str());
+        let asserter = run()
+            .env("RUST_BACKTRACE", "0")
+            .write_stdin(conf.input)
+            .args(&[&conf.query])
+            .assert();
+
+        let asserter = asserter.stdout(conf.output).stderr(err);
 
         if conf.succeeds.unwrap_or(true) {
-            asserter = asserter.succeeds();
+            asserter.code(0);
         } else {
-            asserter = asserter.fails();
+            asserter.failure();
         }
-        asserter.unwrap();
     }
 
     #[test]
     fn no_args() {
-        assert_cli::Assert::main_binary()
-            .fails()
-            .and()
-            .stderr()
-            .contains("[OPTIONS] <query|--self-update>")
-            .unwrap();
+        run()
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("[OPTIONS]"));
     }
 
     #[test]
     fn parse_failure() {
-        assert_cli::Assert::main_binary()
-            .with_args(&["* | pasres"])
-            .fails()
-            .and()
-            .stderr()
-            .contains("Failed to parse query")
-            .unwrap();
+        run()
+            .args(&["* | pasres"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Failed to parse query"));
     }
 
     #[test]
     fn test_where_typecheck() {
-        assert_cli::Assert::main_binary()
-            .with_args(&["* | where 5"])
-            .fails()
-            .and()
-            .stderr()
-            .contains("Expected boolean expression, found")
-            .unwrap();
+        run()
+            .args(&["* | where 5"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "Expected boolean expression, found",
+            ));
     }
 
     #[test]
     fn test_limit_typecheck() {
-        assert_cli::Assert::main_binary()
-            .with_args(&["* | limit 0"])
-            .fails()
-            .and()
-            .stderr()
-            .contains("Error: Limit must be a non-zero integer, found 0")
-            .unwrap();
-        assert_cli::Assert::main_binary()
-            .with_args(&["* | limit 0.1"])
-            .fails()
-            .and()
-            .stderr()
-            .contains("Error: Limit must be a non-zero integer, found 0.1")
-            .unwrap();
+        run()
+            .args(&["* | limit 0"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "Error: Limit must be a non-zero integer, found 0",
+            ));
+        run()
+            .args(&["* | limit 0.1"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "Error: Limit must be a non-zero integer, found 0.1",
+            ));
     }
 
     #[test]
     fn basic_count() {
-        assert_cli::Assert::main_binary()
-            .stdin("1\n2\n3\n")
-            .with_args(&["* | count"])
-            .stdout()
-            .is("_count\n--------------\n3")
-            .unwrap();
+        run()
+            .write_stdin("1\n2\n3\n")
+            .args(&["* | count"])
+            .assert()
+            .stdout("_count\n--------------\n3\n");
     }
 
     #[test]
     fn file_input() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[
+        run()
+            .args(&[
                 "* | json | count by level",
                 "--file",
                 "test_files/test_json.log",
             ])
-            .stdout()
-            .is("level        _count
+            .assert()
+            .stdout(
+                "level        _count
 ---------------------------
 info         3
 error        2
-None         1")
-            .unwrap();
-    }
-
-    #[test]
-    fn aggregate_of_aggregate() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[
-                "* | json | count by level | count",
-                "--file",
-                "test_files/test_json.log",
-            ])
-            .stdout()
-            .is("_count\n--------------\n3")
-            .unwrap();
-    }
-
-    #[test]
-    fn json_from() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[
-                r#"* | parse "* *" as lev, js | json from js | count by level"#,
-                "--file",
-                "test_files/test_partial_json.log",
-            ])
-            .stdout()
-            .is("level        _count
----------------------------
-info         3
-error        2
-None         1")
-            .unwrap();
-    }
-
-    #[test]
-    fn fields() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[
-                r#"* "error" | parse "* *" as lev, js
-                     | json from js
-                     | fields except js, lev"#,
-                "--file",
-                "test_files/test_partial_json.log",
-            ])
-            .stdout()
-            .is("[level=error]        [message=Oh now an error!]
-[level=error]        [message=So many more errors!]")
-            .unwrap();
-    }
-
-    #[test]
-    fn parse_plain_text() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[
-                r#"db-1 response | parse "in *ms" as duration"#,
-                "--file",
-                "test_files/test_parse.log",
-            ])
-            .stdout()
-            .is("[duration=500]
-[duration=100]
-[duration=102]
-[duration=102]
-[duration=100]
-[duration=100]
-[duration=100]
-[duration=122]")
-            .unwrap();
+None         1\n",
+            );
     }
 
     #[test]
     fn filter_wildcard() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[r#""*STAR*""#, "--file", "test_files/filter_test.log"])
-            .stdout()
-            .is("[INFO] Match a *STAR*!")
-            .unwrap();
-        assert_cli::Assert::main_binary()
-            .with_args(&[r#"*STAR*"#, "--file", "test_files/filter_test.log"])
-            .stdout()
-            .is("[INFO] Match a *STAR*!
-[INFO] Not a STAR!")
-            .unwrap();
+        run()
+            .args(&[r#""*STAR*""#, "--file", "test_files/filter_test.log"])
+            .assert()
+            .stdout("[INFO] Match a *STAR*!\n");
+        run()
+            .args(&[r#"*STAR*"#, "--file", "test_files/filter_test.log"])
+            .assert()
+            .stdout("[INFO] Match a *STAR*!\n[INFO] Not a STAR!\n");
     }
 
     #[test]
     fn test_limit() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[r#"* | limit 2"#, "--file", "test_files/filter_test.log"])
-            .stdout()
-            .is("[INFO] I am a log!
-[WARN] Uh oh, danger ahead! ")
-            .unwrap();
+        run()
+            .args(&[r#"* | limit 2"#, "--file", "test_files/filter_test.log"])
+            .assert()
+            .stdout("[INFO] I am a log!\n[WARN] Uh oh, danger ahead!\n");
     }
 
     #[test]
     fn custom_format_backcompat() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[
+        run()
+            .args(&[
                 "* | logfmt",
                 "--format",
                 "{level} | {msg:<30} module={module}",
                 "--file",
                 "test_files/test_logfmt.log",
             ])
-            .stdout()
-            .is(
+            .assert()
+            .stdout(
                 "info | Stopping all fetchers          module=kafka.consumer.ConsumerFetcherManager
 info | Starting all fetchers          module=kafka.consumer.ConsumerFetcherManager
-warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManager",
-            )
-            .unwrap();
+warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManager\n",
+            );
     }
 
     #[test]
     fn custom_format() {
-        assert_cli::Assert::main_binary()
-            .with_args(&[
+        run()
+            .args(&[
                 "-o",
                 "format={level} | {msg:<30} module={module}",
                 "--file",
                 "test_files/test_logfmt.log",
                 "* | logfmt",
             ])
-            .stdout()
-            .is(
+            .assert()
+            .stdout(
                 "info | Stopping all fetchers          module=kafka.consumer.ConsumerFetcherManager
 info | Starting all fetchers          module=kafka.consumer.ConsumerFetcherManager
-warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManager",
-            )
-            .unwrap();
+warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManager\n",
+            );
     }
 
     fn ensure_parses(query: &str) {

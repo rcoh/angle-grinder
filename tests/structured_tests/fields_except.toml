@@ -1,0 +1,15 @@
+query = """* "error" | parse "* *" as lev, js
+| json from js
+| fields except js, lev"""
+input = """
+INFO {"level": "info", "message": "A thing happened", "num_things": 1102}
+INFO {"level": "error", "message": "Oh now an error!"}
+ERROR {"level": "error", "message": "So many more errors!"}
+INFO {"level": "info", "message": "A thing happened", "num_things": 12}
+WARN {"level": "info", "message": "A different event", "event_duration": 1002.5}
+WARN {"level": null}
+"""
+output = """
+[level=error]        [message=Oh now an error!]
+[level=error]        [message=So many more errors!]
+"""
