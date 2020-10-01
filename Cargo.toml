@@ -52,7 +52,8 @@ chrono = "0.4"
 dtparse = "1.1"
 
 [dev-dependencies]
-assert_cli = "0.6.3"
+assert_cmd = "1.0.1"
+predicates = "1.0.5"
 pulldown-cmark = "0.2.0"
 criterion = "0.3"
 maplit = "1.0.1"
