@@ -1,10 +1,8 @@
-extern crate ordered_float;
-
-use self::ordered_float::OrderedFloat;
 use crate::operator::{EvalError, Evaluatable, Expr, ValueRef};
-use crate::serde::ser::SerializeMap;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use ordered_float::OrderedFloat;
+use serde::ser::SerializeMap;
 use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;

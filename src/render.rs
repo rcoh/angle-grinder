@@ -3,9 +3,6 @@ use failure::Error;
 use std;
 use std::io::Write;
 
-extern crate strfmt;
-extern crate terminal_size;
-
 use crate::data::DisplayConfig;
 use crate::printer::Printer;
 use std::time::{Duration, Instant};

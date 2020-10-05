@@ -3,14 +3,11 @@ use failure::Error;
 use std;
 use std::collections::HashMap;
 
-extern crate strfmt;
-extern crate terminal_size;
-
-use self::strfmt::{strfmt_map, FmtError, Formatter};
 use crate::data::{Aggregate, DisplayConfig, Record};
 use crate::pipeline::OutputMode;
 use crate::render::{RenderConfig, TerminalConfig, TerminalSize};
 use itertools::Itertools;
+use strfmt::{strfmt_map, FmtError, Formatter};
 
 pub trait Printer<O> {
     fn print(&mut self, row: &O, display_config: &DisplayConfig) -> String;

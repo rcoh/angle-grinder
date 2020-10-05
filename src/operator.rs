@@ -1,16 +1,10 @@
-extern crate itertools;
-extern crate quantiles;
-extern crate regex;
-//extern crate regex_syntax;
-extern crate logfmt;
-extern crate serde_json;
-
-use self::quantiles::ckms::CKMS;
-use self::serde_json::Value as JsonValue;
 use crate::data;
 use crate::data::{Aggregate, DisplayConfig, Record, Row};
 use crate::funcs;
+use failure::Fail;
 use failure::_core::fmt::Debug;
+use quantiles::ckms::CKMS;
+use serde_json::Value as JsonValue;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;

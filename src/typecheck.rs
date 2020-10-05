@@ -3,6 +3,7 @@ use crate::errors::ErrorBuilder;
 use crate::funcs;
 use crate::lang;
 use crate::operator;
+use failure::Fail;
 
 #[derive(Debug, Fail)]
 pub enum TypeError {

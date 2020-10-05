@@ -1,16 +1,5 @@
 #[macro_use]
-extern crate failure;
-#[macro_use]
 extern crate include_dir;
-extern crate atty;
-extern crate nom_locate;
-extern crate num_derive;
-extern crate num_traits;
-extern crate serde;
-extern crate toml;
-
-extern crate annotate_snippets;
-extern crate crossbeam_channel;
 
 mod alias;
 pub mod data;
@@ -34,6 +23,7 @@ pub mod pipeline {
     use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
+    use failure::{bail, Fail};
     use nom::types::CompleteStr;
     use std::collections::VecDeque;
     use std::io::{BufRead, Write};
