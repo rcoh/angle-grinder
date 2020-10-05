@@ -11,6 +11,9 @@ use strfmt::{strfmt_map, FmtError, Formatter};
 
 pub trait Printer<O> {
     fn print(&mut self, row: &O, display_config: &DisplayConfig) -> String;
+    fn final_print(&mut self, row: &O, display_config: &DisplayConfig) -> String {
+        self.print(row, display_config)
+    }
 }
 
 struct LogFmtPrinter {}
@@ -32,12 +35,16 @@ pub fn raw_printer(
 }
 
 pub fn agg_printer(
-    _mode: &OutputMode,
+    mode: &OutputMode,
     render_config: RenderConfig,
     terminal_config: TerminalConfig,
 ) -> Result<Box<dyn Printer<data::Aggregate> + Send>, Error> {
-    // TODO: add warnings? Implement other printer types.
-    Ok(Box::new(LegacyPrinter::new(render_config, terminal_config)))
+    match mode {
+        //OutputMode::Logfmt => Ok(Box::new(LogFmtPrinter {})),
+        OutputMode::Json => Ok(Box::new(JsonPrinter {})),
+        _ => Ok(Box::new(LegacyPrinter::new(render_config, terminal_config))),
+        //OutputMode::Format(format_str) => Ok(Box::new(FormatPrinter::new(format_str.to_owned())?)),
+    }
 }
 
 impl Printer<data::Record> for LogFmtPrinter {
@@ -110,6 +117,18 @@ struct JsonPrinter {}
 impl Printer<data::Record> for JsonPrinter {
     fn print(&mut self, row: &Record, _display_config: &DisplayConfig) -> String {
         serde_json::to_string(row).unwrap()
+    }
+}
+
+impl Printer<data::Aggregate> for JsonPrinter {
+    fn print(&mut self, _row: &Aggregate, _display_config: &DisplayConfig) -> String {
+        "JSON will be dumped once the pipeline is complete...\n".to_string()
+    }
+
+    fn final_print(&mut self, row: &Aggregate, _display_config: &DisplayConfig) -> String {
+        let mut o = serde_json::to_string(&row.data).unwrap();
+        o.push('\n');
+        o
     }
 }
 

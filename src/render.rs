@@ -91,13 +91,17 @@ impl Renderer {
                     if last_row {
                         let output = self
                             .agg_printer
-                            .print(aggregate, &self.config.display_config);
+                            .final_print(aggregate, &self.config.display_config);
                         write!(self.stdout, "{}", output)?;
                     }
                 } else if self.should_print() || last_row {
-                    let output = self
-                        .agg_printer
-                        .print(aggregate, &self.config.display_config);
+                    let output = if !last_row {
+                        self.agg_printer
+                            .print(aggregate, &self.config.display_config)
+                    } else {
+                        self.agg_printer
+                            .final_print(aggregate, &self.config.display_config)
+                    };
                     let num_lines = output.matches('\n').count();
                     write!(self.stdout, "{}{}", self.reset_sequence, output)?;
                     self.reset_sequence = "\x1b[2K\x1b[1A".repeat(num_lines);
