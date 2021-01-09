@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta]
+        channel: [stable]
         target:
           - i686-pc-windows-msvc
           - x86_64-pc-windows-msvc
@@ -79,7 +79,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        channel: [stable, beta]
+        channel: [stable]
         target:
           # macOS
           - x86_64-apple-darwin
@@ -119,5 +119,4 @@ jobs:
           - aarch64-unknown-linux-musl
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
-          - sparc64-unknown-linux-gnu
           - x86_64-unknown-netbsd
