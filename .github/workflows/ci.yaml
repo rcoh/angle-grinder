@@ -115,8 +115,9 @@ jobs:
       matrix:
         channel: [stable, beta]
         target:
-          - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-musl
+          # drop arm for now
+          #- aarch64-unknown-linux-gnu
+          #- aarch64-unknown-linux-musl
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
           - x86_64-unknown-netbsd
