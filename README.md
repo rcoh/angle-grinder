@@ -1,4 +1,4 @@
-# angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=master)](https://travis-ci.org/rcoh/angle-grinder) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/angle-grinder/Lobby)
+# angle-grinder [![Build Status](https://travis-ci.org/rcoh/angle-grinder.svg?branch=main)](https://travis-ci.org/rcoh/angle-grinder) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/angle-grinder/Lobby)
 Slice and dice log files on the command line.
 
 Angle-grinder allows you to parse, aggregate, sum, average, min/max, percentile, and sort your data. You can see it, live-updating, in your terminal. Angle grinder is designed for when, for whatever reason, you don't have your data in graphite/honeycomb/kibana/sumologic/splunk/etc. but still want to be able to do sophisticated analytics.
@@ -497,17 +497,17 @@ operator, an error could be raised to tell the user that they might have mistype
 
 Once you have an idea of where the problem might lie, you can start to dig into the code.
 The grammar is written using [nom](https://github.com/Geal/nom/) and is contained in the
-[`lang.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/lang.rs) module.
+[`lang.rs`](https://github.com/rcoh/angle-grinder/blob/main/src/lang.rs) module.
 The enums/structs that make up the parse tree are also in the `lang.rs` module.
 To make error reporting easier, values in the parse tree are wrapped with a `Positioned` object
 that records where the value came from in the query string.
 The `Positioned` objects are produced by the `with_pos!()` parser combinator.
 These objects can then be passed to the `SnippetBuilder` in the
-[`errors.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/errors.rs) module to highlight
+[`errors.rs`](https://github.com/rcoh/angle-grinder/blob/main/src/errors.rs) module to highlight
 portions of the query string in error messages.
 
 The semantic phase is contained in the
-[`typecheck.rs`](https://github.com/rcoh/angle-grinder/blob/master/src/typecheck.rs) module and
+[`typecheck.rs`](https://github.com/rcoh/angle-grinder/blob/main/src/typecheck.rs) module and
 is probably where most of the work will need to be done.
 The `semantic_analysis()` methods in that module are passed an `ErrorBuilder` that can be used to
 build and send error reports to the user.
