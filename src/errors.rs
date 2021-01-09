@@ -2,6 +2,7 @@ use crate::lang::{
     query, Positioned, Query, QueryPosition, Span, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS,
 };
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
+use failure::Fail;
 use nom::types::CompleteStr;
 use nom::ErrorKind;
 use num_derive::FromPrimitive;

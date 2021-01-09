@@ -1,4 +1,3 @@
-extern crate pulldown_cmark;
 use pulldown_cmark::{Event, Tag};
 pub struct CodeBlock {
     pub flag: String,

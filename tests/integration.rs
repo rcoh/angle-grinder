@@ -1,9 +1,4 @@
 #![cfg(test)]
-extern crate ag;
-extern crate pulldown_cmark;
-extern crate test_generator;
-extern crate toml;
-
 use serde::Deserialize;
 use test_generator::test_resources;
 

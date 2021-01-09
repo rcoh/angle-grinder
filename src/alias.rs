@@ -4,6 +4,7 @@
 //!     1b. The string inside the file is the replacement.
 //! 2. Create a new test config inside `tests/structured_tests/aliases`.
 //! 3. Add the test config to the `test_aliases()` test.
+
 use lazy_static::lazy_static;
 
 use include_dir::Dir;
