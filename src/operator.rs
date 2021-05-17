@@ -1096,7 +1096,7 @@ impl UnaryPreAggFunction for ParseJson {
                         .collect::<Vec<data::Value>>(),
                 ),
             }
-        };
+        }
         let json: JsonValue = {
             let inp = get_input(&rec, &self.input_column)?;
             serde_json::from_str(&inp).map_err(|_| EvalError::ExpectedJson {

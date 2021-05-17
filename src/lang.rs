@@ -970,10 +970,10 @@ mod tests {
                     assert_eq!(actual_result, $res);
                     assert_eq!(leftover, CompleteStr(""));
                 }
-                Err(e) => panic!(format!(
-                    "Parse failed, but was expected to succeed: \n{:?}",
-                    e
-                )),
+                Err(e) => panic!(
+                    "{}",
+                    format!("Parse failed, but was expected to succeed: \n{:?}", e)
+                ),
             }
         }};
     }
@@ -982,7 +982,7 @@ mod tests {
         ($f:expr, $inp:expr) => {{
             let parse_result = $f(Span::new(CompleteStr($inp)));
             match parse_result {
-                Ok(_res) => panic!(format!("Expected parse to fail, but it succeeded")),
+                Ok(_res) => panic!("{}", format!("Expected parse to fail, but it succeeded")),
                 // TODO: enable assertions of specific errors
                 Err(_e) => (),
             }

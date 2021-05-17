@@ -10,6 +10,20 @@ lazy_static! {
     };
 }
 
+/// Find the character before the character beginning ad idx
+fn prev_char(s: &str, idx: usize) -> Option<&str> {
+    if idx == 0 {
+        None
+    } else {
+        let chr_end = idx;
+        let mut char_start = chr_end - 1;
+        while !s.is_char_boundary(char_start) {
+            char_start -= 1;
+        }
+        Some(&s[char_start..chr_end])
+    }
+}
+
 /// Given a slice and start and end terminators, find a closing terminator while respecting escaped values.
 /// If a closing terminator is found, starting and ending terminators will be removed.
 /// If no closing terminator exists, the starting terminator will not be removed.
@@ -22,7 +36,7 @@ fn find_close_delimiter<'a>(
     while pos < s.len() {
         match s[pos..].find(term_end).map(|index| index + pos) {
             None => break,
-            Some(i) if i == 0 || &s[i - 1..i] != "\\" => {
+            Some(i) if i == 0 || prev_char(s, i) != Some("\\") => {
                 return (&s[term_start.len()..i], &s[i + term_end.len()..]);
             }
             Some(other) => pos = other + 1,
@@ -143,6 +157,19 @@ mod tests {
         assert_eq!(
             split_with_delimiters("ow\"mm\"ow'\"mow\"'", "ow", &DEFAULT_DELIMITERS),
             vec!["mm", "\"mow\""],
+        );
+    }
+
+    // see https://github.com/rcoh/angle-grinder/issues/138
+    #[test]
+    fn split_with_wide_characters() {
+        assert_eq!(
+            split_with_delimiters(
+                r#""Bourgogne-Franche-Comté" hello"#,
+                " ",
+                &DEFAULT_DELIMITERS
+            ),
+            vec!["Bourgogne-Franche-Comté", "hello"]
         );
     }
 }
