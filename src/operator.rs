@@ -1,6 +1,7 @@
 use crate::data;
 use crate::data::{Aggregate, DisplayConfig, Record, Row};
 use crate::funcs;
+use chrono::DurationRound;
 use failure::Fail;
 use failure::_core::fmt::Debug;
 use quantiles::ckms::CKMS;
@@ -39,6 +40,12 @@ pub enum EvalError {
 
     #[fail(display = "Expected number, found {}", found)]
     ExpectedNumber { found: String },
+
+    #[fail(
+        display = "Expected date, found '{}'.  Use parseDate() to convert a value to a date",
+        found
+    )]
+    ExpectedDate { found: String },
 
     #[fail(display = "Expected positive number, found {}", found)]
     ExpectedPositiveNumber { found: String },
@@ -985,6 +992,50 @@ impl UnaryPreAggFunction for FieldExpressionDef {
         let res = self.value.eval(&rec.data)?;
 
         Ok(Some(rec.put(&self.name, res)))
+    }
+}
+
+#[derive(Clone)]
+pub struct Timeslice {
+    input_column: Expr,
+    duration: chrono::Duration,
+    output_column: Option<String>,
+}
+
+impl Timeslice {
+    pub fn new(
+        input_column: Expr,
+        duration: chrono::Duration,
+        output_column: Option<String>,
+    ) -> Self {
+        Self {
+            input_column,
+            duration,
+            output_column,
+        }
+    }
+}
+
+impl UnaryPreAggFunction for Timeslice {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        let inp: data::Value = self.input_column.eval(&rec.data)?;
+
+        match inp {
+            data::Value::DateTime(dt) => {
+                let rounded = dt.duration_trunc(self.duration).unwrap();
+                let rec = rec.put(
+                    self.output_column
+                        .clone()
+                        .unwrap_or_else(|| "_timeslice".to_string()),
+                    data::Value::DateTime(rounded),
+                );
+
+                Ok(Some(rec))
+            }
+            _ => Err(EvalError::ExpectedDate {
+                found: format!("{}", inp.to_string()),
+            }),
+        }
     }
 }
 
