@@ -69,7 +69,15 @@ pub const VALID_AGGREGATES: &[&str] = &[
 ];
 
 pub const VALID_INLINE: &[&str] = &[
-    "parse", "limit", "json", "logfmt", "total", "fields", "where", "split",
+    "parse",
+    "limit",
+    "json",
+    "logfmt",
+    "total",
+    "fields",
+    "where",
+    "split",
+    "timeslice",
 ];
 
 lazy_static! {
@@ -281,6 +289,11 @@ pub enum InlineOperator {
         input_column: Option<Expr>,
         output_column: Option<Expr>,
     },
+    Timeslice {
+        input_column: Expr,
+        duration: Option<chrono::Duration>,
+        output_column: Option<String>,
+    },
     Total {
         input_column: Expr,
         output_column: String,
@@ -383,6 +396,18 @@ named!(value<Span, data::Value>, ws!(
         | map!(digit1, |s|data::Value::from_string(s.fragment.0))
     )
 ));
+
+named!(duration<Span, chrono::Duration>, ws!(do_parse!(
+    amount: map!(digit1, |s| s.fragment.0.parse::<i64>().unwrap()) >>
+    value: alt!(
+        map!(tag!("s"), |_| chrono::Duration::seconds(amount)) |
+        map!(tag!("m"), |_| chrono::Duration::minutes(amount)) |
+        map!(tag!("h"), |_| chrono::Duration::hours(amount)) |
+        map!(tag!("d"), |_| chrono::Duration::days(amount)) |
+        map!(tag!("w"), |_| chrono::Duration::weeks(amount))
+    ) >>
+    (value)
+)));
 
 named!(dot_property<Span, DataAccessAtom>, do_parse!(
     field: preceded!(tag!("."), ident) >>
@@ -557,6 +582,18 @@ named!(limit<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
     count: opt!(with_pos!(double)) >>
     (InlineOperator::Limit{
         count
+    })
+))));
+
+named!(timeslice<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
+    tag!("timeslice") >>
+    input_column: delimited!(tag!("("), expr, tag!(")")) >>
+    duration: opt!(duration) >>
+    output_column: opt!(ws!(preceded!(tag!("as"), ident))) >>
+    (InlineOperator::Timeslice {
+        input_column,
+        duration,
+        output_column
     })
 ))));
 
@@ -764,7 +801,7 @@ named!(alias<Span, Operator>, map!(
 
 named!(inline_operator<Span, Operator>, do_parse!(
     peek!(did_you_mean_operator) >>
-    res: map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split), Operator::Inline) >>
+    res: map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split | timeslice), Operator::Inline) >>
     (res)
 ));
 
@@ -1260,6 +1297,32 @@ mod tests {
                         })
                     ),
                     no_drop: false
+                },
+            })
+        );
+        expect!(
+            operator,
+            r#" timeslice(date) 5m "#,
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(20),
+                value: InlineOperator::Timeslice {
+                    input_column: Expr::column("date"),
+                    duration: chrono::Duration::minutes(5),
+                    output_column: None,
+                },
+            })
+        );
+        expect!(
+            operator,
+            r#" timeslice(date) 5m as theslice "#,
+            Operator::Inline(Positioned {
+                start_pos: QueryPosition(1),
+                end_pos: QueryPosition(32),
+                value: InlineOperator::Timeslice {
+                    input_column: Expr::column("date"),
+                    duration: chrono::Duration::minutes(5),
+                    output_column: Some("theslice".to_string()),
                 },
             })
         );

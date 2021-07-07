@@ -279,6 +279,15 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                     .map(|e| e.type_check(error_builder))
                     .transpose()?,
             ))),
+            lang::InlineOperator::Timeslice {
+                input_column,
+                duration,
+                output_column,
+            } => Ok(Box::new(operator::Timeslice::new(
+                input_column.type_check(error_builder)?,
+                duration.unwrap_or_else(|| chrono::Duration::hours(1)),
+                output_column,
+            ))),
             lang::InlineOperator::Total {
                 input_column,
                 output_column,
