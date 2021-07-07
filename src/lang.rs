@@ -1308,7 +1308,7 @@ mod tests {
                 end_pos: QueryPosition(20),
                 value: InlineOperator::Timeslice {
                     input_column: Expr::column("date"),
-                    duration: chrono::Duration::minutes(5),
+                    duration: Some(chrono::Duration::minutes(5)),
                     output_column: None,
                 },
             })
@@ -1321,7 +1321,7 @@ mod tests {
                 end_pos: QueryPosition(32),
                 value: InlineOperator::Timeslice {
                     input_column: Expr::column("date"),
-                    duration: chrono::Duration::minutes(5),
+                    duration: Some(chrono::Duration::minutes(5)),
                     output_column: Some("theslice".to_string()),
                 },
             })
