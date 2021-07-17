@@ -27,6 +27,9 @@ pub enum TypeError {
 
     #[fail(display = "Unknown function {}", name)]
     UnknownFunction { name: String },
+
+    #[fail(display = "Expected a duration for the timeslice (e.g. 1h)")]
+    ExpectedDuration,
 }
 
 pub trait TypeCheck<O> {
@@ -279,13 +282,16 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                     .map(|e| e.type_check(error_builder))
                     .transpose()?,
             ))),
+            lang::InlineOperator::Timeslice { duration: None, .. } => {
+                Err(TypeError::ExpectedDuration)
+            }
             lang::InlineOperator::Timeslice {
                 input_column,
-                duration,
+                duration: Some(duration),
                 output_column,
             } => Ok(Box::new(operator::Timeslice::new(
                 input_column.type_check(error_builder)?,
-                duration.unwrap_or_else(|| chrono::Duration::hours(1)),
+                duration,
                 output_column,
             ))),
             lang::InlineOperator::Total {

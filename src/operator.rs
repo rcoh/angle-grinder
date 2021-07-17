@@ -75,6 +75,9 @@ pub enum EvalError {
 
     #[fail(display = "The '{}' function failed with the error: {}", name, msg)]
     FunctionFailed { name: &'static str, msg: String },
+
+    #[fail(display = "Duration is not valid for timeslice: {}", error)]
+    InvalidDuration { error: String },
 }
 
 pub trait Evaluatable<T>: Send + Sync + Clone {
@@ -1022,7 +1025,11 @@ impl UnaryPreAggFunction for Timeslice {
 
         match inp {
             data::Value::DateTime(dt) => {
-                let rounded = dt.duration_trunc(self.duration).unwrap();
+                let rounded =
+                    dt.duration_trunc(self.duration)
+                        .map_err(|e| EvalError::InvalidDuration {
+                            error: format!("{:?}", e),
+                        })?;
                 let rec = rec.put(
                     self.output_column
                         .clone()
