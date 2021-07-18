@@ -1,0 +1,9 @@
+query = """* | json | timeslice(ts)"""
+input = """
+{"ts": "2013-09-06T20:00:48.124817Z", "lvl": "TRACE", "msg": "trace test"}
+"""
+output = """"""
+error = """
+Error: Expected a duration for the timeslice (e.g. 1h)
+"""
+succeeds = false

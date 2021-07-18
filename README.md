@@ -12,7 +12,7 @@ Angle grinder can process well above 1M rows per second (simple pipelines as hig
 * [Query Syntax Overview](#query-syntax)
 * [Operators](#operators)
     * Parsers: [JSON](#json) [logfmt](#logfmt) [split](#split) [generic](#parse)
-    * Misc: [Add/remove fields](#fields) [limit](#limit) [where](#where)
+    * Misc: [Add/remove fields](#fields) [limit](#limit) [timeslice](#timeslice) [where](#where)
     * Aggregators: [count](#count) [sum](#sum) [min](#min) [max](#max) [percentile](#percentile) [sort](#sort) [total](#total) [count distinct](#count-distinct)
 * [Output Control](#rendering)
 ## Installation
@@ -362,6 +362,27 @@ In addition to columns, `sort` can also sort an arbitrary expressions.
 
 ```agrind
 * | json | sort by length(endpoint_url)
+```
+
+##### Timeslice
+`timeslice(<timestamp>) <duration> [as <field>]`: Truncates a timestamp to the
+given duration to allow for partitioning messages into slices of time.  The
+`timestamp` parameter must be a date value, such as that returned by the
+`parseDate()` function.  The duration is an amount followed by one of the
+following units:
+
+* `s` - seconds
+* `m` - minutes
+* `h` - hours
+* `d` - days
+* `w` - weeks
+
+The resulting timestamp is placed in the `_timeslice` field by default or the
+field specified after the `as` keyword.
+
+*Examples*:
+```agrind
+* | json | timeslice(parseDate(ts)) 5m
 ```
 
 ##### Total
