@@ -66,6 +66,14 @@ A simple query that operates on JSON logs and counts the number of logs per leve
 agrind '* | json | count by log_level'
 ```
 
+### Escaping Field Names
+
+Field names containing spaces, periods, or quotes must be escaped using `["<FIELD>"]`:
+
+```bash
+agrind '* | json | count by ["date received"], ["grpc.method"]
+```
+
 ### Filters
 
 There are three basic filters:

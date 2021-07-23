@@ -1,0 +1,13 @@
+query = """
+* | json | count by ["grpc.method"], ["start time"], nested.["user.name"]
+"""
+input = """
+{"start time": "today", "grpc.method": "Foo", "nested": {"user.name": "user1"}}
+{"start time": "today", "grpc.method": "Bar", "nested": {"user.name": "user1"}}
+"""
+output = """
+["grpc.method"]        ["start time"]        nested.["user.name"]        _count
+---------------------------------------------------------------------------------------
+Bar                    today                 user1                       1
+Foo                    today                 user1                       1
+"""

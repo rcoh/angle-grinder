@@ -431,11 +431,17 @@ named!(column_ref<Span, Expr>, do_parse!(
     (Expr::Column { head: DataAccessAtom::Key(head), rest: rest })
 ));
 
-named!(ident<Span, String>, do_parse!(
+named!(ident<Span, String>, alt!(bare_ident | escaped_ident));
+
+named!(bare_ident<Span, String>, do_parse!(
     start: take_while1!(starts_ident) >>
     rest: take_while!(is_ident) >>
     (start.fragment.0.to_owned() + rest.fragment.0)
 ));
+
+named!(escaped_ident<Span, String>,
+    delimited!(tag!("["), map!(quoted_string, |s| s.to_owned()), tag!("]"))
+);
 
 named!(arguments<Span, Vec<Expr>>, add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
    tag!("("),
@@ -1164,6 +1170,18 @@ mod tests {
         expect!(ident, "x", "x".to_string());
         expect!(ident, "_x", "_x".to_string());
         expect_fail!(ident, "5x");
+    }
+
+    #[test]
+    fn parse_quoted_ident() {
+        expect!(ident, "[\"hello world\"]", "hello world".to_string());
+        expect!(ident, "[\"hello.world\"]", "hello.world".to_string());
+        expect!(
+            ident,
+            r#"["hello \"world\""]"#,
+            r#"hello \"world\""#.to_string()
+        );
+        expect_fail!(ident, "\"\"");
     }
 
     #[test]
