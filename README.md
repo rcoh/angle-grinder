@@ -37,7 +37,7 @@ pkg install angle-grinder
 
 ### Linux (any MUSL compatible variant)
 ```bash
-curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.16/agrind-x86_64-unknown-linux-musl.tar.gz \
+curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.17.0/agrind-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
   
