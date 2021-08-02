@@ -80,15 +80,14 @@ pub enum InvalidArgs {
 }
 
 /// An ErrorReporter that writes errors related to the query string to the terminal
-struct TermErrorReporter {
-    formatter: annotate_snippets::formatter::DisplayListFormatter,
-}
+struct TermErrorReporter {}
 
 impl ErrorReporter for TermErrorReporter {
-    fn handle_error(&self, snippet: Snippet) {
+    fn handle_error(&self, mut snippet: Snippet) {
+        snippet.opt.color = env::var("NO_COLOR").is_err() && atty::is(Stream::Stderr);
         let dl = annotate_snippets::display_list::DisplayList::from(snippet);
 
-        eprintln!("{}", self.formatter.format(&dl));
+        eprintln!("{}", dl);
     }
 }
 
@@ -101,11 +100,7 @@ fn main() -> CliResult {
     }
     let query = QueryContainer::new(
         args.query.ok_or(InvalidArgs::MissingQuery)?,
-        Box::new(TermErrorReporter {
-            formatter: annotate_snippets::formatter::DisplayListFormatter::new(
-                env::var("NO_COLOR").is_err() && atty::is(Stream::Stderr),
-            ),
-        }),
+        Box::new(TermErrorReporter {}),
     );
     args.verbosity.setup_env_logger("agrind")?;
     let output_mode = match (args.output, args.format) {

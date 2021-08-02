@@ -1,61 +1,34 @@
-use crate::alias::{self, AliasConfig};
-use crate::data;
-use crate::errors::SyntaxErrors;
-use lazy_static::lazy_static;
-use nom;
-use nom::types::CompleteStr;
-use nom::*;
-use nom::{digit1, double, is_alphabetic, is_alphanumeric, is_digit, multispace};
-use nom_locate::LocatedSpan;
 use std::convert::From;
+use std::fmt::Debug;
+use std::ops::Range;
 use std::str;
 
-/// Wraps the result of the child parser in a Positioned and sets the start_pos and end_pos
-/// accordingly.
-macro_rules! with_pos {
-  ($i:expr, $submac:ident!( $($args:tt)* )) => ({
-      // XXX The ws!() combinator does not mix well with custom combinators since it does some
-      // rewriting, but only for things it knows about.  So, we put the ws!() combinator inside
-      // calls to with_pos!() and have with_pos!() eat up any initial space with space0().
-      match space0($i) {
-          Err(e) => Err(e),
-          Ok((i1, _o)) => {
-              let start_pos: QueryPosition = i1.into();
-              match $submac!(i1, $($args)*) {
-                  Ok((i, o)) => Ok((i, Positioned {
-                      start_pos,
-                      value: o,
-                      end_pos: i.into(),
-                  })),
-                  Err(e) => Err(e),
-              }
-          }
-      }
-  });
-  ($i:expr, $f:expr) => (
-    with_pos!($i, call!($f));
-  );
-}
+use itertools::Itertools;
+use lazy_static::lazy_static;
+use nom::combinator::not;
+use nom::multi::fold_many0;
+use nom::sequence::{delimited, separated_pair};
+use nom::{
+    branch::alt,
+    bytes::complete::{escaped, take_while, take_while1},
+    character::complete::{anychar, digit1, multispace0, multispace1, none_of, satisfy},
+    character::{is_alphabetic, is_alphanumeric},
+    combinator::{eof, map, map_res, opt, peek, recognize},
+    error::ParseError,
+    multi::{many0, many_till, separated_list0, separated_list1},
+    number::complete::double,
+    sequence::{pair, tuple},
+    IResult, Parser, Slice,
+};
+use nom_locate::position;
+use nom_locate::LocatedSpan;
+use nom_supreme::error::ErrorTree;
+use nom_supreme::parser_ext::ParserExt;
+use nom_supreme::tag::complete::tag;
 
-/// Dynamic version of `alt` that takes a slice of strings
-fn alternative<'a, T>(input: T, alternatives: &[&'a str]) -> IResult<T, T>
-where
-    T: InputTake,
-    T: Compare<&'a str>,
-    T: InputLength,
-    T: AtEof,
-    T: Clone,
-{
-    let mut last_err = None;
-    for alternative in alternatives {
-        let inp = input.clone();
-        match tag!(inp, alternative) {
-            done @ Ok(..) => return done,
-            err @ Err(..) => last_err = Some(err), // continue
-        }
-    }
-    last_err.unwrap()
-}
+use crate::alias::{self, AliasConfig};
+use crate::data;
+use crate::errors::{ErrorBuilder, QueryContainer};
 
 pub const VALID_AGGREGATES: &[&str] = &[
     "count",
@@ -93,31 +66,78 @@ lazy_static! {
 
 pub const RESERVED_FILTER_WORDS: &[&str] = &["AND", "OR", "NOT"];
 
+#[derive(Debug)]
+struct Error(Range<usize>, String);
+
 /// Type used to track the current fragment being parsed and its location in the original input.
-pub type Span<'a> = LocatedSpan<CompleteStr<'a>>;
+pub type Span<'a> = LocatedSpan<&'a str, &'a QueryContainer<'a>>;
 
-/// Container for the position of some syntax in the input string.  This is similar to the Span,
-/// but it only contains the offset.
-#[derive(Debug, PartialEq, Clone)]
-pub struct QueryPosition(pub usize);
+pub type LResult<I, O, E = ErrorTree<I>> = Result<(I, O), nom::Err<E>>;
 
-impl<'a> From<Span<'a>> for QueryPosition {
-    fn from(located_span: Span<'a>) -> Self {
-        QueryPosition(located_span.offset)
-    }
-}
+pub type QueryRange = Range<usize>;
 
 /// Container for values from the query that records the location in the query string.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Positioned<T> {
-    pub start_pos: QueryPosition,
-    pub end_pos: QueryPosition,
+    pub range: QueryRange,
     pub value: T,
 }
 
 impl<T> Positioned<T> {
     pub fn into(&self) -> &T {
         &self.value
+    }
+}
+
+/// Methods for converting a Span to different ranges over the span
+trait ToRange {
+    /// Return the entire Span as a Range
+    fn to_range(&self) -> Range<usize>;
+
+    /// Return a range from the current offset in the Span to the "sync point".  For the
+    /// angle-grinder syntax, the sync points are the vertical bar, end-of-query, and closing
+    /// braces/parens/etc...
+    fn to_sync_point(&self) -> Range<usize>;
+
+    /// Return a range from the current offset in the Span to the next whitespace
+    fn to_whitespace(&self) -> Range<usize>;
+}
+
+impl<'a> ToRange for Span<'a> {
+    fn to_range(&self) -> Range<usize> {
+        let start = self.location_offset();
+        let end = start + self.fragment().len();
+        start..end
+    }
+
+    fn to_sync_point(&self) -> Range<usize> {
+        let s: &str = self.fragment();
+        let sync = s.chars().find_position(|ch| match ch {
+            '|' | ')' | ']' | '}' => true,
+            _ => false,
+        });
+
+        let end = sync.map(|pair| pair.0).unwrap_or(s.len());
+
+        Range {
+            start: self.location_offset(),
+            end: self.location_offset() + end,
+        }
+    }
+
+    fn to_whitespace(&self) -> Range<usize> {
+        let s: &str = self.fragment();
+        let sync = s.chars().find_position(|ch| match ch {
+            ' ' | '\t' | '\n' => true,
+            _ => false,
+        });
+
+        let end = sync.map(|pair| pair.0).unwrap_or(s.len());
+
+        Range {
+            start: self.location_offset(),
+            end: self.location_offset() + end,
+        }
     }
 }
 
@@ -176,6 +196,7 @@ pub enum Expr {
         args: Vec<Expr>,
     },
     Value(data::Value),
+    Error,
 }
 
 impl Expr {
@@ -185,6 +206,164 @@ impl Expr {
             rest: vec![],
         }
     }
+
+    pub fn column2(key: String) -> Expr {
+        Expr::Column {
+            head: DataAccessAtom::Key(key),
+            rest: vec![],
+        }
+    }
+
+    pub fn column3(optkey: Option<String>) -> Expr {
+        match optkey {
+            Some(key) => Expr::Column {
+                head: DataAccessAtom::Key(key),
+                rest: vec![],
+            },
+            None => Expr::Error,
+        }
+    }
+}
+
+/// Debug helper
+pub fn dbg_dmp<'a, F, O, E>(
+    mut f: F,
+    context: &'static str,
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, O, E>
+where
+    F: FnMut(Span<'a>) -> IResult<Span<'a>, O, E>,
+{
+    move |i: Span<'a>| match f(i) {
+        Err(e) => {
+            println!("{}: Error at:\n{}", context, i);
+            Err(e)
+        }
+        Ok((s, a)) => {
+            println!("{}: Ok at:\n{}\nnext:\n{}", context, i, s.fragment());
+            Ok((s, a))
+        }
+    }
+}
+
+/// Combinator that expects the given parser to succeed.  If the parser returns an error:
+/// - the given error message is logged
+/// - the input is consumed up to the sync point
+/// - None is returned
+fn expect<'a, F, E, T>(
+    mut parser: F,
+    error_msg: E,
+) -> impl FnMut(Span<'a>) -> IResult<Span, Option<T>>
+where
+    F: FnMut(Span<'a>) -> IResult<Span, T>,
+    E: ToString,
+{
+    move |input: Span<'a>| match parser(input) {
+        Ok((remaining, out)) => Ok((remaining, Some(out))),
+        Err(nom::Err::Error(nom::error::Error { input, .. }))
+        | Err(nom::Err::Failure(nom::error::Error { input, .. })) => {
+            let r = input.to_sync_point();
+            let end = r.end - input.location_offset();
+            input
+                .extra
+                .report_error_for(error_msg.to_string())
+                .with_code_range(r, "")
+                .send_report();
+            Ok((input.slice(end..), None))
+        }
+        Err(err) => Err(err),
+    }
+}
+
+/// Combinator that expects the given parser to succeed.  If the parser returns an error:
+/// - the given error function is called with the range
+/// - the input is consumed up to the sync point
+/// - None is returned
+fn expect_fn<'a, F, O, EF>(
+    mut parser: F,
+    mut error_fn: EF,
+) -> impl FnMut(Span<'a>) -> IResult<Span, Option<O>>
+where
+    F: Parser<Span<'a>, O, nom::error::Error<Span<'a>>>,
+    EF: FnMut(&'a QueryContainer<'a>, QueryRange),
+{
+    move |input: Span<'a>| match parser.parse(input) {
+        Ok((remaining, out)) => Ok((remaining, Some(out))),
+        Err(nom::Err::Error(nom::error::Error { input, .. }))
+        | Err(nom::Err::Failure(nom::error::Error { input, .. })) => {
+            let r = input.to_sync_point();
+            let end = r.end - input.location_offset();
+            error_fn(input.extra, r);
+            let next = input.slice(end..);
+            Ok((next, None))
+        }
+        Err(err) => Err(err),
+    }
+}
+
+/// A version of the `delimited()` combinator() that calls an error-handling function when the
+/// terminator parser fails.
+pub fn delimited2<'a, O1, O2, O3, F, G, H, EF>(
+    mut first: F,
+    mut second: G,
+    mut third: H,
+    mut error_fn: EF,
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, O2, nom::error::Error<Span<'a>>>
+where
+    F: Parser<Span<'a>, O1, nom::error::Error<Span<'a>>>,
+    G: Parser<Span<'a>, O2, nom::error::Error<Span<'a>>>,
+    H: Parser<Span<'a>, O3, nom::error::Error<Span<'a>>>,
+    EF: FnMut(&'a QueryContainer<'a>, QueryRange),
+{
+    move |input: Span<'a>| {
+        let full_r = input.to_sync_point();
+        let (input, _) = first.parse(input)?;
+        let (input, o2) = second.parse(input)?;
+
+        match third.parse(input) {
+            Ok((input, _)) => Ok((input, o2)),
+            Err(_) => {
+                let start = input.location_offset();
+                let mut remaining = input.clone();
+
+                loop {
+                    if remaining.is_empty() {
+                        error_fn(
+                            remaining.extra,
+                            Range {
+                                start: full_r.start,
+                                end: remaining.location_offset(),
+                            },
+                        );
+                        return Ok((remaining, o2));
+                    }
+
+                    remaining = remaining.slice(1..);
+                    let end = remaining.location_offset();
+                    let res = third.parse(remaining);
+
+                    if let Ok((remaining, _)) = res {
+                        remaining
+                            .extra
+                            .report_error_for("unhandled input")
+                            .with_code_range(Range { start, end }, "")
+                            .send_report();
+                        return Ok((remaining, o2));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Combinator that expects some optional whitespace followed by the vertical bar or EOF.  If that
+/// input is not found, the error message is logged.
+fn expect_bar<'a, M>(
+    error_msg: M,
+) -> impl FnMut(Span<'a>) -> IResult<Span, Option<(Span<'a>, Span<'a>)>>
+where
+    M: ToString,
+{
+    expect(peek(multispace0.and(tag("|").or(eof))), error_msg)
 }
 
 /// The KeywordType determines how a keyword string should be interpreted.
@@ -248,6 +427,24 @@ impl Search {
             _ => false,
         }
     }
+
+    pub fn from_quoted_input(s: String) -> Option<Self> {
+        if s.is_empty() {
+            None
+        } else {
+            Some(Search::Keyword(Keyword::new_exact(s)))
+        }
+    }
+
+    pub fn from_keyword_input(s: &str) -> Option<Self> {
+        let trimmed = s.trim_matches('*');
+
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(Search::Keyword(Keyword::new_wildcard(trimmed.to_string())))
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -256,6 +453,7 @@ pub enum Operator {
     Inline(Positioned<InlineOperator>),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
+    Error,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -343,6 +541,20 @@ pub enum AggregateFunction {
     },
 }
 
+impl AggregateFunction {
+    fn default_name(&self) -> String {
+        match self {
+            AggregateFunction::Count { .. } => "_count".to_string(),
+            AggregateFunction::Sum { .. } => "_sum".to_string(),
+            AggregateFunction::Min { .. } => "_min".to_string(),
+            AggregateFunction::Average { .. } => "_average".to_string(),
+            AggregateFunction::Max { .. } => "_max".to_string(),
+            AggregateFunction::Percentile { .. } => "p".to_string(),
+            AggregateFunction::CountDistinct { .. } => "_countDistinct".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct MultiAggregateOperator {
     pub key_cols: Vec<Expr>,
@@ -360,6 +572,208 @@ pub struct SortOperator {
 pub struct Query {
     pub search: Search,
     pub operators: Vec<Operator>,
+}
+
+/// Parses the +/- binary operators
+fn addsub_op(input: Span) -> IResult<Span, ArithmeticOp> {
+    alt((
+        tag("+").map(|_| ArithmeticOp::Add),
+        tag("-").map(|_| ArithmeticOp::Subtract),
+    ))(input)
+}
+
+/// Parses an argument list for a function
+fn arg_list(input: Span) -> IResult<Span, Vec<Expr>> {
+    delimited2(
+        tag("(").and(multispace0),
+        separated_list0(tag(","), delimited(multispace0, opt_expr, multispace0)),
+        tag(")"),
+        |qc, r| {
+            qc.report_error_for("unterminated function call")
+                .with_code_range(r, "unterminated function call")
+                .with_resolution("Insert a right parenthesis to terminate this call")
+                .send_report()
+        },
+    )
+    .parse(input)
+}
+
+/// Parses a, potentially optional, argument list for a function that has a single parameter
+fn arg1(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Expr> {
+    move |input: Span| {
+        delimited2(
+            tag("(").and(multispace0),
+            expect_fn(opt_expr, |qc, r| {
+                qc.report_error_for("this operator takes 1 argument, but 0 were supplied")
+                    .with_code_range(r, "- supplied 0 arguments")
+                    .with_resolution(format!("the argument should supply {}", description))
+                    .send_report();
+            })
+            .map(|e| e.unwrap_or(Expr::Error)),
+            tag(")"),
+            |qc, r| {
+                qc.report_error_for("unterminated function call")
+                    .with_code_range(r, "unterminated function call")
+                    .with_resolution("Insert a right parenthesis to terminate this call")
+                    .send_report()
+            },
+        )
+        .parse(input)
+    }
+}
+
+/// A version of the arg1 parser that logs an error if no argument list was provided
+fn req_arg1(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Expr> {
+    move |input: Span| {
+        expect_fn(arg1(description), |qc, r| {
+            qc.report_error_for(format!(
+                "expecting a parenthesized argument that supplies {}",
+                description
+            ))
+            .with_code_range(r, "")
+            .send_report()
+        })
+        .map(|e| e.unwrap_or(Expr::Error))
+        .parse(input)
+    }
+}
+
+/// Combinator that checks for an optional keyword that should be followed by an expression
+fn kw_expr(
+    keyword: &'static str,
+    description: &'static str,
+) -> impl Clone + Fn(Span) -> IResult<Span, Option<Expr>> {
+    move |input: Span| {
+        let res = opt(tag(keyword).preceded_by(multispace1)).parse(input)?;
+
+        match res {
+            (input, None) => Ok((input, None)),
+            (input, Some(keyword_span)) => expect_fn(opt_expr.preceded_by(multispace1), |qc, r| {
+                qc.report_error_for(format!(
+                    "expecting an expression that supplies {}",
+                    description
+                ))
+                .with_code_range(
+                    keyword_span.to_range(),
+                    "should be followed by an expression",
+                )
+                .send_report();
+            })
+            .map(|e| e.map(|e| Some(e)).unwrap_or(Some(Expr::Error)))
+            .parse(input),
+        }
+    }
+}
+
+fn fcall(input: Span) -> IResult<Span, Expr> {
+    ident
+        .and(arg_list)
+        .map(|(name, args)| Expr::FunctionCall { name, args })
+        .parse(input)
+}
+
+fn filter_atom(input: Span) -> IResult<Span, Option<Search>> {
+    let keyword = take_while1(is_keyword).map(|i: Span| Search::from_keyword_input(i.fragment()));
+
+    alt((quoted_string.map(|s| Search::from_quoted_input(s)), keyword))(input)
+}
+
+fn filter_not(input: Span) -> IResult<Span, Option<Search>> {
+    tag("NOT")
+        .precedes(multispace1)
+        .precedes(low_filter)
+        .map(|optk| optk.map(|k| Search::Not(Box::new(k))))
+        .parse(input)
+}
+
+fn sourced_expr(input: Span) -> IResult<Span, (String, Expr)> {
+    recognize(expr)
+        .map(|ex| (ex.fragment().trim().to_string(), expr(ex).ok().unwrap().1))
+        .parse(input)
+}
+
+fn sourced_expr_list(input: Span) -> IResult<Span, Vec<(String, Expr)>> {
+    separated_list1(tag(",").delimited_by(multispace0), sourced_expr)(input)
+}
+
+fn sort_mode(input: Span) -> IResult<Span, SortMode> {
+    alt((
+        alt((tag("asc"), tag("ascending"))).map(|_| SortMode::Ascending),
+        alt((tag("desc"), tag("dsc"), tag("descending"))).map(|_| SortMode::Descending),
+    ))(input)
+}
+
+fn sort(input: Span) -> IResult<Span, Operator> {
+    tuple((
+        tag("sort").precedes(
+            opt(tag("by")
+                .delimited_by(multispace1)
+                .precedes(sourced_expr_list))
+            .map(|opt_cols| opt_cols.unwrap_or_else(|| vec![])),
+        ),
+        opt(sort_mode.preceded_by(multispace1))
+            .map(|opt_mode| opt_mode.unwrap_or(SortMode::Ascending)),
+    ))
+    .map(|(mut sort_cols, direction)| {
+        Operator::Sort(SortOperator {
+            sort_cols: sort_cols.drain(..).map(|(_name, ex)| ex).collect(),
+            direction,
+        })
+    })
+    .parse(input)
+}
+
+fn filter_explicit_and(input: Span) -> IResult<Span, Option<Search>> {
+    separated_pair(low_filter, tag("AND").delimited_by(multispace1), low_filter)
+        .map(|p| match p {
+            (Some(l), Some(r)) => Some(Search::And(vec![l, r])),
+            (Some(l), None) => Some(l),
+            (None, Some(r)) => Some(r),
+            (None, None) => None,
+        })
+        .parse(input)
+}
+
+fn filter_explicit_or(input: Span) -> IResult<Span, Option<Search>> {
+    separated_pair(mid_filter, tag("OR").delimited_by(multispace1), mid_filter)
+        .map(|p| match p {
+            (Some(l), Some(r)) => Some(Search::Or(vec![l, r])),
+            (Some(l), None) => Some(l),
+            (None, Some(r)) => Some(r),
+            (None, None) => None,
+        })
+        .parse(input)
+}
+
+fn low_filter(input: Span) -> IResult<Span, Option<Search>> {
+    alt((
+        filter_not,
+        filter_atom,
+        delimited2(tag("("), high_filter, tag(")"), |qc, r| {
+            qc.report_error_for("unterminated parenthesized filter")
+                .with_code_range(r, "unterminated parenthesized filter")
+                .with_resolution("Insert a right parenthesis to terminate this filter")
+                .send_report()
+        }),
+    ))(input)
+}
+
+fn mid_filter(input: Span) -> IResult<Span, Option<Search>> {
+    alt((filter_explicit_and, low_filter))(input)
+}
+
+fn high_filter(input: Span) -> IResult<Span, Option<Search>> {
+    alt((filter_explicit_or, mid_filter))(input)
+}
+
+fn end_of_query(input: Span) -> IResult<Span, Span> {
+    peek(multispace0.precedes(alt((peek(tag("|")), eof))))(input)
+}
+
+fn parse_search(input: Span) -> IResult<Span, Search> {
+    many_till(high_filter.delimited_by(multispace0), end_of_query)
+        .map(|(s, _)| Search::And(s.into_iter().flatten().collect()))
+        .parse(input)
 }
 
 fn is_ident(c: char) -> bool {
@@ -383,1255 +797,1680 @@ fn is_keyword(c: char) -> bool {
     }
 }
 
-fn not_escape_sq(c: char) -> bool {
-    c != '\\' && c != '\''
+fn duration(input: Span) -> IResult<Span, chrono::Duration> {
+    let (input, amount) = i64_parse(input)?;
+
+    let retval = alt((
+        tag("s").map(|_| chrono::Duration::seconds(amount)),
+        tag("m").map(|_| chrono::Duration::minutes(amount)),
+        tag("h").map(|_| chrono::Duration::hours(amount)),
+        tag("d").map(|_| chrono::Duration::days(amount)),
+        tag("w").map(|_| chrono::Duration::weeks(amount)),
+    ))
+    .parse(input);
+
+    retval
 }
 
-fn not_escape_dq(c: char) -> bool {
-    c != '\\' && c != '\"'
-}
-named!(value<Span, data::Value>, ws!(
-    alt!(
-        map!(quoted_string, |s|data::Value::Str(s.to_string()))
-        | map!(digit1, |s|data::Value::from_string(s.fragment.0))
-    )
-));
-
-named!(duration<Span, chrono::Duration>, ws!(do_parse!(
-    amount: map!(digit1, |s| s.fragment.0.parse::<i64>().unwrap()) >>
-    value: alt!(
-        map!(tag!("s"), |_| chrono::Duration::seconds(amount)) |
-        map!(tag!("m"), |_| chrono::Duration::minutes(amount)) |
-        map!(tag!("h"), |_| chrono::Duration::hours(amount)) |
-        map!(tag!("d"), |_| chrono::Duration::days(amount)) |
-        map!(tag!("w"), |_| chrono::Duration::weeks(amount))
-    ) >>
-    (value)
-)));
-
-named!(dot_property<Span, DataAccessAtom>, do_parse!(
-    field: preceded!(tag!("."), ident) >>
-    (DataAccessAtom::Key(field))
-));
-
-named!(i64_parser<Span, i64>,
-    map_res!(
-        recognize!(tuple!(opt!(char!('-')), digit)),
-        |s: Span|s.fragment.0.parse::<i64>())
-);
-
-named!(index_access<Span, DataAccessAtom>, do_parse!(
-    index: delimited!(tag!("["), i64_parser, tag!("]"))  >>
-    (DataAccessAtom::Index(index))
-));
-
-named!(column_ref<Span, Expr>, do_parse!(
-    head: ident >>
-    rest: many0!(alt!(dot_property | index_access)) >>
-    (Expr::Column { head: DataAccessAtom::Key(head), rest: rest })
-));
-
-named!(ident<Span, String>, alt!(bare_ident | escaped_ident));
-
-named!(bare_ident<Span, String>, do_parse!(
-    start: take_while1!(starts_ident) >>
-    rest: take_while!(is_ident) >>
-    (start.fragment.0.to_owned() + rest.fragment.0)
-));
-
-named!(escaped_ident<Span, String>,
-    delimited!(tag!("["), map!(quoted_string, |s| s.to_owned()), tag!("]"))
-);
-
-named!(arguments<Span, Vec<Expr>>, add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
-   tag!("("),
-   separated_list!(tag!(","), expr),
-   return_error!(SyntaxErrors::MissingParen.into(), tag!(")"))
-)));
-
-named!(e_ident<Span, Expr>,
-    ws!(alt_complete!(
-      map!(pair!(ident, arguments), |(name, args)| Expr::FunctionCall { name, args })
-    | column_ref
-    | map!(value, Expr::Value)
-    | ws!(add_return_error!(SyntaxErrors::StartOfError.into(), delimited!(
-          tag!("("),
-          expr,
-          return_error!(SyntaxErrors::MissingParen.into(), tag!(")")))))
-)));
-
-named!(unary<Span, Expr>, ws!(do_parse!(
-   opt_op: opt!(unary_op) >>
-   atomic: e_ident >>
-   (if let Some(op) = opt_op {
-       Expr::Unary {
-          op: op,
-          operand: Box::new(atomic)
-       }
-    } else {
-       atomic
-    })
-)));
-
-named!(raw_keyword<Span, Span>,
-   take_while1!(is_keyword)
-);
-
-named!(keyword<Span, String>, map!(
-    verify!(raw_keyword, |k: Span|!RESERVED_FILTER_WORDS.contains(&k.fragment.0)),
-    |span|span.fragment.0.to_owned()
-
-));
-
-named!(comp_op<Span, ComparisonOp>, ws!(alt_complete!(
-    map!(tag!("=="), |_|ComparisonOp::Eq)
-    | map!(tag!("<="), |_|ComparisonOp::Lte)
-    | map!(tag!(">="), |_|ComparisonOp::Gte)
-    | map!(tag!("!="), |_|ComparisonOp::Neq)
-    | map!(tag!(">"), |_|ComparisonOp::Gt)
-    | map!(tag!("<"), |_|ComparisonOp::Lt)
-)));
-
-named!(unary_op<Span, UnaryOp>, ws!(alt_complete!(
-    map!(tag!("!"), |_|UnaryOp::Not)
-)));
-
-named!(term<Span, Expr>, do_parse!(
-   init: unary >>
-   res: fold_many0!(
-      add_return_error!(SyntaxErrors::StartOfError.into(), pair!(ws!(alt!(
-         map!(tag!("*"), |_|ArithmeticOp::Multiply)
-         | map!(tag!("/"), |_|ArithmeticOp::Divide)
-      )), return_error!(SyntaxErrors::MissingOperand.into(), unary))),
-      init,
-      |left, (op, right)| {
-          Expr::Binary {
-             left: Box::new(left),
-             op: BinaryOp::Arithmetic(op),
-             right: Box::new(right)
-          }
-      }
-   ) >>
-   (res)
-));
-
-named!(arith_expr<Span, Expr>, ws!(do_parse!(
-   init: term >>
-   res: fold_many0!(
-      add_return_error!(SyntaxErrors::StartOfError.into(), pair!(ws!(alt!(
-         map!(tag!("+"), |_|ArithmeticOp::Add)
-         | map!(tag!("-"), |_|ArithmeticOp::Subtract)
-      )), return_error!(SyntaxErrors::MissingOperand.into(), term))),
-      init,
-      |left, (op, right)| {
-         Expr::Binary {
-             left: Box::new(left),
-             op: BinaryOp::Arithmetic(op),
-             right: Box::new(right)
-         }
-      }
-   ) >>
-   (res)
-)));
-
-named!(expr<Span, Expr>, ws!(do_parse!(
-   init: arith_expr >>
-   res: opt!(pair!(comp_op, arith_expr)) >>
-   (if let Some((op, right)) = res {
-       Expr::Binary {
-          left: Box::new(init),
-          op: BinaryOp::Comparison(op),
-          right: Box::new(right)
-       }
-    } else {
-       init
-    })
-)));
-
-named!(req_ident<Span, String>, return_error!(SyntaxErrors::MissingName.into(), ident));
-
-named!(field_expr<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-   not!(alt_complete!(
-       tag!("count") |
-       tag!("count_distinct") |
-       tag!("total")
-   )) >>
-   value: expr >>
-   tag!("as") >>
-   name: req_ident >>
-   (InlineOperator::FieldExpression {
-       value,
-       name,
-    })
-))));
-
-named!(json<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("json") >>
-    from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
-    (InlineOperator::Json { input_column: from_column_opt })
-))));
-
-named!(logfmt<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("logfmt") >>
-    from_column_opt: opt!(ws!(preceded!(tag!("from"), expr))) >>
-    (InlineOperator::Logfmt { input_column: from_column_opt })
-))));
-
-named!(whre<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("where") >>
-    ex: opt!(with_pos!(expr)) >>
-    (InlineOperator::Where { expr: ex })
-))));
-
-named!(limit<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("limit") >>
-    count: opt!(with_pos!(double)) >>
-    (InlineOperator::Limit{
-        count
-    })
-))));
-
-named!(timeslice<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("timeslice") >>
-    input_column: delimited!(tag!("("), expr, tag!(")")) >>
-    duration: opt!(duration) >>
-    output_column: opt!(ws!(preceded!(tag!("as"), ident))) >>
-    (InlineOperator::Timeslice {
-        input_column,
-        duration,
-        output_column
-    })
-))));
-
-named!(split<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("split") >>
-    from_column_opt: opt!(delimited!(
-        tag!("("),
-        expr,
-        tag!(")")
-    )) >>
-    separator_opt: opt!(ws!(preceded!(tag!("on"), quoted_string))) >>
-    // TODO: make variant of expr that only accepts Expr::Column instead of all types
-    rename_opt: opt!(ws!(preceded!(tag!("as"), expr))) >>
-    (InlineOperator::Split {
-        separator: separator_opt.map(|s| s.to_string()).unwrap_or_else(|| ",".to_string()),
-        input_column: from_column_opt.clone(),
-        // If from column specified, but output column not specified
-        // output should be the from column.
-        output_column: rename_opt.or(from_column_opt),
-    })
-))));
-
-named!(total<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("total") >>
-    input_column: delimited!(tag!("("), expr, tag!(")")) >>
-    rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
-    (InlineOperator::Total{
-        input_column,
-        output_column:
-            rename_opt.unwrap_or_else(||"_total".to_string()),
-})))));
-
-named!(double_quoted_string <Span, &str>, add_return_error!(
-    SyntaxErrors::StartOfError.into(), delimited!(
-        tag!("\""),
-        map!(escaped!(take_while1!(not_escape_dq), '\\', anychar), |ref s|s.fragment.0),
-        return_error!(SyntaxErrors::UnterminatedDoubleQuotedString.into(), tag!("\""))
-)));
-
-named!(single_quoted_string <Span, &str>, add_return_error!(
-    SyntaxErrors::StartOfError.into(), delimited!(
-        tag!("'"),
-        map!(escaped!(take_while1!(not_escape_sq), '\\', anychar), |ref s|s.fragment.0),
-        return_error!(SyntaxErrors::UnterminatedSingleQuotedString.into(), tag!("'"))
-)));
-
-named!(quoted_string<Span, &str>, alt_complete!(double_quoted_string | single_quoted_string));
-
-named!(var_list<Span, Vec<String> >, ws!(separated_nonempty_list!(
-    tag!(","), ws!(ident)
-)));
-
-named!(sourced_expr_list<Span, Vec<(String, Expr)> >, ws!(separated_nonempty_list!(
-    tag!(","), ws!(sourced_expr)
-)));
-
-named!(sourced_expr<Span, (String, Expr)>, ws!(
-    do_parse!(
-        ex: recognize!(expr) >>
-        (
-            (ex.fragment.0.trim().to_string(), expr(ex).unwrap().1)
-        )
-)));
-
-named_args!(did_you_mean<'a>(choices: &[&'a str], err: SyntaxErrors)<Span<'a>, Span<'a>>,
-        preceded!(space0,
-            return_error!(SyntaxErrors::StartOfError.into(),
-                alt_complete!(
-                    // Either we find a valid operator name
-                    // To prevent a prefix from partially matching, require `not!(alpha1)` after the tag is consumed
-                    terminated!(alt_complete!(pct_fn | call!(alternative, choices)), not!(alpha1)) |
-
-                    // Or we return an error after consuming a word
-                    // If we exhaust all other possibilities, consume a word and return an error. We won't
-                    // find `tag!("a")` after an identifier, so that's a guaranteed to fail and produce `not an operator`
-                    terminated!(take_while!(is_ident), return_error!(err.clone().into(), tag!("a")))))
-        )
-);
-
-named!(did_you_mean_operator<Span, Span>,
-    call!(did_you_mean, &VALID_OPERATORS, SyntaxErrors::NotAnOperator)
-);
-
-named!(did_you_mean_aggregate<Span, Span>,
-    call!(did_you_mean, &VALID_AGGREGATES, SyntaxErrors::NotAnAggregateOperator)
-);
-
-// parse "blah * ... *" [from other_field] as x, y
-named!(parse<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("parse") >>
-    pattern: quoted_string >>
-    from_column_opt: opt!(with_pos!(ws!(preceded!(tag!("from"), expr)))) >>
-    tag!("as") >>
-    vars: var_list >>
-    from_column_opt_2: opt!(with_pos!(ws!(preceded!(tag!("from"), expr)))) >>
-    no_drop_opt: opt!(ws!(tag!("nodrop"))) >>
-    ( InlineOperator::Parse{
-        pattern: Keyword::new_wildcard(pattern.to_string()),
-        fields: vars,
-        input_column: (from_column_opt, from_column_opt_2),
-        no_drop: no_drop_opt.is_some()
-        } )
-))));
-
-named!(fields_mode<Span, FieldMode>, alt_complete!(
-    map!(
-        alt_complete!(tag!("+") | tag!("only") | tag!("include")),
-        |_|FieldMode::Only
-    ) |
-    map!(
-        alt_complete!(tag!("-") | tag!("except") | tag!("drop")),
-        |_|FieldMode::Except
-    )
-));
-
-named!(fields<Span, Positioned<InlineOperator>>, with_pos!(ws!(do_parse!(
-    tag!("fields") >>
-    mode: opt!(fields_mode) >>
-    fields: var_list >>
-    (
-        InlineOperator::Fields {
-            mode: mode.unwrap_or(FieldMode::Only),
-            fields
-        }
-    )
-))));
-
-named!(arg_list<Span, Positioned<Vec<Expr>>>, add_return_error!(
-    SyntaxErrors::StartOfError.into(), with_pos!(delimited!(
-        tag!("("),
-        ws!(separated_list!(tag!(","), ws!(expr))),
-        return_error!(SyntaxErrors::MissingParen.into(), tag!(")"))))
-));
-
-named!(count<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
-    tag!("count") >>
-    condition: opt!(delimited!(tag!("("), expr ,tag!(")"))) >>
-    (AggregateFunction::Count { condition })
-))));
-
-named!(min<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
-    tag!("min") >>
-    column: delimited!(tag!("("), expr,tag!(")")) >>
-    (AggregateFunction::Min{column})
-))));
-
-named!(average<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
-    alt_complete!(tag!("avg") | tag!("average")) >>
-    column: delimited!(tag!("("), expr ,tag!(")")) >>
-    (AggregateFunction::Average{column})
-))));
-
-named!(max<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
-    tag!("max") >>
-    column: delimited!(tag!("("), expr,tag!(")")) >>
-    (AggregateFunction::Max{column})
-))));
-
-named!(count_distinct<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
-    tag!("count_distinct") >>
-    column: opt!(arg_list) >>
-    (AggregateFunction::CountDistinct{ column })
-))));
-
-named!(sum<Span, Positioned<AggregateFunction>>, with_pos!(ws!(do_parse!(
-    tag!("sum") >>
-    column: delimited!(tag!("("), expr,tag!(")")) >>
-    (AggregateFunction::Sum{column})
-))));
-
-fn is_digit_char(digit: char) -> bool {
-    is_digit(digit as u8)
+fn dot_property(input: Span) -> IResult<Span, DataAccessAtom> {
+    tag(".")
+        .precedes(ident)
+        .map(|s| DataAccessAtom::Key(s))
+        .parse(input)
 }
 
-named!(pct_fn<Span, Span>, preceded!(
-    alt_complete!(tag!("pct") | tag!("percentile") | tag!("p")),
-    take_while_m_n!(2, 2, is_digit_char)
-));
+fn i64_parse(input: Span) -> IResult<Span, i64> {
+    map_res(recognize(opt(tag("-")).precedes(digit1)), |s: Span| {
+        s.fragment().parse::<i64>()
+    })
+    .parse(input)
+}
 
-named!(p_nn<Span, Positioned<AggregateFunction>>, ws!(
-    with_pos!(do_parse!(
-        pct: pct_fn >>
-        column: delimited!(tag!("("), expr,tag!(")")) >>
-        (AggregateFunction::Percentile{
-            column,
-            percentile: (".".to_owned() + pct.fragment.0).parse::<f64>().unwrap(),
-            percentile_str: pct.fragment.0.to_string()
+fn index_access(input: Span) -> IResult<Span, DataAccessAtom> {
+    delimited(tag("["), i64_parse, tag("]"))
+        .map(|num| DataAccessAtom::Index(num))
+        .parse(input)
+}
+
+fn column_ref(input: Span) -> IResult<Span, Expr> {
+    tuple((ident, many0(alt((dot_property, index_access)))))
+        .map(|(head, rest)| Expr::Column {
+            head: DataAccessAtom::Key(head),
+            rest,
         })
-    ))
-));
-
-fn string_from_located_span(
-    span: LocatedSpan<impl nom::AsBytes>,
-) -> Result<String, std::string::FromUtf8Error> {
-    String::from_utf8(span.fragment.as_bytes().to_vec())
+        .parse(input)
 }
 
-named!(alias<Span, Operator>, map!(
-    with_pos!(ws!(do_parse!(
-        config: map_res!(map_res!(nom::alpha, string_from_located_span), AliasConfig::matching_string) >>
-        (config.render())
-    ))),
-    Operator::RenderedAlias
-));
+fn ident(input: Span) -> IResult<Span, String> {
+    alt((bare_ident, escaped_ident))(input)
+}
 
-named!(inline_operator<Span, Operator>, do_parse!(
-    peek!(did_you_mean_operator) >>
-    res: map!(alt_complete!(parse | json | logfmt | fields | whre | limit | total | split | timeslice), Operator::Inline) >>
-    (res)
-));
+fn bare_ident(input: Span) -> IResult<Span, String> {
+    recognize(pair(satisfy(starts_ident), take_while(is_ident)))
+        .map(|span: Span| span.fragment().to_string())
+        .parse(input)
+}
 
-named!(aggregate_function<Span, Positioned<AggregateFunction>>, do_parse!(
-    peek!(did_you_mean_aggregate) >>
-    res: alt_complete!(
-        count_distinct |
-        count |
-        min |
-        average |
-        max |
-        sum |
-        p_nn) >> (res)
-));
+fn escaped_ident(input: Span) -> IResult<Span, String> {
+    delimited2(tag("["), quoted_string, tag("]"), |qc, r| {
+        qc.report_error_for("unterminated identifier")
+            .with_code_range(r, "")
+            .with_resolution("Insert a closing square bracket")
+            .send_report()
+    })
+    .parse(input)
+}
 
-named!(operator<Span, Operator>, alt_complete!(
-    map!(field_expr, Operator::Inline) |
-    inline_operator | sort | alias | multi_aggregate_operator)
-);
+fn atomic(input: Span) -> IResult<Span, Expr> {
+    let num = digit1.map(|s: Span| data::Value::from_string(*s.fragment()));
+    let quoted_string_value = quoted_string.map(|s| data::Value::Str(s));
+    let value = alt((quoted_string_value, num)).map(|v| Expr::Value(v));
+    let parens = delimited2(tag("("), expr, tag(")"), |qc, r| {
+        qc.report_error_for("unterminated parenthesized expression")
+            .with_code_range(r, "unterminated parenthesized expression")
+            .with_resolution("Insert a right parenthesis to terminate this expression")
+            .send_report()
+    });
 
-// count by x,y
-// avg(foo) by x
+    alt((fcall, column_ref, value, parens)).parse(input)
+}
 
-fn default_output(func: &Positioned<AggregateFunction>) -> String {
-    match func.into() {
-        AggregateFunction::Count { .. } => "_count".to_string(),
-        AggregateFunction::Sum { .. } => "_sum".to_string(),
-        AggregateFunction::Min { .. } => "_min".to_string(),
-        AggregateFunction::Average { .. } => "_average".to_string(),
-        AggregateFunction::Max { .. } => "_max".to_string(),
-        AggregateFunction::CountDistinct { .. } => "_countDistinct".to_string(),
-        AggregateFunction::Percentile {
-            ref percentile_str, ..
-        } => "p".to_string() + percentile_str,
+fn unary(input: Span) -> IResult<Span, Expr> {
+    let (input, opt_op) = opt(unary_op)(input)?;
+
+    match opt_op {
+        None => atomic(input),
+        Some(op) => expect_fn(atomic, |qc, r| {
+            qc.report_error_for("expecting expression for unary operator")
+                .with_code_range(r, "-")
+                .send_report()
+        })
+        .map(|operand| Expr::Unary {
+            op: op.clone(),
+            operand: Box::new(operand.unwrap_or(Expr::Error)),
+        })
+        .parse(input),
     }
 }
 
-named!(complete_agg_function<Span, (String, Positioned<AggregateFunction>)>, ws!(do_parse!(
-        agg_function: aggregate_function >>
-        rename_opt: opt!(ws!(preceded!(tag!("as"), ident))) >>
-        (
-            rename_opt.unwrap_or_else(||default_output(&agg_function)),
-            agg_function
-        )
-    ))
-);
+///
+fn comp_op(input: Span) -> IResult<Span, ComparisonOp> {
+    alt((
+        tag("==").map(|_| ComparisonOp::Eq),
+        tag("!=").map(|_| ComparisonOp::Neq),
+        tag(">=").map(|_| ComparisonOp::Gte),
+        tag("<=").map(|_| ComparisonOp::Lte),
+        tag(">").map(|_| ComparisonOp::Gt),
+        tag("<").map(|_| ComparisonOp::Lt),
+    ))(input)
+}
 
-named!(multi_aggregate_operator<Span, Operator>, ws!(do_parse!(
-    agg_functions: ws!(separated_nonempty_list!(tag!(","), complete_agg_function)) >>
-    key_cols_opt: opt!(preceded!(tag!("by"), sourced_expr_list)) >>
-    (Operator::MultiAggregate(MultiAggregateOperator {
-        key_col_headers: key_cols_opt.clone()
-            .unwrap_or_default()
-            .iter().cloned().map(|col|col.0).collect(),
-        key_cols: key_cols_opt
-            .unwrap_or_default()
-            .iter().cloned().map(|col|col.1).collect(),
-        aggregate_functions: agg_functions,
-     })))
-));
+fn unary_op(input: Span) -> IResult<Span, UnaryOp> {
+    tag("!").map(|_| UnaryOp::Not).parse(input)
+}
 
-named!(sort_mode<Span, SortMode>, alt_complete!(
-    map!(
-        alt_complete!(tag!("asc") | tag!("ascending")),
-        |_|SortMode::Ascending
-    ) |
-    map!(
-        alt_complete!(tag!("desc") | tag!("dsc") | tag!("descending")),
-        |_|SortMode::Descending
-    )
-));
+fn muldiv_op(input: Span) -> IResult<Span, ArithmeticOp> {
+    alt((
+        tag("*").map(|_| ArithmeticOp::Multiply),
+        tag("/").map(|_| ArithmeticOp::Divide),
+    ))(input)
+}
 
-named!(sort<Span, Operator>, ws!(do_parse!(
-    tag!("sort") >>
-    key_cols_opt: opt!(preceded!(opt!(tag!("by")), sourced_expr_list)) >>
-    dir: opt!(sort_mode) >>
-    (Operator::Sort(SortOperator{
-        sort_cols: key_cols_opt.unwrap_or_default().into_iter().map(|(_source,expr)|expr).collect(),
-        direction: dir.unwrap_or(SortMode::Ascending) ,
-     })))
-));
+fn term(input: Span) -> IResult<Span, Expr> {
+    let (input, init) = unary(input)?;
 
-named!(filter_explicit_and<Span, Search>, do_parse!(
-    peek!(ws!(pair!(low_filter, alt!(tag!("AND") | tag!("and"))))) >>
-    res: map!(
-        return_error!(SyntaxErrors::InvalidBooleanExpression.into(),
-            separated_pair!(ws!(low_filter),
-            ws!(tag!("AND")),
-            ws!(low_filter))), |(l,r)|Search::And(vec![l, r])
-    ) >> (res)
-));
+    fold_many0(
+        pair(
+            muldiv_op.delimited_by(multispace0),
+            expect_fn(unary, |qc, r| {
+                qc.report_error_for("expecting an operand for binary operator")
+                    .with_code_range(r, "dangling binary operator")
+                    .with_resolution("Add the operand or delete the operator")
+                    .send_report()
+            })
+            .map(|e| e.unwrap_or(Expr::Error)),
+        ),
+        init,
+        |left, (op, right)| Expr::Binary {
+            left: Box::new(left),
+            op: BinaryOp::Arithmetic(op),
+            right: Box::new(right),
+        },
+    )(input)
+}
 
-named!(filter_explicit_or<Span, Search>, do_parse!(
-    peek!(ws!(pair!(low_filter, alt!(tag!("OR") | tag!("or"))))) >>
-    res: map!(
-        return_error!(SyntaxErrors::InvalidBooleanExpression.into(),
-            separated_pair!(ws!(mid_filter),
-            ws!(tag!("OR")),
-            ws!(mid_filter))), |(l,r)|Search::Or(vec![l, r])
-    ) >> (res)
-));
+fn arith_expr(input: Span) -> IResult<Span, Expr> {
+    let (input, init) = term(input)?;
 
-// Top level:
-// Look for OR
-// Look for AND
-// Implicit AND
+    fold_many0(
+        pair(
+            addsub_op.delimited_by(multispace0),
+            expect_fn(term, |qc, r| {
+                qc.report_error_for("expecting an operand for binary operator")
+                    .with_code_range(r, "- dangling binary operator")
+                    .with_resolution("Add the operand or delete the operator")
+                    .send_report()
+            })
+            .map(|e| e.unwrap_or(Expr::Error)),
+        ),
+        init,
+        |left, (op, right)| Expr::Binary {
+            left: Box::new(left),
+            op: BinaryOp::Arithmetic(op),
+            right: Box::new(right),
+        },
+    )(input)
+}
 
-/* A list of things is implicitly ANDed together */
-named!(filter_implicit_and<Span, Search>, map!(
-    separated_nonempty_list!(multispace, low_filter),
-    // An empty keyword would match everything, so there's no reason to
-    |mut v| {
-        v.retain( | k | ! k.no_op());
-        Search::And(v)
-    }
-));
+fn opt_expr(input: Span) -> IResult<Span, Expr> {
+    let cmp = map(
+        arith_expr.and(opt(pair(
+            delimited(multispace0, comp_op, multispace0),
+            expect(
+                arith_expr,
+                "expecting the right-hand-side of the comparison",
+            ),
+        ))),
+        |(left, opt_right)| match opt_right {
+            None => left,
+            Some((op, right)) => Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::Comparison(op),
+                right: Box::new(right.unwrap_or(Expr::Error)),
+            },
+        },
+    );
 
-named!(filter_atom<Span, Search>, alt_complete!(
-    map!(quoted_string, |s| Search::Keyword(Keyword::new_exact(s.to_string()))) |
-    map!(keyword, |s| Search::Keyword(Keyword::new_wildcard(s.trim_matches('*').to_string())))
-));
+    cmp.preceded_by(multispace0).parse(input)
+}
 
-named!(high_filter<Span, Search>, alt_complete!(
-  filter_explicit_or |
-  mid_filter
-));
+fn expr(input: Span) -> IResult<Span, Expr> {
+    Ok(opt_expr(input).unwrap_or_else(|_| {
+        let mut r = input.to_sync_point();
 
-named!(mid_filter<Span, Search>, alt_complete!(
-  filter_explicit_and |
-  low_filter
-));
+        if r.is_empty() && r.start > 0 {
+            r.start -= 1;
+        }
+        input
+            .extra
+            .report_error_for("expecting an expression")
+            .with_code_range(r.clone(), "")
+            .send_report();
 
-named!(low_filter<Span, Search>, alt_complete!(
-  filter_not
-  | filter_atom
-  | delimited!(ws!(tag!("(")), high_filter, ws!(tag!(")")))
-));
-
-named!(filter_not<Span, Search>, map!(
-        ws!(preceded!(tag!("NOT"), low_filter)),
-        |k|Search::Not(Box::new(k))
-    )
-);
-
-named!(filter_expr<Span, Search>,
-    ws!(exact!(alt_complete!(
-        filter_explicit_or |
-        filter_explicit_and |
-        ws!(filter_implicit_and)
-))));
-
-named!(query_component<Span, Span>, alt_complete!(
-        recognize!(quoted_string) |
-        tag!("AND") |
-        tag!("NOT") |
-        tag!("OR") |
-        tag!("(") |
-        tag!(")") |
-        recognize!(keyword)
-    )
-);
-
-named!(end_of_query<Span, Span>, alt!(
-    ws!(tag!("|")) | ws!(eof!())
-));
-
-named!(query_section<Span, Span>, recognize!(ws!(
-    many_till!(ws!(query_component), peek!(ws!(end_of_query))))
-));
-
-named!(erroring_filter<Span, Search>, add_return_error!(SyntaxErrors::InvalidFilter.into(), filter_expr));
-
-named!(prelexed_query<Span, Search>, ws!(do_parse!(
-    res_tuple: flat_map!(query_section, erroring_filter) >>
-    (res_tuple)
-)));
-
-named!(pub query<Span, Query, SyntaxErrors>, fix_error!(SyntaxErrors, exact!(ws!(do_parse!(
-    filter: prelexed_query >>
-    operators: ws!(opt!(preceded!(tag!("|"), operator_list))) >>
-    (Query{
-        search: filter,
-        operators: operators.unwrap_or_default()
+        let end = r.end - input.location_offset();
+        (input.slice(end..), Expr::Error)
     }))
-))));
+}
 
-named!(pub operator_list<Span, Vec<Operator>>, ws!(separated_nonempty_list!(tag!("|"), operator)));
+fn req_ident(input: Span) -> IResult<Span, String> {
+    expect_fn(ident, |qc, r| {
+        qc.report_error_for("expecting a name for the field")
+            .with_code_range(r, "")
+            .with_resolution("Give the value a name")
+            .send_report();
+    })
+    .map(|opt_id| opt_id.unwrap_or_else(|| "".to_string()))
+    .parse(input)
+}
+
+fn quoted_string(input: Span) -> IResult<Span, String> {
+    let sq_esc = escaped(none_of("\\\'"), '\\', tag("'"));
+    let sq_esc_or_empty = alt((sq_esc, tag("")));
+    let single_quoted = delimited2(tag("'"), sq_esc_or_empty, tag("'"), |qc, r| {
+        qc.report_error_for("unterminated single quoted string")
+            .with_code_range(r, "")
+            .with_resolution("Insert a single quote (') to terminate this string")
+            .send_report()
+    });
+
+    let dq_esc = escaped(none_of("\\\""), '\\', tag("\""));
+    let dq_esc_or_empty = alt((dq_esc, tag("")));
+    let double_quoted = delimited2(tag("\""), dq_esc_or_empty, tag("\""), |qc, r| {
+        qc.report_error_for("unterminated double quoted string")
+            .with_code_range(r, "")
+            .with_resolution("Insert a double quote (\") to terminate this string")
+            .send_report()
+    });
+
+    alt((single_quoted, double_quoted))
+        .map(|s: Span| s.to_string())
+        .parse(input)
+}
+
+fn req_quoted_string(input: Span) -> IResult<Span, String> {
+    let upto_ws = input.to_whitespace();
+
+    match quoted_string(input) {
+        Ok(found) => Ok(found),
+        Err(_) => {
+            input
+                .extra
+                .report_error_for("expecting a quoted string")
+                .with_code_range(upto_ws.clone(), "")
+                .with_resolution("Enclose the text in a single or double-quoted string")
+                .send_report();
+
+            Ok((input.slice(upto_ws.len()..), "".to_string()))
+        }
+    }
+}
+
+fn var_list(input: Span) -> IResult<Span, Vec<String>> {
+    separated_list1(tag(","), ident.preceded_by(multispace0))(input)
+}
+
+fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
+    with_pos(
+        tuple((
+            tag("parse").precedes(multispace1.precedes(req_quoted_string)),
+            opt(multispace1.precedes(with_pos(pair(tag("from"), multispace1).precedes(expr)))),
+            tag("as").preceded_by(multispace1).precedes(var_list),
+            opt(multispace1.precedes(with_pos(pair(tag("from"), multispace1).precedes(expr)))),
+            opt(tag("nodrop").preceded_by(multispace1)).map(|nd| nd.is_some()),
+        ))
+        .map(|(s, e1, fields, e2, no_drop)| InlineOperator::Parse {
+            pattern: Keyword::new_wildcard(s),
+            fields,
+            input_column: (e1, e2),
+            no_drop,
+        }),
+    )
+    .terminated(expect_bar(
+        "unrecognized option, only the 'from' and 'nodrop' options are available",
+    ))
+    .parse(input)
+}
+
+fn fields_mode(input: Span) -> IResult<Span, FieldMode> {
+    alt((
+        alt((tag("+"), tag("only"), tag("include"))).map(|_| FieldMode::Only),
+        alt((tag("-"), tag("except"), tag("drop"))).map(|_| FieldMode::Except),
+    ))(input)
+}
+
+fn fields(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
+    with_pos(
+        tuple((
+            tag("fields")
+                .precedes(multispace1)
+                .precedes(opt(fields_mode).map(|m| m.unwrap_or(FieldMode::Only))),
+            var_list,
+        ))
+        .map(|(mode, fields)| InlineOperator::Fields { mode, fields }),
+    )
+    .parse(input)
+}
+
+pub fn with_pos<'a, O, E: ParseError<Span<'a>>, F>(
+    mut f: F,
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Positioned<O>, E>
+where
+    F: Parser<Span<'a>, O, E>,
+{
+    move |input: Span<'a>| {
+        let (input, start) = position(input)?;
+        match f.parse(input) {
+            Ok((i, o)) => {
+                let (i, end) = position(i)?;
+                Ok((
+                    i,
+                    Positioned {
+                        range: Range {
+                            start: start.location_offset(),
+                            end: end.location_offset(),
+                        },
+                        value: o,
+                    },
+                ))
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
+fn oper_0_args(name: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Span> {
+    move |input: Span| {
+        tag(name)
+            .and(expect_fn(not(tag("(")), |qc, r| {
+                qc.report_error_for(format!(
+                    "{} does not take any parenthesized arguments",
+                    name
+                ))
+                .with_code_range(r, "")
+                .send_report()
+            }))
+            .precedes(alt((peek(multispace1), end_of_query)))
+            .parse(input)
+    }
+}
+
+fn skip_to_sync(input: Span) -> IResult<Span, Operator> {
+    if input.extra.get_error_count() > 0 {
+        many_till(anychar, end_of_query)
+            .map(|_| Operator::Error)
+            .parse(input)
+    } else {
+        satisfy(|_| false).map(|_| Operator::Error).parse(input)
+    }
+}
+
+fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
+    let json = with_pos(
+        oper_0_args("json")
+            .precedes(kw_expr("from", "a JSON-encoded string"))
+            .terminated(expect_bar(
+                "unrecognized option, only the 'from' option is available",
+            ))
+            .map(|input_column| InlineOperator::Json { input_column }),
+    );
+    let limit = with_pos(
+        oper_0_args("limit")
+            .precedes(opt(with_pos(double).preceded_by(multispace1)))
+            .terminated(expect_bar(
+                "unrecognized option, only the numeric limit can be specified",
+            ))
+            .map(|count| InlineOperator::Limit { count }),
+    );
+    let logfmt = with_pos(
+        oper_0_args("logfmt")
+            .precedes(kw_expr("from", "a logfmt-serialized string"))
+            .terminated(expect_bar(
+                "unrecognized option, only the 'from' option is available",
+            ))
+            .map(|input_column| InlineOperator::Logfmt { input_column }),
+    );
+    let split = with_pos(
+        tag("split")
+            .precedes(tuple((
+                opt(arg1("the string to split")),
+                opt(tag("on")
+                    .delimited_by(multispace1)
+                    .precedes(req_quoted_string)),
+                opt(tag("as").delimited_by(multispace1).precedes(expr)),
+            )))
+            .terminated(expect_bar(
+                "unrecognized option, only the 'on' and 'as' options are available",
+            ))
+            .map(|(e, o, a)| InlineOperator::Split {
+                separator: o.unwrap_or_else(|| ",".to_string()),
+                input_column: e.clone(),
+                output_column: a.or(e),
+            }),
+    );
+    let timeslice = with_pos(
+        tuple((
+            tag("timeslice").precedes(req_arg1("the date-time value for the log message")),
+            opt(duration.preceded_by(multispace1)),
+            opt(tag("as").delimited_by(multispace1).precedes(ident)),
+        ))
+        .terminated(expect_bar(
+            "unrecognized option, only the 'as' option is available",
+        ))
+        .map(
+            |(input_column, duration, output_column)| InlineOperator::Timeslice {
+                input_column,
+                duration,
+                output_column,
+            },
+        ),
+    );
+    let total = with_pos(
+        tag("total")
+            .precedes(req_arg1("the value to sum"))
+            .and(
+                opt(tag("as").delimited_by(multispace1).precedes(req_ident))
+                    .map(|i| i.unwrap_or_else(|| "_total".to_string())),
+            )
+            .terminated(expect_bar(
+                "unrecognized option, only the 'as' option is available",
+            ))
+            .map(|(input_column, output_column)| InlineOperator::Total {
+                input_column,
+                output_column,
+            }),
+    );
+    let wher = with_pos(
+        tag("where")
+            .precedes(opt(delimited(multispace1, with_pos(expr), multispace0)))
+            .terminated(expect_bar(
+                "unrecognized option, only the condition can be specified",
+            ))
+            .map(|expr| InlineOperator::Where { expr }),
+    );
+
+    let count = with_pos(
+        tag("count")
+            .precedes(opt(arg1("the value to count")))
+            .map(|condition| AggregateFunction::Count { condition }),
+    );
+    let count_distinct = with_pos(
+        tag("count_distinct")
+            .precedes(opt(with_pos(arg_list)))
+            .map(|column| AggregateFunction::CountDistinct { column }),
+    );
+    let min = with_pos(
+        tag("min")
+            .precedes(req_arg1("the numeric value to find the minimum of"))
+            .map(|column| AggregateFunction::Min { column }),
+    );
+    let max = with_pos(
+        tag("max")
+            .precedes(req_arg1("the numeric value to find the maximum of"))
+            .map(|column| AggregateFunction::Max { column }),
+    );
+    let sum = with_pos(
+        tag("sum")
+            .precedes(req_arg1("the numeric value to find the sum of"))
+            .map(|column| AggregateFunction::Sum { column }),
+    );
+    let pct = with_pos(
+        alt((tag("pct"), tag("percentile"), tag("p")))
+            .precedes(digit1)
+            .and(req_arg1("the value to compute the percentile"))
+            .map(|(pct, column)| AggregateFunction::Percentile {
+                column,
+                percentile: format!(".{}", pct).parse::<f64>().unwrap(),
+                percentile_str: pct.to_string(),
+            }),
+    );
+    let avg = with_pos(
+        tag("avg")
+            .or(tag("average"))
+            .precedes(req_arg1("the numeric value to find the average of"))
+            .map(|column| AggregateFunction::Average { column }),
+    );
+
+    let agg_opers = alt((count_distinct, count, min, max, pct, sum, avg))
+        .and(opt(tag("as").delimited_by(multispace1).precedes(req_ident)))
+        .map(|(f, n)| (n.unwrap_or_else(|| f.value.default_name()), f));
+
+    let multi_agg_opers = tuple((
+        separated_list1(tag(","), agg_opers.delimited_by(multispace0)),
+        opt(tag("by")
+            .terminated(multispace1)
+            .precedes(sourced_expr_list))
+        .terminated(end_of_query)
+        .map(|opt_cols| opt_cols.unwrap_or_else(|| vec![])),
+    ))
+    .map(|(aggregate_functions, cols)| {
+        let (key_col_headers, key_cols) = cols.iter().cloned().unzip();
+        Operator::MultiAggregate(MultiAggregateOperator {
+            key_cols,
+            key_col_headers,
+            aggregate_functions,
+        })
+    });
+
+    let inline_opers = alt((
+        parse, json, logfmt, fields, limit, split, timeslice, total, wher,
+    ))
+    .map(Operator::Inline);
+
+    let field_expr = with_pos(
+        expr.and(tag("as").delimited_by(multispace1).precedes(req_ident))
+            .map(|(value, name)| InlineOperator::FieldExpression { value, name }),
+    )
+    .map(Operator::Inline);
+
+    let unknown_op = recognize(ident).terminated(opt(arg_list));
+
+    let did_you_mean = separated_list1(tag(","), unknown_op.delimited_by(multispace0))
+        .terminated(
+            opt(tag("by")
+                .terminated(multispace1)
+                .precedes(sourced_expr_list))
+            .terminated(many_till(anychar, end_of_query)),
+        )
+        .map(|unknown_ids| {
+            let is_agg = unknown_ids.len() > 1;
+            for i in unknown_ids {
+                if is_agg {
+                    if VALID_AGGREGATES.contains(&i) {
+                        continue;
+                    }
+                } else if VALID_OPERATORS.contains(&i) {
+                    continue;
+                }
+
+                let m = crate::errors::did_you_mean(
+                    &i,
+                    if is_agg {
+                        &VALID_AGGREGATES
+                    } else {
+                        &VALID_OPERATORS
+                    },
+                );
+
+                let mut builder = input
+                    .extra
+                    .report_error_for(if is_agg {
+                        "Not an aggregate operator"
+                    } else {
+                        "Expected an operator"
+                    })
+                    .with_code_range(i.to_range(), "")
+                    .with_resolution(if is_agg {
+                        format!("{} is not a valid aggregate operator", i)
+                    } else {
+                        format!("{} is not a valid operator", i)
+                    });
+
+                if m.is_some() {
+                    builder = builder.with_resolution(format!("Did you mean \"{}\"?", m.unwrap()));
+                } else if is_agg && VALID_INLINE.contains(&i) {
+                    builder = builder.with_resolution(format!("{} is an inline operator, but only aggregate operators (count, average, etc.) are valid here", i));
+                }
+                builder.send_report();
+            }
+
+            Operator::Error
+        });
+
+    let garbage = expect(alt((tag("|"), eof)), "unrecognized syntax").map(|_| Operator::Error);
+
+    let opers = alt((
+        inline_opers,
+        multi_agg_opers,
+        sort,
+        field_expr,
+        skip_to_sync,
+        did_you_mean,
+        garbage,
+    ));
+
+    opt(tag("|").precedes(separated_list1(tag("|"), opers.delimited_by(multispace0))))
+        .map(|ops| ops.unwrap_or(vec![]))
+        // .all_consuming()
+        .parse(input)
+}
+
+pub fn query(input: &QueryContainer) -> Result<Query, ()> {
+    let span = Span::new_extra(input.query.as_str(), input);
+    let (input, search) = parse_search(span).map_err(|_| ())?;
+    let (input, operators) = parse_operators(input).map_err(|_| ())?;
+
+    if input.extra.get_error_count() > 0 {
+        Err(())
+    } else {
+        Ok(Query { search, operators })
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    use crate::errors::ErrorReporter;
+    use annotate_snippets::snippet::Snippet;
+    use expect_test::{expect, Expect};
+    use std::cell::RefCell;
+
     use super::*;
 
-    macro_rules! expect {
-        ($f:expr, $inp:expr, $res:expr) => {{
-            let parse_result = $f(Span::new(CompleteStr($inp)));
-            match parse_result {
-                Ok((
-                    LocatedSpan {
-                        fragment: leftover, ..
-                    },
-                    actual_result,
-                )) => {
-                    assert_eq!(actual_result, $res);
-                    assert_eq!(leftover, CompleteStr(""));
-                }
-                Err(e) => panic!(
-                    "{}",
-                    format!("Parse failed, but was expected to succeed: \n{:?}", e)
-                ),
-            }
-        }};
+    fn check(actual: (Query, &Vec<String>), expect: Expect) {
+        let actual_errors = actual.1.join("\n");
+        let actual_combined = format!("{:#?}\n{}", actual.0, actual_errors);
+        expect.assert_eq(&actual_combined);
     }
 
-    macro_rules! expect_fail {
-        ($f:expr, $inp:expr) => {{
-            let parse_result = $f(Span::new(CompleteStr($inp)));
-            match parse_result {
-                Ok(_res) => panic!("{}", format!("Expected parse to fail, but it succeeded")),
-                // TODO: enable assertions of specific errors
-                Err(_e) => (),
+    fn check_query(query_in: &str, expect: Expect) {
+        let mut errors = vec![];
+        let parsed = {
+            let qc = QueryContainer::new(
+                query_in.to_string(),
+                Box::new(VecErrorReporter::new(&mut errors)),
+            );
+            let r = query(&qc);
+
+            if r.is_ok() {
+                r.unwrap()
+            } else {
+                Query {
+                    search: Search::And(vec![]),
+                    operators: vec![],
+                }
             }
-        }};
+        };
+
+        check((parsed, &errors), expect);
+    }
+
+    struct VecErrorReporter<'a> {
+        errors: RefCell<&'a mut Vec<String>>,
+    }
+
+    impl<'a> ErrorReporter for VecErrorReporter<'a> {
+        fn handle_error(&self, snippet: Snippet) {
+            let dl = annotate_snippets::display_list::DisplayList::from(snippet);
+
+            self.errors.borrow_mut().push(format!("{}", dl));
+        }
+    }
+
+    impl<'a> VecErrorReporter<'a> {
+        fn new(errors: &'a mut Vec<String>) -> Self {
+            VecErrorReporter {
+                errors: RefCell::new(errors),
+            }
+        }
     }
 
     #[test]
     fn empty_query_is_query() {
-        expect!(prelexed_query, " * ", Search::And(vec![]));
-        expect!(prelexed_query, "*", Search::And(vec![]));
-        expect!(
-            prelexed_query,
-            "abc ",
-            Search::And(vec![Search::Keyword(Keyword::new_wildcard(
-                "abc".to_string()
-            ))])
-        );
-        expect!(
-            prelexed_query,
-            "(abc )",
-            Search::And(vec![Search::Keyword(Keyword::new_wildcard(
-                "abc".to_string()
-            ))])
-        );
-    }
-
-    #[test]
-    fn parse_keyword_string() {
-        expect!(keyword, "abc", "abc".to_string());
-        expect!(keyword, "one-two-three", "one-two-three".to_string());
-    }
-
-    #[test]
-    fn parse_quoted_string() {
-        expect!(quoted_string, "\"hello\"", "hello");
-        expect!(quoted_string, "'hello'", "hello");
-        expect!(quoted_string, r#""test = [*=*] * ""#, "test = [*=*] * ");
-        expect_fail!(quoted_string, "\"hello'");
-    }
-
-    #[test]
-    fn parse_expr() {
-        expect!(
-            expr,
-            "a == b",
-            Expr::Binary {
-                op: BinaryOp::Comparison(ComparisonOp::Eq),
-                left: Box::new(Expr::column("a")),
-                right: Box::new(Expr::column("b")),
-            }
-        );
-    }
-
-    #[test]
-    fn parse_func_call() {
-        expect!(
-            field_expr,
-            "parseDate(abc) as foo",
-            Positioned {
-                start_pos: QueryPosition(0),
-                end_pos: QueryPosition(21),
-                value: InlineOperator::FieldExpression {
-                    value: Expr::FunctionCall {
-                        name: "parseDate".to_string(),
-                        args: vec!(Expr::Column {
-                            head: DataAccessAtom::Key("abc".to_string()),
-                            rest: vec!()
-                        })
-                    },
-                    name: "foo".to_string()
+        check_query(
+            "*",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
                 }
-            }
+            "#]],
         );
-    }
 
-    #[test]
-    fn parse_expr_value() {
-        expect!(
-            expr,
-            "a <= \"b\"",
-            Expr::Binary {
-                op: BinaryOp::Comparison(ComparisonOp::Lte),
-                left: Box::new(Expr::column("a")),
-                right: Box::new(Expr::Value(data::Value::Str("b".to_string()))),
-            }
-        );
-    }
-
-    #[test]
-    fn parse_expr_ident() {
-        expect!(expr, "foo", Expr::column("foo"));
-        expect!(
-            expr,
-            "foo.bar.baz[-10]",
-            Expr::Column {
-                head: DataAccessAtom::Key("foo".to_owned()),
-                rest: vec![
-                    DataAccessAtom::Key("bar".to_owned()),
-                    DataAccessAtom::Key("baz".to_owned()),
-                    DataAccessAtom::Index(-10)
-                ]
-            }
-        )
-    }
-
-    #[test]
-    fn parse_expr_precedence() {
-        expect!(
-            expr,
-            "2 * 3 + 4 * 5 < 4 / 2 + 1",
-            Expr::Binary {
-                left: Box::new(Expr::Binary {
-                    left: Box::new(Expr::Binary {
-                        left: Box::new(Expr::Value(data::Value::Int(2))),
-                        op: BinaryOp::Arithmetic(ArithmeticOp::Multiply),
-                        right: Box::new(Expr::Value(data::Value::Int(3))),
-                    }),
-                    op: BinaryOp::Arithmetic(ArithmeticOp::Add),
-                    right: Box::new(Expr::Binary {
-                        left: Box::new(Expr::Value(data::Value::Int(4))),
-                        op: BinaryOp::Arithmetic(ArithmeticOp::Multiply),
-                        right: Box::new(Expr::Value(data::Value::Int(5))),
-                    }),
-                }),
-                op: BinaryOp::Comparison(ComparisonOp::Lt),
-                right: Box::new(Expr::Binary {
-                    left: Box::new(Expr::Binary {
-                        left: Box::new(Expr::Value(data::Value::Int(4))),
-                        op: BinaryOp::Arithmetic(ArithmeticOp::Divide),
-                        right: Box::new(Expr::Value(data::Value::Int(2))),
-                    }),
-                    op: BinaryOp::Arithmetic(ArithmeticOp::Add),
-                    right: Box::new(Expr::Value(data::Value::Int(1))),
-                })
-            }
+        check_query(
+            " * ",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+            "#]],
         );
     }
 
     #[test]
     fn parse_ident() {
-        expect!(ident, "hello123", "hello123".to_string());
-        expect!(ident, "x", "x".to_string());
-        expect!(ident, "_x", "_x".to_string());
-        expect_fail!(ident, "5x");
-    }
-
-    #[test]
-    fn parse_quoted_ident() {
-        expect!(ident, "[\"hello world\"]", "hello world".to_string());
-        expect!(ident, "[\"hello.world\"]", "hello.world".to_string());
-        expect!(
-            ident,
-            r#"["hello \"world\""]"#,
-            r#"hello \"world\""#.to_string()
+        check_query(
+            "* | 1 as hello123",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..17,
+                            value: FieldExpression {
+                                value: Value(
+                                    Int(
+                                        1,
+                                    ),
+                                ),
+                                name: "hello123",
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
         );
-        expect_fail!(ident, "\"\"");
-    }
-
-    #[test]
-    fn parse_var_list() {
-        expect!(
-            var_list,
-            "a, b, def, g_55",
-            vec![
-                "a".to_string(),
-                "b".to_string(),
-                "def".to_string(),
-                "g_55".to_string(),
-            ]
+        check_query(
+            "* | 1 as x",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..10,
+                            value: FieldExpression {
+                                value: Value(
+                                    Int(
+                                        1,
+                                    ),
+                                ),
+                                name: "x",
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | 1 as _x",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..11,
+                            value: FieldExpression {
+                                value: Value(
+                                    Int(
+                                        1,
+                                    ),
+                                ),
+                                name: "_x",
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | 1 as 5x",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: expecting a name for the field
+                  |
+                1 | * | 1 as 5x
+                  |          ^^
+                  |
+                  = help: Give the value a name"#]],
         );
     }
 
     #[test]
     fn parse_parses() {
-        expect!(
-            parse,
-            r#"parse "[key=*]" as v"#,
-            Positioned {
-                start_pos: QueryPosition(0),
-                end_pos: QueryPosition(20),
-                value: InlineOperator::Parse {
-                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
-                    fields: vec!["v".to_string()],
-                    input_column: (None, None),
-                    no_drop: false
-                }
-            }
-        );
-        expect!(
-            parse,
-            r#"parse "[key=*]" as v nodrop"#,
-            Positioned {
-                start_pos: QueryPosition(0),
-                end_pos: QueryPosition(27),
-                value: InlineOperator::Parse {
-                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
-                    fields: vec!["v".to_string()],
-                    input_column: (None, None),
-                    no_drop: true
-                }
-            }
-        );
-        expect!(
-            parse,
-            r#"parse "[key=*][val=*]" as k,v nodrop"#,
-            Positioned {
-                start_pos: QueryPosition(0),
-                end_pos: QueryPosition(36),
-                value: InlineOperator::Parse {
-                    pattern: Keyword::new_wildcard("[key=*][val=*]".to_string()),
-                    fields: vec!["k".to_string(), "v".to_string()],
-                    input_column: (None, None),
-                    no_drop: true
-                }
-            }
-        );
-    }
-
-    #[test]
-    fn parse_operator() {
-        expect!(
-            operator,
-            r#" 1 as one"#,
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(9),
-                value: InlineOperator::FieldExpression {
-                    value: Expr::Value(data::Value::Int(1)),
-                    name: "one".to_string(),
-                },
-            })
-        );
-        expect!(
-            operator,
-            "  json",
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(2),
-                end_pos: QueryPosition(6),
-                value: InlineOperator::Json { input_column: None }
-            })
-        );
-        expect!(
-            operator,
-            "  logfmt",
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(2),
-                end_pos: QueryPosition(8),
-                value: InlineOperator::Logfmt { input_column: None }
-            })
-        );
-        expect!(
-            operator,
-            r#" parse "[key=*]" from field as v"#,
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(32),
-                value: InlineOperator::Parse {
-                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
-                    fields: vec!["v".to_string()],
-                    input_column: (
-                        Some(Positioned {
-                            start_pos: QueryPosition(17),
-                            end_pos: QueryPosition(28),
-                            value: Expr::column("field")
-                        }),
-                        None
+        check_query(
+            r#"* | parse "[key=*]" as v"#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
                     ),
-                    no_drop: false
-                },
-            })
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..24,
+                                value: Parse {
+                                    pattern: Keyword(
+                                        "[key=*]",
+                                        WILDCARD,
+                                    ),
+                                    fields: [
+                                        "v",
+                                    ],
+                                    input_column: (
+                                        None,
+                                        None,
+                                    ),
+                                    no_drop: false,
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
         );
-        expect!(
-            operator,
-            r#" parse "[key=*]" as v from field"#,
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(32),
-                value: InlineOperator::Parse {
-                    pattern: Keyword::new_wildcard("[key=*]".to_string()),
-                    fields: vec!["v".to_string()],
-                    input_column: (
-                        None,
-                        Some(Positioned {
-                            start_pos: QueryPosition(22),
-                            end_pos: QueryPosition(32),
-                            value: Expr::column("field")
-                        })
+        check_query(
+            r#"* | parse "[key=*]" as v nodrop"#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
                     ),
-                    no_drop: false
-                },
-            })
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..31,
+                                value: Parse {
+                                    pattern: Keyword(
+                                        "[key=*]",
+                                        WILDCARD,
+                                    ),
+                                    fields: [
+                                        "v",
+                                    ],
+                                    input_column: (
+                                        None,
+                                        None,
+                                    ),
+                                    no_drop: true,
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
         );
-        expect!(
-            operator,
-            r#" timeslice(date) 5m "#,
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(20),
-                value: InlineOperator::Timeslice {
-                    input_column: Expr::column("date"),
-                    duration: Some(chrono::Duration::minutes(5)),
-                    output_column: None,
-                },
-            })
+        check_query(
+            r#"* | parse "[key=*][val=*]" as k,v nodrop"#,
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..40,
+                            value: Parse {
+                                pattern: Keyword(
+                                    "[key=*][val=*]",
+                                    WILDCARD,
+                                ),
+                                fields: [
+                                    "k",
+                                    "v",
+                                ],
+                                input_column: (
+                                    None,
+                                    None,
+                                ),
+                                no_drop: true,
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
         );
-        expect!(
-            operator,
-            r#" timeslice(date) 5m as theslice "#,
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(32),
-                value: InlineOperator::Timeslice {
-                    input_column: Expr::column("date"),
-                    duration: Some(chrono::Duration::minutes(5)),
-                    output_column: Some("theslice".to_string()),
-                },
-            })
+        check_query(
+            r#"* | parse "[key=*]" from field as v"#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..35,
+                                value: Parse {
+                                    pattern: Keyword(
+                                        "[key=*]",
+                                        WILDCARD,
+                                    ),
+                                    fields: [
+                                        "v",
+                                    ],
+                                    input_column: (
+                                        Some(
+                                            Positioned {
+                                                range: 20..30,
+                                                value: Column {
+                                                    head: Key(
+                                                        "field",
+                                                    ),
+                                                    rest: [],
+                                                },
+                                            },
+                                        ),
+                                        None,
+                                    ),
+                                    no_drop: false,
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
+        );
+        check_query(
+            r#"* | parse "[key=*]" as v from field"#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..35,
+                                value: Parse {
+                                    pattern: Keyword(
+                                        "[key=*]",
+                                        WILDCARD,
+                                    ),
+                                    fields: [
+                                        "v",
+                                    ],
+                                    input_column: (
+                                        None,
+                                        Some(
+                                            Positioned {
+                                                range: 25..35,
+                                                value: Column {
+                                                    head: Key(
+                                                        "field",
+                                                    ),
+                                                    rest: [],
+                                                },
+                                            },
+                                        ),
+                                    ),
+                                    no_drop: false,
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
+        );
+        check_query(
+            "* | parse 'x=* y=*' as x, y extra",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: unrecognized option, only the 'from' and 'nodrop' options are available
+                  |
+                1 | * | parse 'x=* y=*' as x, y extra
+                  |                             ^^^^^
+                  |"#]],
         );
     }
 
     #[test]
-    fn parse_limit() {
-        expect!(
-            operator,
-            " limit",
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(6),
-                value: InlineOperator::Limit { count: None }
-            })
+    fn parse_keyword_string() {
+        check_query(
+            "abc",
+            expect![[r#"
+            Query {
+                search: And(
+                    [
+                        Keyword(
+                            Keyword(
+                                "abc",
+                                WILDCARD,
+                            ),
+                        ),
+                    ],
+                ),
+                operators: [],
+            }
+        "#]],
         );
-        expect!(
-            operator,
-            " limit 5",
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(8),
-                value: InlineOperator::Limit {
-                    count: Some(Positioned {
-                        value: 5.0,
-                        start_pos: QueryPosition(7),
-                        end_pos: QueryPosition(8)
-                    })
-                }
-            })
-        );
-        expect!(
-            operator,
-            " limit -5",
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(9),
-                value: InlineOperator::Limit {
-                    count: Some(Positioned {
-                        value: -5.0,
-                        start_pos: QueryPosition(7),
-                        end_pos: QueryPosition(9)
-                    }),
-                }
-            })
-        );
-        expect!(
-            operator,
-            " limit 1e2",
-            Operator::Inline(Positioned {
-                start_pos: QueryPosition(1),
-                end_pos: QueryPosition(10),
-                value: InlineOperator::Limit {
-                    count: Some(Positioned {
-                        value: 1e2,
-                        start_pos: QueryPosition(7),
-                        end_pos: QueryPosition(10)
-                    })
-                }
-            })
+        check_query(
+            "one-two-three",
+            expect![[r#"
+            Query {
+                search: And(
+                    [
+                        Keyword(
+                            Keyword(
+                                "one-two-three",
+                                WILDCARD,
+                            ),
+                        ),
+                    ],
+                ),
+                operators: [],
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn parse_agg_operator() {
-        expect!(
-            multi_aggregate_operator,
-            "count as renamed by x, y",
-            Operator::MultiAggregate(MultiAggregateOperator {
-                key_cols: vec![Expr::column("x"), Expr::column("y")],
-                key_col_headers: vec!["x".to_string(), "y".to_string()],
-                aggregate_functions: vec![(
-                    "renamed".to_string(),
-                    Positioned {
-                        value: AggregateFunction::Count { condition: None },
-                        start_pos: QueryPosition(0),
-                        end_pos: QueryPosition(6)
-                    }
-                )],
-            })
-        );
-    }
-
-    #[test]
-    fn parse_percentile() {
-        expect!(
-            complete_agg_function,
-            "p50(x)",
-            (
-                "p50".to_string(),
-                Positioned {
-                    value: AggregateFunction::Percentile {
-                        column: Expr::column("x"),
-                        percentile: 0.5,
-                        percentile_str: "50".to_string(),
-                    },
-                    start_pos: QueryPosition(0),
-                    end_pos: QueryPosition(6),
+    fn parse_func_call() {
+        check_query(
+            "* | parseDate(abc) as foo",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..25,
+                                value: FieldExpression {
+                                    value: FunctionCall {
+                                        name: "parseDate",
+                                        args: [
+                                            Column {
+                                                head: Key(
+                                                    "abc",
+                                                ),
+                                                rest: [],
+                                            },
+                                        ],
+                                    },
+                                    name: "foo",
+                                },
+                            },
+                        ),
+                    ],
                 }
-            )
+            "#]],
+        );
+        check_query(
+            "* | parseDate(abc 123) as foo",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [],
+            }
+            error: unhandled input
+              |
+            1 | * | parseDate(abc 123) as foo
+              |                   ^^^
+              |"#]],
         );
     }
 
     #[test]
-    fn query_no_operators() {
-        expect!(
-            query,
-            " * ",
-            Query {
-                search: Search::And(vec![]),
-                operators: vec![],
-            }
-        );
-        expect!(
-            query,
-            " filter ",
-            Query {
-                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard(
-                    "filter".to_string()
-                ))]),
-                operators: vec![],
-            }
-        );
-        expect!(
-            query,
-            " *abc* ",
-            Query {
-                search: Search::And(vec![Search::Keyword(Keyword::new_wildcard(
-                    "abc".to_string()
-                ))]),
-                operators: vec![],
-            }
-        );
-        expect!(
-            query,
-            " abc def \"*ghi*\" ",
-            Query {
-                search: Search::And(vec![
-                    Search::Keyword(Keyword::new_wildcard("abc".to_string())),
-                    Search::Keyword(Keyword::new_wildcard("def".to_string())),
-                    Search::Keyword(Keyword::new_exact("*ghi*".to_string())),
-                ]),
-                operators: vec![],
-            }
+    fn parse_expr_precedence() {
+        check_query(
+            "* | 2 * 3 + 4 * 5 < 4 / 2 + 1 as val",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..36,
+                                value: FieldExpression {
+                                    value: Binary {
+                                        op: Comparison(
+                                            Lt,
+                                        ),
+                                        left: Binary {
+                                            op: Arithmetic(
+                                                Add,
+                                            ),
+                                            left: Binary {
+                                                op: Arithmetic(
+                                                    Multiply,
+                                                ),
+                                                left: Value(
+                                                    Int(
+                                                        2,
+                                                    ),
+                                                ),
+                                                right: Value(
+                                                    Int(
+                                                        3,
+                                                    ),
+                                                ),
+                                            },
+                                            right: Binary {
+                                                op: Arithmetic(
+                                                    Multiply,
+                                                ),
+                                                left: Value(
+                                                    Int(
+                                                        4,
+                                                    ),
+                                                ),
+                                                right: Value(
+                                                    Int(
+                                                        5,
+                                                    ),
+                                                ),
+                                            },
+                                        },
+                                        right: Binary {
+                                            op: Arithmetic(
+                                                Add,
+                                            ),
+                                            left: Binary {
+                                                op: Arithmetic(
+                                                    Divide,
+                                                ),
+                                                left: Value(
+                                                    Int(
+                                                        4,
+                                                    ),
+                                                ),
+                                                right: Value(
+                                                    Int(
+                                                        2,
+                                                    ),
+                                                ),
+                                            },
+                                            right: Value(
+                                                Int(
+                                                    1,
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                    name: "val",
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
         );
     }
 
     #[test]
     fn complex_filters() {
-        expect!(
-            filter_expr,
+        check_query(
+            " abc def \"*ghi*\" ",
+            expect![[r#"
+            Query {
+                search: And(
+                    [
+                        Keyword(
+                            Keyword(
+                                "abc",
+                                WILDCARD,
+                            ),
+                        ),
+                        Keyword(
+                            Keyword(
+                                "def",
+                                WILDCARD,
+                            ),
+                        ),
+                        Keyword(
+                            Keyword(
+                                "*ghi*",
+                                EXACT,
+                            ),
+                        ),
+                    ],
+                ),
+                operators: [],
+            }
+        "#]],
+        );
+        check_query(
             "(abc AND def) OR xyz",
-            Search::Or(vec![
-                Search::And(vec![
-                    Search::Keyword(Keyword::new_wildcard("abc".to_string())),
-                    Search::Keyword(Keyword::new_wildcard("def".to_string()))
-                ]),
-                Search::Keyword(Keyword::new_wildcard("xyz".to_string()))
-            ])
+            expect![[r#"
+            Query {
+                search: And(
+                    [
+                        Or(
+                            [
+                                And(
+                                    [
+                                        Keyword(
+                                            Keyword(
+                                                "abc",
+                                                WILDCARD,
+                                            ),
+                                        ),
+                                        Keyword(
+                                            Keyword(
+                                                "def",
+                                                WILDCARD,
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                                Keyword(
+                                    Keyword(
+                                        "xyz",
+                                        WILDCARD,
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+                operators: [],
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn invalid_filters() {
-        expect_fail!(query, "abc AND \"");
-        // Would be nice to support this
-        expect_fail!(query, "a OR b OR C");
+    fn parse_limit() {
+        check_query(
+            "* | limit",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..9,
+                            value: Limit {
+                                count: None,
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | limit 5",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..11,
+                            value: Limit {
+                                count: Some(
+                                    Positioned {
+                                        range: 10..11,
+                                        value: 5.0,
+                                    },
+                                ),
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | limit -5",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..12,
+                            value: Limit {
+                                count: Some(
+                                    Positioned {
+                                        range: 10..12,
+                                        value: -5.0,
+                                    },
+                                ),
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | limit 1e2",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..13,
+                            value: Limit {
+                                count: Some(
+                                    Positioned {
+                                        range: 10..13,
+                                        value: 100.0,
+                                    },
+                                ),
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | limit foo",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [],
+            }
+            error: unrecognized option, only the numeric limit can be specified
+              |
+            1 | * | limit foo
+              |           ^^^
+              |"#]],
+        );
+    }
+
+    #[test]
+    fn parse_agg_operator() {
+        check_query(
+            "* | json | count, count_distinct(message) by level",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..8,
+                                value: Json {
+                                    input_column: None,
+                                },
+                            },
+                        ),
+                        MultiAggregate(
+                            MultiAggregateOperator {
+                                key_cols: [
+                                    Column {
+                                        head: Key(
+                                            "level",
+                                        ),
+                                        rest: [],
+                                    },
+                                ],
+                                key_col_headers: [
+                                    "level",
+                                ],
+                                aggregate_functions: [
+                                    (
+                                        "_count",
+                                        Positioned {
+                                            range: 11..16,
+                                            value: Count {
+                                                condition: None,
+                                            },
+                                        },
+                                    ),
+                                    (
+                                        "_countDistinct",
+                                        Positioned {
+                                            range: 18..41,
+                                            value: CountDistinct {
+                                                column: Some(
+                                                    Positioned {
+                                                        range: 32..41,
+                                                        value: [
+                                                            Column {
+                                                                head: Key(
+                                                                    "message",
+                                                                ),
+                                                                rest: [],
+                                                            },
+                                                        ],
+                                                    },
+                                                ),
+                                            },
+                                        },
+                                    ),
+                                ],
+                            },
+                        ),
+                    ],
+                }
+            "#]],
+        );
+        check_query(
+            "* | count as renamed by x, y",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    MultiAggregate(
+                        MultiAggregateOperator {
+                            key_cols: [
+                                Column {
+                                    head: Key(
+                                        "x",
+                                    ),
+                                    rest: [],
+                                },
+                                Column {
+                                    head: Key(
+                                        "y",
+                                    ),
+                                    rest: [],
+                                },
+                            ],
+                            key_col_headers: [
+                                "x",
+                                "y",
+                            ],
+                            aggregate_functions: [
+                                (
+                                    "renamed",
+                                    Positioned {
+                                        range: 4..9,
+                                        value: Count {
+                                            condition: None,
+                                        },
+                                    },
+                                ),
+                            ],
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
     }
 
     #[test]
     fn or_filter() {
-        expect!(
-            filter_expr,
+        check_query(
             "abc OR (def OR xyz)",
-            Search::Or(vec![
-                Search::Keyword(Keyword::new_wildcard("abc".to_string())),
-                Search::Or(vec![
-                    Search::Keyword(Keyword::new_wildcard("def".to_string())),
-                    Search::Keyword(Keyword::new_wildcard("xyz".to_string()))
-                ])
-            ])
+            expect![[r#"
+            Query {
+                search: And(
+                    [
+                        Or(
+                            [
+                                Keyword(
+                                    Keyword(
+                                        "abc",
+                                        WILDCARD,
+                                    ),
+                                ),
+                                Or(
+                                    [
+                                        Keyword(
+                                            Keyword(
+                                                "def",
+                                                WILDCARD,
+                                            ),
+                                        ),
+                                        Keyword(
+                                            Keyword(
+                                                "xyz",
+                                                WILDCARD,
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+                operators: [],
+            }
+        "#]],
         );
     }
 
     #[test]
     fn not_filter() {
-        expect!(
-            filter_not,
+        check_query(
             "NOT abc",
-            Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard(
-                "abc".to_string()
-            ))))
+            expect![[r#"
+            Query {
+                search: And(
+                    [
+                        Not(
+                            Keyword(
+                                Keyword(
+                                    "abc",
+                                    WILDCARD,
+                                ),
+                            ),
+                        ),
+                    ],
+                ),
+                operators: [],
+            }
+        "#]],
         );
-        expect!(
-            filter_expr,
-            "NOT abc",
-            Search::And(vec![Search::Not(Box::new(Search::Keyword(
-                Keyword::new_wildcard("abc".to_string())
-            )))])
-        );
-        expect!(
-            filter_expr,
+        check_query(
             "(error OR warn) AND NOT hide",
-            Search::And(vec![
-                Search::Or(vec![
-                    Search::Keyword(Keyword::new_wildcard("error".to_string())),
-                    Search::Keyword(Keyword::new_wildcard("warn".to_string()))
-                ]),
-                Search::Not(Box::new(Search::Keyword(Keyword::new_wildcard(
-                    "hide".to_string()
-                )))),
-            ])
+            expect![[r#"
+            Query {
+                search: And(
+                    [
+                        And(
+                            [
+                                Or(
+                                    [
+                                        Keyword(
+                                            Keyword(
+                                                "error",
+                                                WILDCARD,
+                                            ),
+                                        ),
+                                        Keyword(
+                                            Keyword(
+                                                "warn",
+                                                WILDCARD,
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                                Not(
+                                    Keyword(
+                                        Keyword(
+                                            "hide",
+                                            WILDCARD,
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+                operators: [],
+            }
+        "#]],
         );
     }
 
     #[test]
-    fn query_operators() {
-        let query_str = r#"* | json from col | parse "!123*" as foo | count by foo, foo == 123 | sort by foo dsc "#;
-        expect!(
-            query,
-            query_str,
-            Query {
-                search: Search::And(vec![]),
-                operators: vec![
-                    Operator::Inline(Positioned {
-                        start_pos: QueryPosition(4),
-                        end_pos: QueryPosition(18),
-                        value: InlineOperator::Json {
-                            input_column: Some(Expr::column("col")),
-                        }
-                    }),
-                    Operator::Inline(Positioned {
-                        start_pos: QueryPosition(20),
-                        end_pos: QueryPosition(41),
-                        value: InlineOperator::Parse {
-                            pattern: Keyword::new_wildcard("!123*".to_string()),
-                            fields: vec!["foo".to_string()],
-                            input_column: (None, None),
-                            no_drop: false
-                        }
-                    }),
-                    Operator::MultiAggregate(MultiAggregateOperator {
-                        key_col_headers: vec!["foo".to_string(), "foo == 123".to_string()],
-                        key_cols: vec![
-                            Expr::column("foo"),
-                            Expr::Binary {
-                                op: BinaryOp::Comparison(ComparisonOp::Eq),
-                                left: Box::new(Expr::column("foo")),
-                                right: Box::new(Expr::Value(data::Value::Int(123))),
-                            },
-                        ],
-                        aggregate_functions: vec![(
-                            "_count".to_string(),
-                            Positioned {
-                                value: AggregateFunction::Count { condition: None },
-                                start_pos: QueryPosition(43),
-                                end_pos: QueryPosition(49),
-                            }
-                        ),],
-                    }),
-                    Operator::Sort(SortOperator {
-                        sort_cols: vec![Expr::column("foo")],
-                        direction: SortMode::Descending,
-                    }),
-                ],
-            }
+    fn unterminated() {
+        check_query(
+            "* | (abc",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: unterminated parenthesized expression
+                  |
+                1 | * | (abc
+                  |     ^^^^ unterminated parenthesized expression
+                  |
+                  = help: Insert a right parenthesis to terminate this expression"#]],
+        );
+
+        check_query(
+            "* | parseDate(abc) | bar",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: Expected an operator
+                  |
+                1 | * | parseDate(abc) | bar
+                  |     ^^^^^^^^^
+                  |
+                  = help: parseDate is not a valid operator"#]],
+        );
+        check_query(
+            "* | where 'abc",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: unterminated single quoted string
+                  |
+                1 | * | where 'abc
+                  |           ^^^^
+                  |
+                  = help: Insert a single quote (') to terminate this string"#]],
+        );
+    }
+
+    #[test]
+    fn split_operator() {
+        check_query(
+            "* | split(abc) on , as foo",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: expecting a quoted string
+                  |
+                1 | * | split(abc) on , as foo
+                  |                   ^
+                  |
+                  = help: Enclose the text in a single or double-quoted string"#]],
         );
     }
 
     #[test]
     fn logfmt_operator() {
-        let query_str = r#"* | logfmt from col | sort by foo dsc "#;
-        expect!(
-            query,
-            query_str,
+        check_query(
+            r#"* | logfmt from col | sort by foo dsc "#,
+            expect![[r#"
             Query {
-                search: Search::And(vec![]),
-                operators: vec![
-                    Operator::Inline(Positioned {
-                        start_pos: QueryPosition(4),
-                        end_pos: QueryPosition(20),
-                        value: InlineOperator::Logfmt {
-                            input_column: Some(Expr::column("col")),
-                        }
-                    }),
-                    Operator::Sort(SortOperator {
-                        sort_cols: vec![Expr::column("foo")],
-                        direction: SortMode::Descending,
-                    }),
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..19,
+                            value: Logfmt {
+                                input_column: Some(
+                                    Column {
+                                        head: Key(
+                                            "col",
+                                        ),
+                                        rest: [],
+                                    },
+                                ),
+                            },
+                        },
+                    ),
+                    Sort(
+                        SortOperator {
+                            sort_cols: [
+                                Column {
+                                    head: Key(
+                                        "foo",
+                                    ),
+                                    rest: [],
+                                },
+                            ],
+                            direction: Descending,
+                        },
+                    ),
                 ],
             }
+        "#]],
         );
     }
 }

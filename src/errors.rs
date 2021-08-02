@@ -1,19 +1,18 @@
-use crate::lang::{
-    query, Positioned, Query, QueryPosition, Span, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS,
-};
+use crate::lang::{query, Positioned, Query, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS};
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use failure::Fail;
-use nom::types::CompleteStr;
-use nom::ErrorKind;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::convert::From;
+use std::ops::Range;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use strsim::normalized_levenshtein;
 
 /// Container for the query string that can be used to parse and report errors.
-pub struct QueryContainer {
-    query: String,
-    reporter: Box<dyn ErrorReporter>,
+pub struct QueryContainer<'a> {
+    pub query: String,
+    pub reporter: Box<dyn ErrorReporter + 'a>,
+    pub error_count: AtomicUsize,
 }
 
 /// Common syntax errors.
@@ -49,74 +48,30 @@ pub enum SyntaxErrors {
 pub trait ErrorBuilder {
     /// Create a SnippetBuilder for the given error
     fn report_error_for<E: ToString>(&self, error: E) -> SnippetBuilder;
+
+    fn get_error_count(&self) -> usize;
 }
 
-impl QueryContainer {
-    pub fn new(query: String, reporter: Box<dyn ErrorReporter>) -> QueryContainer {
-        QueryContainer { query, reporter }
+impl<'a> QueryContainer<'a> {
+    pub fn new(query: String, reporter: Box<dyn ErrorReporter + 'a>) -> QueryContainer<'a> {
+        QueryContainer {
+            query,
+            reporter,
+            error_count: AtomicUsize::new(0),
+        }
     }
 
     /// Parse the contained query string.
-    pub fn parse(&self) -> Result<Query, QueryPosition> {
-        let parse_result = query(Span::new(CompleteStr(&self.query)));
-
-        let errors = match parse_result {
-            Err(nom::Err::Failure(nom::Context::List(ref list))) => Some(list),
-            Err(nom::Err::Error(nom::Context::List(ref list))) => Some(list),
-            _ => None,
-        };
-        if let Some(ref list) = errors {
-            // Check for an error from a delimited!() parser.  The error list will contain
-            // the location of the start as the last item and the location of the end as the
-            // penultimate item.
-            let last_chunk = list.rchunks_exact(2).next().map(|p| (&p[0], &p[1]));
-
-            match last_chunk {
-                Some((
-                    (ref end_span, ErrorKind::Custom(ref delim_error)),
-                    (ref start_span, ErrorKind::Custom(SyntaxErrors::StartOfError)),
-                )) => {
-                    self.report_error_for(delim_error)
-                        .with_code_range((*start_span).into(), (*end_span).into(), "")
-                        .with_resolutions(
-                            delim_error
-                                .to_resolution(&(&self.query)[start_span.offset..end_span.offset]),
-                        )
-                        .send_report();
-                }
-                _ => {
-                    list.iter().for_each(|(span, error)| match error {
-                        ErrorKind::Custom(ref custom_error) => self
-                            .report_error_for(custom_error)
-                            .with_code_range(
-                                QueryPosition(span.offset),
-                                QueryPosition(span.offset + span.fragment.len()),
-                                "",
-                            )
-                            .with_resolutions(custom_error.to_resolution(
-                                &(&self.query)[span.offset..span.offset + span.fragment.len()],
-                            ))
-                            .send_report(),
-                        _other => (),
-                    });
-                }
-            }
-        };
-
-        // Return the parsed value or the last position of valid syntax
-        parse_result.map(|x| x.1).map_err(|e| match e {
-            nom::Err::Incomplete(_) => QueryPosition(0),
-            nom::Err::Error(context) | nom::Err::Failure(context) => match context {
-                nom::Context::Code(span, _) => span.into(),
-                nom::Context::List(list) => list.first().unwrap().0.into(),
-            },
-        })
+    pub fn parse(&self) -> Result<Query, ()> {
+        query(self)
     }
 }
 
-impl ErrorBuilder for QueryContainer {
+impl<'a> ErrorBuilder for QueryContainer<'a> {
     /// Create a SnippetBuilder for the given error
     fn report_error_for<E: ToString>(&self, error: E) -> SnippetBuilder {
+        self.error_count.fetch_add(1, Ordering::Relaxed);
+
         SnippetBuilder {
             query: self,
             data: SnippetData {
@@ -126,9 +81,13 @@ impl ErrorBuilder for QueryContainer {
             },
         }
     }
+
+    fn get_error_count(&self) -> usize {
+        self.error_count.load(Ordering::Relaxed)
+    }
 }
 
-fn did_you_mean(input: &str, choices: &[&str]) -> Option<String> {
+pub fn did_you_mean(input: &str, choices: &[&str]) -> Option<String> {
     let similarities = choices
         .iter()
         .map(|choice| (choice, normalized_levenshtein(choice, input)));
@@ -201,12 +160,6 @@ impl From<u32> for SyntaxErrors {
     }
 }
 
-impl From<SyntaxErrors> for ErrorKind {
-    fn from(e: SyntaxErrors) -> Self {
-        ErrorKind::Custom(e as u32)
-    }
-}
-
 /// Callback for handling error Snippets.
 pub trait ErrorReporter {
     fn handle_error(&self, _snippet: Snippet) {}
@@ -223,7 +176,7 @@ pub struct SnippetData {
 
 #[must_use = "the send_report() method must eventually be called for this builder"]
 pub struct SnippetBuilder<'a> {
-    query: &'a QueryContainer,
+    query: &'a QueryContainer<'a>,
     data: SnippetData,
 }
 
@@ -233,21 +186,16 @@ impl<'a> SnippetBuilder<'a> {
     pub fn with_code_pointer<T, S: ToString>(mut self, pos: &Positioned<T>, label: S) -> Self {
         self.data
             .annotations
-            .push(((pos.start_pos.0, pos.end_pos.0), label.to_string()));
+            .push(((pos.range.start, pos.range.end), label.to_string()));
         self
     }
 
     /// Adds an annotation to a portion of the query string.  The given position will be
     /// highlighted with the accompanying label.
-    pub fn with_code_range<S: ToString>(
-        mut self,
-        start_pos: QueryPosition,
-        end_pos: QueryPosition,
-        label: S,
-    ) -> Self {
+    pub fn with_code_range<S: ToString>(mut self, range: Range<usize>, label: S) -> Self {
         self.data
             .annotations
-            .push(((start_pos.0, end_pos.0), label.to_string()));
+            .push(((range.start, range.end), label.to_string()));
         self
     }
 
@@ -264,25 +212,25 @@ impl<'a> SnippetBuilder<'a> {
     }
 
     /// Build and send the Snippet to the ErrorReporter in the QueryContainer.
-    pub fn send_report(mut self) {
+    pub fn send_report(self) {
         self.query.reporter.handle_error(Snippet {
             title: Some(Annotation {
-                label: Some(self.data.error),
+                label: Some(self.data.error.as_str()),
                 id: None,
                 annotation_type: AnnotationType::Error,
             }),
             slices: vec![Slice {
-                source: self.data.source,
+                source: self.data.source.as_str(),
                 line_start: 1,
                 origin: None,
                 fold: false,
                 annotations: self
                     .data
                     .annotations
-                    .drain(..)
-                    .map(move |anno| SourceAnnotation {
+                    .iter()
+                    .map(|anno| SourceAnnotation {
                         range: anno.0,
-                        label: anno.1,
+                        label: anno.1.as_str(),
                         annotation_type: AnnotationType::Error,
                     })
                     .collect(),
@@ -292,11 +240,12 @@ impl<'a> SnippetBuilder<'a> {
                 .resolution
                 .iter()
                 .map(|res| Annotation {
-                    label: Some(res.to_string()),
+                    label: Some(res),
                     id: None,
                     annotation_type: AnnotationType::Help,
                 })
                 .collect(),
+            opt: Default::default(),
         });
     }
 }

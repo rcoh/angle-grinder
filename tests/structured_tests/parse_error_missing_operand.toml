@@ -8,7 +8,7 @@ error = """
 error: expecting an operand for binary operator
   |
 1 | * | where response_ms *
-  |                       ^
+  |                         dangling binary operator
   |
   = help: Add the operand or delete the operator
 Error: Failed to parse query

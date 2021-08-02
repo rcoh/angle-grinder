@@ -8,7 +8,7 @@ error = """
 error: Two `from` clauses were provided
   |
 1 | * | json | parse "a * b" from col as x from col
-  |                          ^^^^^^^^^
+  |                          ^^^^^^^^
   |                                        ^^^^^^^^
   |
   = help: Only one from clause is allowed
