@@ -5,3 +5,5 @@ input = """
 output = """
 [contentlength=2326]                 [ip=127.0.0.1]        [method=GET]           [name=frank]        [protocol=HTTP/1.0]        [status=200]           [timestamp=10/Oct/2000:13:55:36 -0700]        [url=/apache_pb.gif]
 """
+
+enabled = false

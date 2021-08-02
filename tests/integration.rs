@@ -12,6 +12,7 @@ struct TestDefinition {
     error: Option<String>,
     notes: Option<String>,
     succeeds: Option<bool>,
+    enabled: Option<bool>,
 }
 
 #[cfg(test)]
@@ -46,6 +47,11 @@ mod integration {
         let contents = fs::read_to_string(path).unwrap();
         let conf: TestDefinition = toml::from_str(&contents).unwrap();
         let err = conf.error.unwrap_or("".to_string());
+
+        if !conf.enabled.unwrap_or(true) {
+            return;
+        }
+
         let asserter = run()
             .env("RUST_BACKTRACE", "0")
             .write_stdin(conf.input)
