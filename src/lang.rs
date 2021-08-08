@@ -357,7 +357,7 @@ where
 
 /// Combinator that expects some optional whitespace followed by the vertical bar or EOF.  If that
 /// input is not found, the error message is logged.
-fn expect_bar<'a, M>(
+fn expect_pipe<'a, M>(
     error_msg: M,
 ) -> impl FnMut(Span<'a>) -> IResult<Span, Option<(Span<'a>, Span<'a>)>>
 where
@@ -1075,7 +1075,7 @@ fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
             no_drop,
         }),
     )
-    .terminated(expect_bar(
+    .terminated(expect_pipe(
         "unrecognized option, only the 'from' and 'nodrop' options are available",
     ))
     .parse(input)
@@ -1158,7 +1158,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     let json = with_pos(
         oper_0_args("json")
             .precedes(kw_expr("from", "a JSON-encoded string"))
-            .terminated(expect_bar(
+            .terminated(expect_pipe(
                 "unrecognized option, only the 'from' option is available",
             ))
             .map(|input_column| InlineOperator::Json { input_column }),
@@ -1166,7 +1166,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     let limit = with_pos(
         oper_0_args("limit")
             .precedes(opt(with_pos(double).preceded_by(multispace1)))
-            .terminated(expect_bar(
+            .terminated(expect_pipe(
                 "unrecognized option, only the numeric limit can be specified",
             ))
             .map(|count| InlineOperator::Limit { count }),
@@ -1174,7 +1174,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     let logfmt = with_pos(
         oper_0_args("logfmt")
             .precedes(kw_expr("from", "a logfmt-serialized string"))
-            .terminated(expect_bar(
+            .terminated(expect_pipe(
                 "unrecognized option, only the 'from' option is available",
             ))
             .map(|input_column| InlineOperator::Logfmt { input_column }),
@@ -1188,7 +1188,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
                     .precedes(req_quoted_string)),
                 opt(tag("as").delimited_by(multispace1).precedes(expr)),
             )))
-            .terminated(expect_bar(
+            .terminated(expect_pipe(
                 "unrecognized option, only the 'on' and 'as' options are available",
             ))
             .map(|(e, o, a)| InlineOperator::Split {
@@ -1203,7 +1203,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
             opt(duration.preceded_by(multispace1)),
             opt(tag("as").delimited_by(multispace1).precedes(ident)),
         ))
-        .terminated(expect_bar(
+        .terminated(expect_pipe(
             "unrecognized option, only the 'as' option is available",
         ))
         .map(
@@ -1221,7 +1221,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
                 opt(tag("as").delimited_by(multispace1).precedes(req_ident))
                     .map(|i| i.unwrap_or_else(|| "_total".to_string())),
             )
-            .terminated(expect_bar(
+            .terminated(expect_pipe(
                 "unrecognized option, only the 'as' option is available",
             ))
             .map(|(input_column, output_column)| InlineOperator::Total {
@@ -1232,7 +1232,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     let wher = with_pos(
         tag("where")
             .precedes(opt(delimited(multispace1, with_pos(expr), multispace0)))
-            .terminated(expect_bar(
+            .terminated(expect_pipe(
                 "unrecognized option, only the condition can be specified",
             ))
             .map(|expr| InlineOperator::Where { expr }),
