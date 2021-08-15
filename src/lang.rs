@@ -1827,7 +1827,9 @@ mod tests {
 
     #[test]
     fn parse_expr() {
-        check_query("* | where foo *  ", expect![[r#"
+        check_query(
+            "* | where foo *  ",
+            expect![[r#"
             Query {
                 search: And(
                     [],
@@ -1839,7 +1841,8 @@ mod tests {
             1 | * | where foo *  
               |               ^ dangling binary operator
               |
-              = help: Add the operand or delete the operator"#]]);
+              = help: Add the operand or delete the operator"#]],
+        );
     }
 
     #[test]
