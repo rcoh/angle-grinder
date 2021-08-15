@@ -1,9 +1,7 @@
-use crate::lang::{query, Positioned, Query, VALID_AGGREGATES, VALID_INLINE, VALID_OPERATORS};
+use crate::lang::{query, Positioned, Query};
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
-use failure::Fail;
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
-use std::convert::From;
+use atty::Stream;
+use std::env;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use strsim::normalized_levenshtein;
@@ -13,35 +11,6 @@ pub struct QueryContainer<'a> {
     pub query: String,
     pub reporter: Box<dyn ErrorReporter + 'a>,
     pub error_count: AtomicUsize,
-}
-
-/// Common syntax errors.
-#[derive(PartialEq, Debug, FromPrimitive, Fail, Clone)]
-pub enum SyntaxErrors {
-    #[fail(display = "")]
-    StartOfError,
-    #[fail(display = "unterminated single quoted string")]
-    UnterminatedSingleQuotedString,
-    #[fail(display = "unterminated double quoted string")]
-    UnterminatedDoubleQuotedString,
-    #[fail(display = "expecting an operand for binary operator")]
-    MissingOperand,
-    #[fail(display = "expecting a name for the field")]
-    MissingName,
-    #[fail(display = "expecting close parentheses")]
-    MissingParen,
-
-    #[fail(display = "Expected an operator")]
-    NotAnOperator,
-
-    #[fail(display = "Not an aggregate operator")]
-    NotAnAggregateOperator,
-
-    #[fail(display = "Invalid filter")]
-    InvalidFilter,
-
-    #[fail(display = "Invalid boolean expression")]
-    InvalidBooleanExpression,
 }
 
 /// Trait that can be used to report errors by the parser and other layers.
@@ -99,70 +68,21 @@ pub fn did_you_mean(input: &str, choices: &[&str]) -> Option<String> {
         .next()
 }
 
-impl SyntaxErrors {
-    pub fn to_resolution(&self, code_fragment: &str) -> Vec<String> {
-        match self {
-            SyntaxErrors::InvalidFilter => vec!["Filter was invalid".to_string()],
-            SyntaxErrors::StartOfError => Vec::new(),
-            SyntaxErrors::NotAnOperator => {
-                let mut res = vec![format!("{} is not a valid operator", code_fragment)];
-                if let Some(choice) = did_you_mean(code_fragment, &VALID_OPERATORS) {
-                    res.push(format!("Did you mean \"{}\"?", choice));
-                }
-                res
-            }
-            SyntaxErrors::NotAnAggregateOperator => {
-                let mut res = vec![format!(
-                    "{} is not a valid aggregate operator",
-                    code_fragment
-                )];
-                if let Some(choice) = did_you_mean(code_fragment, &VALID_AGGREGATES) {
-                    res.push(format!("Did you mean \"{}\"?", choice));
-                }
-                if VALID_INLINE.contains(&code_fragment) {
-                    res.push(format!("{} is an inline operator, but only aggregate operators (count, average, etc.) are valid here", code_fragment))
-                }
-                res
-            }
-
-            SyntaxErrors::UnterminatedSingleQuotedString => {
-                vec!["Insert a single quote (') to terminate this string".to_string()]
-            }
-            SyntaxErrors::UnterminatedDoubleQuotedString => {
-                vec!["Insert a double quote (\") to terminate this string".to_string()]
-            }
-            SyntaxErrors::MissingParen => {
-                vec!["Insert a right parenthesis to terminate this expression".to_string()]
-            }
-            SyntaxErrors::MissingOperand => {
-                vec!["Add the operand or delete the operator".to_string()]
-            }
-            SyntaxErrors::MissingName => vec!["Give the value a name".to_string()],
-            SyntaxErrors::InvalidBooleanExpression => {
-                let mut base = vec![format!(
-                    "The boolean expression {} is invalid",
-                    code_fragment
-                )];
-                if code_fragment.contains("and") || code_fragment.contains("or") {
-                    base.push("AND and OR must be in UPPER CASE".to_string());
-                }
-                base
-            }
-        }
-    }
-}
-
-/// Converts the ordinal from the nom error object back into a SyntaxError.
-impl From<u32> for SyntaxErrors {
-    fn from(ord: u32) -> Self {
-        // The FromPrimitive trait derived for this enum allows from_u32() to work.
-        SyntaxErrors::from_u32(ord).unwrap()
-    }
-}
-
 /// Callback for handling error Snippets.
 pub trait ErrorReporter {
     fn handle_error(&self, _snippet: Snippet) {}
+}
+
+/// An ErrorReporter that writes errors related to the query string to the terminal
+pub struct TermErrorReporter {}
+
+impl ErrorReporter for TermErrorReporter {
+    fn handle_error(&self, mut snippet: Snippet) {
+        snippet.opt.color = env::var("NO_COLOR").is_err() && atty::is(Stream::Stderr);
+        let dl = annotate_snippets::display_list::DisplayList::from(snippet);
+
+        eprintln!("{}", dl);
+    }
 }
 
 /// Container for data that will be used to construct a Snippet
@@ -205,12 +125,6 @@ impl<'a> SnippetBuilder<'a> {
         self
     }
 
-    /// Add a message to help the user resolve the error.
-    pub fn with_resolutions<T: IntoIterator<Item = String>>(mut self, resolutions: T) -> Self {
-        self.data.resolution.extend(resolutions.into_iter());
-        self
-    }
-
     /// Build and send the Snippet to the ErrorReporter in the QueryContainer.
     pub fn send_report(self) {
         self.query.reporter.handle_error(Snippet {
@@ -247,32 +161,5 @@ impl<'a> SnippetBuilder<'a> {
                 .collect(),
             opt: Default::default(),
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn did_you_mean() {
-        assert_eq!(
-            SyntaxErrors::NotAnAggregateOperator.to_resolution("cont"),
-            vec![
-                "cont is not a valid aggregate operator",
-                "Did you mean \"count\"?"
-            ]
-        );
-        assert_eq!(
-            SyntaxErrors::NotAnOperator.to_resolution("cont"),
-            vec!["cont is not a valid operator", "Did you mean \"count\"?"]
-        );
-        assert_eq!(
-            SyntaxErrors::NotAnAggregateOperator.to_resolution("parse"),
-            vec![
-                "parse is not a valid aggregate operator",
-                "parse is an inline operator, but only aggregate operators (count, average, etc.) are valid here"
-            ]
-        );
     }
 }

@@ -14,7 +14,7 @@ mod typecheck;
 
 pub mod pipeline {
     use crate::data::{DisplayConfig, Record, Row};
-    pub use crate::errors::{ErrorReporter, QueryContainer};
+    pub use crate::errors::{ErrorReporter, QueryContainer, TermErrorReporter};
     use crate::filter;
     use crate::lang::*;
     use crate::operator;
@@ -23,7 +23,7 @@ pub mod pipeline {
     use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
-    use failure::{bail, Fail};
+    use failure::Fail;
     use std::collections::VecDeque;
     use std::io::{BufRead, Write};
     use std::thread;
@@ -131,7 +131,12 @@ pub mod pipeline {
             while let Some(op) = op_deque.pop_front() {
                 match op {
                     Operator::Error => {}
-                    Operator::RenderedAlias(rendered_alias) => {}
+                    Operator::RenderedAlias(rendered_alias) => {
+                        rendered_alias
+                            .into_iter()
+                            .rev()
+                            .for_each(|op| op_deque.push_front(op));
+                    }
                     Operator::Inline(inline_op) => {
                         let op_builder = inline_op.type_check(pipeline)?;
 

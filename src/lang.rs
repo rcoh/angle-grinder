@@ -1,4 +1,3 @@
-use std::convert::From;
 use std::fmt::Debug;
 use std::ops::Range;
 use std::str;
@@ -26,7 +25,7 @@ use nom_supreme::error::ErrorTree;
 use nom_supreme::parser_ext::ParserExt;
 use nom_supreme::tag::complete::tag;
 
-use crate::alias::{self, AliasConfig};
+use crate::alias::{self, AliasPipeline};
 use crate::data;
 use crate::errors::{ErrorBuilder, QueryContainer};
 
@@ -302,7 +301,7 @@ where
 
 /// A version of the `delimited()` combinator() that calls an error-handling function when the
 /// terminator parser fails.
-pub fn delimited2<'a, O1, O2, O3, F, G, H, EF>(
+pub fn expect_delimited<'a, O1, O2, O3, F, G, H, EF>(
     mut first: F,
     mut second: G,
     mut third: H,
@@ -412,7 +411,7 @@ impl Keyword {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Search {
     And(Vec<Search>),
     Or(Vec<Search>),
@@ -421,13 +420,6 @@ pub enum Search {
 }
 
 impl Search {
-    fn no_op(&self) -> bool {
-        match self {
-            Search::Keyword(Keyword(k, _)) => k.is_empty(),
-            _ => false,
-        }
-    }
-
     pub fn from_quoted_input(s: String) -> Option<Self> {
         if s.is_empty() {
             None
@@ -447,9 +439,9 @@ impl Search {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
-    RenderedAlias(Positioned<String>),
+    RenderedAlias(Vec<Operator>),
     Inline(Positioned<InlineOperator>),
     MultiAggregate(MultiAggregateOperator),
     Sort(SortOperator),
@@ -508,13 +500,13 @@ pub enum FieldMode {
     Except,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SortMode {
     Ascending,
     Descending,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum AggregateFunction {
     Count {
         condition: Option<Expr>,
@@ -555,20 +547,20 @@ impl AggregateFunction {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MultiAggregateOperator {
     pub key_cols: Vec<Expr>,
     pub key_col_headers: Vec<String>,
     pub aggregate_functions: Vec<(String, Positioned<AggregateFunction>)>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SortOperator {
     pub sort_cols: Vec<Expr>,
     pub direction: SortMode,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Query {
     pub search: Search,
     pub operators: Vec<Operator>,
@@ -584,7 +576,7 @@ fn addsub_op(input: Span) -> IResult<Span, ArithmeticOp> {
 
 /// Parses an argument list for a function
 fn arg_list(input: Span) -> IResult<Span, Vec<Expr>> {
-    delimited2(
+    expect_delimited(
         tag("(").and(multispace0),
         separated_list0(tag(","), delimited(multispace0, opt_expr, multispace0)),
         tag(")"),
@@ -599,9 +591,9 @@ fn arg_list(input: Span) -> IResult<Span, Vec<Expr>> {
 }
 
 /// Parses a, potentially optional, argument list for a function that has a single parameter
-fn arg1(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Expr> {
+fn single_arg(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Expr> {
     move |input: Span| {
-        delimited2(
+        expect_delimited(
             tag("(").and(multispace0),
             expect_fn(opt_expr, |qc, r| {
                 qc.report_error_for("this operator takes 1 argument, but 0 were supplied")
@@ -622,10 +614,10 @@ fn arg1(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Exp
     }
 }
 
-/// A version of the arg1 parser that logs an error if no argument list was provided
-fn req_arg1(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Expr> {
+/// A version of the single_arg parser that logs an error if no argument list was provided
+fn req_single_arg(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Expr> {
     move |input: Span| {
-        expect_fn(arg1(description), |qc, r| {
+        expect_fn(single_arg(description), |qc, r| {
             qc.report_error_for(format!(
                 "expecting a parenthesized argument that supplies {}",
                 description
@@ -642,25 +634,27 @@ fn req_arg1(description: &'static str) -> impl Clone + Fn(Span) -> IResult<Span,
 fn kw_expr(
     keyword: &'static str,
     description: &'static str,
-) -> impl Clone + Fn(Span) -> IResult<Span, Option<Expr>> {
+) -> impl Fn(Span) -> IResult<Span, Option<Expr>> {
     move |input: Span| {
         let res = opt(tag(keyword).preceded_by(multispace1)).parse(input)?;
 
         match res {
             (input, None) => Ok((input, None)),
-            (input, Some(keyword_span)) => expect_fn(opt_expr.preceded_by(multispace1), |qc, r| {
-                qc.report_error_for(format!(
-                    "expecting an expression that supplies {}",
-                    description
-                ))
-                .with_code_range(
-                    keyword_span.to_range(),
-                    "should be followed by an expression",
-                )
-                .send_report();
-            })
-            .map(|e| e.map(|e| Some(e)).unwrap_or(Some(Expr::Error)))
-            .parse(input),
+            (input, Some(keyword_span)) => {
+                expect_fn(opt_expr.preceded_by(multispace1), |qc, _r| {
+                    qc.report_error_for(format!(
+                        "expecting an expression that supplies {}",
+                        description
+                    ))
+                    .with_code_range(
+                        keyword_span.to_range(),
+                        "should be followed by an expression",
+                    )
+                    .send_report();
+                })
+                .map(|e| e.map(|e| Some(e)).unwrap_or(Some(Expr::Error)))
+                .parse(input)
+            }
         }
     }
 }
@@ -749,7 +743,7 @@ fn low_filter(input: Span) -> IResult<Span, Option<Search>> {
     alt((
         filter_not,
         filter_atom,
-        delimited2(tag("("), high_filter, tag(")"), |qc, r| {
+        expect_delimited(tag("("), high_filter, tag(")"), |qc, r| {
             qc.report_error_for("unterminated parenthesized filter")
                 .with_code_range(r, "unterminated parenthesized filter")
                 .with_resolution("Insert a right parenthesis to terminate this filter")
@@ -852,7 +846,7 @@ fn bare_ident(input: Span) -> IResult<Span, String> {
 }
 
 fn escaped_ident(input: Span) -> IResult<Span, String> {
-    delimited2(tag("["), quoted_string, tag("]"), |qc, r| {
+    expect_delimited(tag("["), quoted_string, tag("]"), |qc, r| {
         qc.report_error_for("unterminated identifier")
             .with_code_range(r, "")
             .with_resolution("Insert a closing square bracket")
@@ -865,7 +859,7 @@ fn atomic(input: Span) -> IResult<Span, Expr> {
     let num = digit1.map(|s: Span| data::Value::from_string(*s.fragment()));
     let quoted_string_value = quoted_string.map(|s| data::Value::Str(s));
     let value = alt((quoted_string_value, num)).map(|v| Expr::Value(v));
-    let parens = delimited2(tag("("), expr, tag(")"), |qc, r| {
+    let parens = expect_delimited(tag("("), expr, tag(")"), |qc, r| {
         qc.report_error_for("unterminated parenthesized expression")
             .with_code_range(r, "unterminated parenthesized expression")
             .with_resolution("Insert a right parenthesis to terminate this expression")
@@ -918,17 +912,21 @@ fn muldiv_op(input: Span) -> IResult<Span, ArithmeticOp> {
 
 fn term(input: Span) -> IResult<Span, Expr> {
     let (input, init) = unary(input)?;
+    let qc = &input.extra;
 
-    fold_many0(
-        pair(
-            muldiv_op.delimited_by(multispace0),
-            expect_fn(unary, |qc, r| {
-                qc.report_error_for("expecting an operand for binary operator")
-                    .with_code_range(r, "dangling binary operator")
-                    .with_resolution("Add the operand or delete the operator")
-                    .send_report()
-            })
-            .map(|e| e.unwrap_or(Expr::Error)),
+    let retval = fold_many0(
+        pair(with_pos(muldiv_op).delimited_by(multispace0), opt(unary)).map(
+            |(pos_op, opt_right)| {
+                if let Some(right) = opt_right {
+                    (pos_op.value, right)
+                } else {
+                    qc.report_error_for("expecting an operand for binary operator")
+                        .with_code_range(pos_op.range, "dangling binary operator")
+                        .with_resolution("Add the operand or delete the operator")
+                        .send_report();
+                    (pos_op.value, Expr::Error)
+                }
+            },
         ),
         init,
         |left, (op, right)| Expr::Binary {
@@ -936,7 +934,9 @@ fn term(input: Span) -> IResult<Span, Expr> {
             op: BinaryOp::Arithmetic(op),
             right: Box::new(right),
         },
-    )(input)
+    )(input);
+
+    retval
 }
 
 fn arith_expr(input: Span) -> IResult<Span, Expr> {
@@ -1016,7 +1016,7 @@ fn req_ident(input: Span) -> IResult<Span, String> {
 fn quoted_string(input: Span) -> IResult<Span, String> {
     let sq_esc = escaped(none_of("\\\'"), '\\', tag("'"));
     let sq_esc_or_empty = alt((sq_esc, tag("")));
-    let single_quoted = delimited2(tag("'"), sq_esc_or_empty, tag("'"), |qc, r| {
+    let single_quoted = expect_delimited(tag("'"), sq_esc_or_empty, tag("'"), |qc, r| {
         qc.report_error_for("unterminated single quoted string")
             .with_code_range(r, "")
             .with_resolution("Insert a single quote (') to terminate this string")
@@ -1025,7 +1025,7 @@ fn quoted_string(input: Span) -> IResult<Span, String> {
 
     let dq_esc = escaped(none_of("\\\""), '\\', tag("\""));
     let dq_esc_or_empty = alt((dq_esc, tag("")));
-    let double_quoted = delimited2(tag("\""), dq_esc_or_empty, tag("\""), |qc, r| {
+    let double_quoted = expect_delimited(tag("\""), dq_esc_or_empty, tag("\""), |qc, r| {
         qc.report_error_for("unterminated double quoted string")
             .with_code_range(r, "")
             .with_resolution("Insert a double quote (\") to terminate this string")
@@ -1182,7 +1182,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     let split = with_pos(
         tag("split")
             .precedes(tuple((
-                opt(arg1("the string to split")),
+                opt(single_arg("the string to split")),
                 opt(tag("on")
                     .delimited_by(multispace1)
                     .precedes(req_quoted_string)),
@@ -1199,7 +1199,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     );
     let timeslice = with_pos(
         tuple((
-            tag("timeslice").precedes(req_arg1("the date-time value for the log message")),
+            tag("timeslice").precedes(req_single_arg("the date-time value for the log message")),
             opt(duration.preceded_by(multispace1)),
             opt(tag("as").delimited_by(multispace1).precedes(ident)),
         ))
@@ -1216,7 +1216,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     );
     let total = with_pos(
         tag("total")
-            .precedes(req_arg1("the value to sum"))
+            .precedes(req_single_arg("the value to sum"))
             .and(
                 opt(tag("as").delimited_by(multispace1).precedes(req_ident))
                     .map(|i| i.unwrap_or_else(|| "_total".to_string())),
@@ -1240,7 +1240,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
 
     let count = with_pos(
         tag("count")
-            .precedes(opt(arg1("the value to count")))
+            .precedes(opt(single_arg("the value to count")))
             .map(|condition| AggregateFunction::Count { condition }),
     );
     let count_distinct = with_pos(
@@ -1250,23 +1250,23 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     );
     let min = with_pos(
         tag("min")
-            .precedes(req_arg1("the numeric value to find the minimum of"))
+            .precedes(req_single_arg("the numeric value to find the minimum of"))
             .map(|column| AggregateFunction::Min { column }),
     );
     let max = with_pos(
         tag("max")
-            .precedes(req_arg1("the numeric value to find the maximum of"))
+            .precedes(req_single_arg("the numeric value to find the maximum of"))
             .map(|column| AggregateFunction::Max { column }),
     );
     let sum = with_pos(
         tag("sum")
-            .precedes(req_arg1("the numeric value to find the sum of"))
+            .precedes(req_single_arg("the numeric value to find the sum of"))
             .map(|column| AggregateFunction::Sum { column }),
     );
     let pct = with_pos(
         alt((tag("pct"), tag("percentile"), tag("p")))
             .precedes(digit1)
-            .and(req_arg1("the value to compute the percentile"))
+            .and(req_single_arg("the value to compute the percentile"))
             .map(|(pct, column)| AggregateFunction::Percentile {
                 column,
                 percentile: format!(".{}", pct).parse::<f64>().unwrap(),
@@ -1276,7 +1276,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     let avg = with_pos(
         tag("avg")
             .or(tag("average"))
-            .precedes(req_arg1("the numeric value to find the average of"))
+            .precedes(req_single_arg("the numeric value to find the average of"))
             .map(|column| AggregateFunction::Average { column }),
     );
 
@@ -1311,6 +1311,11 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
             .map(|(value, name)| InlineOperator::FieldExpression { value, name }),
     )
     .map(Operator::Inline);
+
+    let alias = recognize(ident).map_res(|span| {
+        AliasPipeline::matching_string(span.fragment())
+            .map(|pipe| Operator::RenderedAlias(pipe.render()))
+    });
 
     let unknown_op = recognize(ident).terminated(opt(arg_list));
 
@@ -1373,21 +1378,31 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
         multi_agg_opers,
         sort,
         field_expr,
+        alias,
         skip_to_sync,
         did_you_mean,
         garbage,
     ));
 
-    opt(tag("|").precedes(separated_list1(tag("|"), opers.delimited_by(multispace0))))
-        .map(|ops| ops.unwrap_or(vec![]))
+    separated_list1(tag("|"), opers.delimited_by(multispace0))
         // .all_consuming()
         .parse(input)
+}
+
+pub fn pipeline_template(input: &QueryContainer) -> Result<Vec<Operator>, ()> {
+    let span = Span::new_extra(input.query.as_str(), input);
+    let (_input, operators) = parse_operators(span).map_err(|_| ())?;
+
+    Ok(operators)
 }
 
 pub fn query(input: &QueryContainer) -> Result<Query, ()> {
     let span = Span::new_extra(input.query.as_str(), input);
     let (input, search) = parse_search(span).map_err(|_| ())?;
-    let (input, operators) = parse_operators(input).map_err(|_| ())?;
+    let (input, operators) = opt(tag("|").precedes(parse_operators))
+        .map(|ops| ops.unwrap_or(vec![]))
+        .parse(input)
+        .map_err(|_| ())?;
 
     if input.extra.get_error_count() > 0 {
         Err(())
@@ -1811,6 +1826,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_expr() {
+        check_query("* | where foo *  ", expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [],
+            }
+            error: expecting an operand for binary operator
+              |
+            1 | * | where foo *  
+              |               ^ dangling binary operator
+              |
+              = help: Add the operand or delete the operator"#]]);
+    }
+
+    #[test]
     fn parse_func_call() {
         check_query(
             "* | parseDate(abc) as foo",
@@ -2137,6 +2169,22 @@ mod tests {
 
     #[test]
     fn parse_agg_operator() {
+        check_query(
+            "* | count()",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: this operator takes 1 argument, but 0 were supplied
+                  |
+                1 | * | count()
+                  |            - supplied 0 arguments
+                  |
+                  = help: the argument should supply the value to count"#]],
+        );
         check_query(
             "* | json | count, count_distinct(message) by level",
             expect![[r#"

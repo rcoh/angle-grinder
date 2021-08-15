@@ -1,12 +1,9 @@
-use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
-use annotate_snippets::snippet::Snippet;
-use atty::Stream;
+use ag::pipeline::{OutputMode, Pipeline, QueryContainer, TermErrorReporter};
 use human_panic::setup_panic;
 use quicli::prelude::*;
 
 #[cfg(feature = "self_update")]
 use self_update;
-use std::env;
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufReader};
@@ -77,18 +74,6 @@ pub enum InvalidArgs {
 
     #[fail(display = "Can't supply a format string and an output mode")]
     CantSupplyBoth,
-}
-
-/// An ErrorReporter that writes errors related to the query string to the terminal
-struct TermErrorReporter {}
-
-impl ErrorReporter for TermErrorReporter {
-    fn handle_error(&self, mut snippet: Snippet) {
-        snippet.opt.color = env::var("NO_COLOR").is_err() && atty::is(Stream::Stderr);
-        let dl = annotate_snippets::display_list::DisplayList::from(snippet);
-
-        eprintln!("{}", dl);
-    }
 }
 
 fn main() -> CliResult {

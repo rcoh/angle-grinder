@@ -43,8 +43,6 @@ dependencies = [
  "nom",
  "nom-supreme",
  "nom_locate",
- "num-derive",
- "num-traits",
  "ordered-float",
  "predicates",
  "pulldown-cmark",
@@ -1318,17 +1316,6 @@ checksum = "b6b19411a9719e753aff12e5187b74d60d3dc449ec3f4dc21e3989c3f554bc95"
 dependencies = [
  "autocfg",
  "num-traits",
-]
-
-[[package]]
-name = "num-derive"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eafd0b45c5537c3ba526f79d3e75120036502bebacbb3f3220914067ce39dbf2"
-dependencies = [
- "proc-macro2 0.4.30",
- "quote 0.6.13",
- "syn 0.15.44",
 ]
 
 [[package]]

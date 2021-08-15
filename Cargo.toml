@@ -39,8 +39,6 @@ failure = "0.1.3"
 structopt = "0.2"
 human-panic = "1.0.1"
 self_update = { version = "0.19.0", features = ["rustls"], default_features = false, optional = true }
-num-derive = "0.2.3"
-num-traits = "0.2.6"
 annotate-snippets = { version = "0.9.0", features = ["color"] }
 atty = "0.2.0"
 lazy_static = "1.2.0"
