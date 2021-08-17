@@ -7,9 +7,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use strsim::normalized_levenshtein;
 
 /// Container for the query string that can be used to parse and report errors.
-pub struct QueryContainer<'a> {
+pub struct QueryContainer {
     pub query: String,
-    pub reporter: Box<dyn ErrorReporter + 'a>,
+    pub reporter: Box<dyn ErrorReporter>,
     pub error_count: AtomicUsize,
 }
 
@@ -21,8 +21,8 @@ pub trait ErrorBuilder {
     fn get_error_count(&self) -> usize;
 }
 
-impl<'a> QueryContainer<'a> {
-    pub fn new(query: String, reporter: Box<dyn ErrorReporter + 'a>) -> QueryContainer<'a> {
+impl QueryContainer {
+    pub fn new(query: String, reporter: Box<dyn ErrorReporter>) -> QueryContainer {
         QueryContainer {
             query,
             reporter,
@@ -36,7 +36,7 @@ impl<'a> QueryContainer<'a> {
     }
 }
 
-impl<'a> ErrorBuilder for QueryContainer<'a> {
+impl ErrorBuilder for QueryContainer {
     /// Create a SnippetBuilder for the given error
     fn report_error_for<E: ToString>(&self, error: E) -> SnippetBuilder {
         self.error_count.fetch_add(1, Ordering::Relaxed);
@@ -96,7 +96,7 @@ pub struct SnippetData {
 
 #[must_use = "the send_report() method must eventually be called for this builder"]
 pub struct SnippetBuilder<'a> {
-    query: &'a QueryContainer<'a>,
+    query: &'a QueryContainer,
     data: SnippetData,
 }
 

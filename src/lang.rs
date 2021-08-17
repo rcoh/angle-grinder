@@ -69,7 +69,7 @@ pub const RESERVED_FILTER_WORDS: &[&str] = &["AND", "OR", "NOT"];
 struct Error(Range<usize>, String);
 
 /// Type used to track the current fragment being parsed and its location in the original input.
-pub type Span<'a> = LocatedSpan<&'a str, &'a QueryContainer<'a>>;
+pub type Span<'a> = LocatedSpan<&'a str, &'a QueryContainer>;
 
 pub type LResult<I, O, E = ErrorTree<I>> = Result<(I, O), nom::Err<E>>;
 
@@ -266,7 +266,7 @@ fn expect_fn<'a, F, O, EF>(
 ) -> impl FnMut(Span<'a>) -> IResult<Span, Option<O>>
 where
     F: Parser<Span<'a>, O, nom::error::Error<Span<'a>>>,
-    EF: FnMut(&'a QueryContainer<'a>, QueryRange),
+    EF: FnMut(&QueryContainer, QueryRange),
 {
     move |input: Span<'a>| match parser.parse(input) {
         Ok((remaining, out)) => Ok((remaining, Some(out))),
@@ -294,7 +294,7 @@ where
     F: Parser<Span<'a>, O1, nom::error::Error<Span<'a>>>,
     G: Parser<Span<'a>, O2, nom::error::Error<Span<'a>>>,
     H: Parser<Span<'a>, O3, nom::error::Error<Span<'a>>>,
-    EF: FnMut(&'a QueryContainer<'a>, QueryRange),
+    EF: FnMut(&QueryContainer, QueryRange),
 {
     move |input: Span<'a>| {
         let full_r = input.to_sync_point();
@@ -1405,9 +1405,9 @@ mod tests {
     use crate::errors::ErrorReporter;
     use annotate_snippets::snippet::Snippet;
     use expect_test::{expect, Expect};
-    use std::cell::RefCell;
 
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     fn check(actual: (Query, &Vec<String>), expect: Expect) {
         let actual_errors = actual.1.join("\n");
@@ -1416,11 +1416,11 @@ mod tests {
     }
 
     fn check_query(query_in: &str, expect: Expect) {
-        let mut errors = vec![];
+        let errors = Arc::new(Mutex::new(vec![]));
         let parsed = {
             let qc = QueryContainer::new(
                 query_in.to_string(),
-                Box::new(VecErrorReporter::new(&mut errors)),
+                Box::new(VecErrorReporter::new(errors.clone())),
             );
             let r = query(&qc);
 
@@ -1434,26 +1434,28 @@ mod tests {
             }
         };
 
-        check((parsed, &errors), expect);
-    }
+        {
+            let errvec = errors.lock().unwrap();
 
-    struct VecErrorReporter<'a> {
-        errors: RefCell<&'a mut Vec<String>>,
-    }
-
-    impl<'a> ErrorReporter for VecErrorReporter<'a> {
-        fn handle_error(&self, snippet: Snippet) {
-            let dl = annotate_snippets::display_list::DisplayList::from(snippet);
-
-            self.errors.borrow_mut().push(format!("{}", dl));
+            check((parsed, errvec.as_ref()), expect);
         }
     }
 
-    impl<'a> VecErrorReporter<'a> {
-        fn new(errors: &'a mut Vec<String>) -> Self {
-            VecErrorReporter {
-                errors: RefCell::new(errors),
-            }
+    struct VecErrorReporter {
+        errors: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl ErrorReporter for VecErrorReporter {
+        fn handle_error(&self, snippet: Snippet) {
+            let dl = annotate_snippets::display_list::DisplayList::from(snippet);
+
+            self.errors.lock().unwrap().push(format!("{}", dl));
+        }
+    }
+
+    impl VecErrorReporter {
+        fn new(errors: Arc<Mutex<Vec<String>>>) -> Self {
+            VecErrorReporter { errors }
         }
     }
 
