@@ -129,6 +129,7 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                 let static_value: &'static mut Value = Box::leak(boxed);
                 Ok(operator::Expr::Value(static_value))
             }
+            lang::Expr::Error => Err(TypeError::ExpectedExpr),
         }
     }
 }
@@ -219,7 +220,7 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
 
                         error_builder
                             .report_error_for(&e)
-                            .with_code_range(expr.start_pos, expr.end_pos, "This is constant")
+                            .with_code_range(expr.range, "This is constant")
                             .with_resolution("Perhaps you meant to compare a field to this value?")
                             .with_resolution(format!("example: where field1 == {}", constant))
                             .send_report();

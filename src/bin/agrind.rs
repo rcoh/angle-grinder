@@ -1,12 +1,9 @@
-use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
-use annotate_snippets::snippet::Snippet;
-use atty::Stream;
+use ag::pipeline::{OutputMode, Pipeline, QueryContainer, TermErrorReporter};
 use human_panic::setup_panic;
 use quicli::prelude::*;
 
 #[cfg(feature = "self_update")]
 use self_update;
-use std::env;
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufReader};
@@ -79,19 +76,6 @@ pub enum InvalidArgs {
     CantSupplyBoth,
 }
 
-/// An ErrorReporter that writes errors related to the query string to the terminal
-struct TermErrorReporter {
-    formatter: annotate_snippets::formatter::DisplayListFormatter,
-}
-
-impl ErrorReporter for TermErrorReporter {
-    fn handle_error(&self, snippet: Snippet) {
-        let dl = annotate_snippets::display_list::DisplayList::from(snippet);
-
-        eprintln!("{}", self.formatter.format(&dl));
-    }
-}
-
 fn main() -> CliResult {
     setup_panic!();
     let args = Cli::from_args();
@@ -101,11 +85,7 @@ fn main() -> CliResult {
     }
     let query = QueryContainer::new(
         args.query.ok_or(InvalidArgs::MissingQuery)?,
-        Box::new(TermErrorReporter {
-            formatter: annotate_snippets::formatter::DisplayListFormatter::new(
-                env::var("NO_COLOR").is_err() && atty::is(Stream::Stderr),
-            ),
-        }),
+        Box::new(TermErrorReporter {}),
     );
     args.verbosity.setup_env_logger("agrind")?;
     let output_mode = match (args.output, args.format) {

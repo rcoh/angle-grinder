@@ -14,7 +14,7 @@ mod typecheck;
 
 pub mod pipeline {
     use crate::data::{DisplayConfig, Record, Row};
-    pub use crate::errors::{ErrorReporter, QueryContainer};
+    pub use crate::errors::{ErrorReporter, QueryContainer, TermErrorReporter};
     use crate::filter;
     use crate::lang::*;
     use crate::operator;
@@ -23,8 +23,7 @@ pub mod pipeline {
     use crate::typecheck::{TypeCheck, TypeError};
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
     use failure::Error;
-    use failure::{bail, Fail};
-    use nom::types::CompleteStr;
+    use failure::Fail;
     use std::collections::VecDeque;
     use std::io::{BufRead, Write};
     use std::thread;
@@ -131,23 +130,12 @@ pub mod pipeline {
             let mut has_errors = false;
             while let Some(op) = op_deque.pop_front() {
                 match op {
+                    Operator::Error => {}
                     Operator::RenderedAlias(rendered_alias) => {
-                        // TODO: create a new QueryContainer here and parse the templated string
-                        // -> expecting only Inline operators?
-                        // let inner_query = QueryContainer::new(rendered_alias.value, ???);
-                        let (_span, operators) =
-                            match operator_list(Span::new(CompleteStr(&rendered_alias.value))) {
-                                Err(_err) => bail!(
-                                    "Failed to parse rendered alias: `{}` as operator_list",
-                                    rendered_alias.value,
-                                ),
-                                Ok(v) => v,
-                            };
-
-                        // Insert operators (in-order) to front of operator stack
-                        for new_op in operators.into_iter().rev() {
-                            op_deque.push_front(new_op);
-                        }
+                        rendered_alias
+                            .into_iter()
+                            .rev()
+                            .for_each(|op| op_deque.push_front(op));
                     }
                     Operator::Inline(inline_op) => {
                         let op_builder = inline_op.type_check(pipeline)?;
