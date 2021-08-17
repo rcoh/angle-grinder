@@ -205,23 +205,6 @@ impl Expr {
             rest: vec![],
         }
     }
-
-    pub fn column2(key: String) -> Expr {
-        Expr::Column {
-            head: DataAccessAtom::Key(key),
-            rest: vec![],
-        }
-    }
-
-    pub fn column3(optkey: Option<String>) -> Expr {
-        match optkey {
-            Some(key) => Expr::Column {
-                head: DataAccessAtom::Key(key),
-                rest: vec![],
-            },
-            None => Expr::Error,
-        }
-    }
 }
 
 /// Debug helper
@@ -322,7 +305,7 @@ where
             Ok((input, _)) => Ok((input, o2)),
             Err(_) => {
                 let start = input.location_offset();
-                let mut remaining = input.clone();
+                let mut remaining = input;
 
                 loop {
                     if remaining.is_empty() {
@@ -652,7 +635,7 @@ fn kw_expr(
                     )
                     .send_report();
                 })
-                .map(|e| e.map(|e| Some(e)).unwrap_or(Some(Expr::Error)))
+                .map(|e| e.map(Some).unwrap_or(Some(Expr::Error)))
                 .parse(input)
             }
         }
@@ -669,7 +652,7 @@ fn fcall(input: Span) -> IResult<Span, Expr> {
 fn filter_atom(input: Span) -> IResult<Span, Option<Search>> {
     let keyword = take_while1(is_keyword).map(|i: Span| Search::from_keyword_input(i.fragment()));
 
-    alt((quoted_string.map(|s| Search::from_quoted_input(s)), keyword))(input)
+    alt((quoted_string.map(Search::from_quoted_input), keyword))(input)
 }
 
 fn filter_not(input: Span) -> IResult<Span, Option<Search>> {
@@ -703,7 +686,7 @@ fn sort(input: Span) -> IResult<Span, Operator> {
             opt(tag("by")
                 .delimited_by(multispace1)
                 .precedes(sourced_expr_list))
-            .map(|opt_cols| opt_cols.unwrap_or_else(|| vec![])),
+            .map(|opt_cols| opt_cols.unwrap_or_else(Vec::new)),
         ),
         opt(sort_mode.preceded_by(multispace1))
             .map(|opt_mode| opt_mode.unwrap_or(SortMode::Ascending)),
@@ -809,7 +792,7 @@ fn duration(input: Span) -> IResult<Span, chrono::Duration> {
 fn dot_property(input: Span) -> IResult<Span, DataAccessAtom> {
     tag(".")
         .precedes(ident)
-        .map(|s| DataAccessAtom::Key(s))
+        .map(DataAccessAtom::Key)
         .parse(input)
 }
 
@@ -822,7 +805,7 @@ fn i64_parse(input: Span) -> IResult<Span, i64> {
 
 fn index_access(input: Span) -> IResult<Span, DataAccessAtom> {
     delimited(tag("["), i64_parse, tag("]"))
-        .map(|num| DataAccessAtom::Index(num))
+        .map(DataAccessAtom::Index)
         .parse(input)
 }
 
@@ -855,10 +838,11 @@ fn escaped_ident(input: Span) -> IResult<Span, String> {
     .parse(input)
 }
 
+/// Parses the basic unit of an expression
 fn atomic(input: Span) -> IResult<Span, Expr> {
     let num = digit1.map(|s: Span| data::Value::from_string(*s.fragment()));
-    let quoted_string_value = quoted_string.map(|s| data::Value::Str(s));
-    let value = alt((quoted_string_value, num)).map(|v| Expr::Value(v));
+    let quoted_string_value = quoted_string.map(data::Value::Str);
+    let value = alt((quoted_string_value, num)).map(Expr::Value);
     let parens = expect_delimited(tag("("), expr, tag(")"), |qc, r| {
         qc.report_error_for("unterminated parenthesized expression")
             .with_code_range(r, "unterminated parenthesized expression")
@@ -869,6 +853,7 @@ fn atomic(input: Span) -> IResult<Span, Expr> {
     alt((fcall, column_ref, value, parens)).parse(input)
 }
 
+/// Parses an atomic expression with an optional unary prefix
 fn unary(input: Span) -> IResult<Span, Expr> {
     let (input, opt_op) = opt(unary_op)(input)?;
 
@@ -887,7 +872,7 @@ fn unary(input: Span) -> IResult<Span, Expr> {
     }
 }
 
-///
+/// Parses the comparison operators
 fn comp_op(input: Span) -> IResult<Span, ComparisonOp> {
     alt((
         tag("==").map(|_| ComparisonOp::Eq),
@@ -899,6 +884,7 @@ fn comp_op(input: Span) -> IResult<Span, ComparisonOp> {
     ))(input)
 }
 
+/// Parses the unary operators
 fn unary_op(input: Span) -> IResult<Span, UnaryOp> {
     tag("!").map(|_| UnaryOp::Not).parse(input)
 }
@@ -910,6 +896,7 @@ fn muldiv_op(input: Span) -> IResult<Span, ArithmeticOp> {
     ))(input)
 }
 
+/// Parses a chain of multiple/divide expressions
 fn term(input: Span) -> IResult<Span, Expr> {
     let (input, init) = unary(input)?;
     let qc = &input.extra;
@@ -939,6 +926,7 @@ fn term(input: Span) -> IResult<Span, Expr> {
     retval
 }
 
+/// Parses a chain of plus/minus expressions
 fn arith_expr(input: Span) -> IResult<Span, Expr> {
     let (input, init) = term(input)?;
 
@@ -962,6 +950,7 @@ fn arith_expr(input: Span) -> IResult<Span, Expr> {
     )(input)
 }
 
+/// Parses an expression, optionally, including a comparison operation
 fn opt_expr(input: Span) -> IResult<Span, Expr> {
     let cmp = map(
         arith_expr.and(opt(pair(
@@ -984,6 +973,7 @@ fn opt_expr(input: Span) -> IResult<Span, Expr> {
     cmp.preceded_by(multispace0).parse(input)
 }
 
+/// Parses a required expression
 fn expr(input: Span) -> IResult<Span, Expr> {
     Ok(opt_expr(input).unwrap_or_else(|_| {
         let mut r = input.to_sync_point();
@@ -1144,7 +1134,8 @@ fn oper_0_args(name: &'static str) -> impl Clone + Fn(Span) -> IResult<Span, Spa
     }
 }
 
-fn skip_to_sync(input: Span) -> IResult<Span, Operator> {
+/// Parser that consumes characters up to the end of the query
+fn skip_to_end_of_query(input: Span) -> IResult<Span, Operator> {
     if input.extra.get_error_count() > 0 {
         many_till(anychar, end_of_query)
             .map(|_| Operator::Error)
@@ -1290,7 +1281,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
             .terminated(multispace1)
             .precedes(sourced_expr_list))
         .terminated(end_of_query)
-        .map(|opt_cols| opt_cols.unwrap_or_else(|| vec![])),
+        .map(|opt_cols| opt_cols.unwrap_or_else(Vec::new)),
     ))
     .map(|(aggregate_functions, cols)| {
         let (key_col_headers, key_cols) = cols.iter().cloned().unzip();
@@ -1379,14 +1370,12 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
         sort,
         field_expr,
         alias,
-        skip_to_sync,
+        skip_to_end_of_query,
         did_you_mean,
         garbage,
     ));
 
-    separated_list1(tag("|"), opers.delimited_by(multispace0))
-        // .all_consuming()
-        .parse(input)
+    separated_list1(tag("|"), opers.delimited_by(multispace0)).parse(input)
 }
 
 pub fn pipeline_template(input: &QueryContainer) -> Result<Vec<Operator>, ()> {
@@ -1400,7 +1389,7 @@ pub fn query(input: &QueryContainer) -> Result<Query, ()> {
     let span = Span::new_extra(input.query.as_str(), input);
     let (input, search) = parse_search(span).map_err(|_| ())?;
     let (input, operators) = opt(tag("|").precedes(parse_operators))
-        .map(|ops| ops.unwrap_or(vec![]))
+        .map(|ops| ops.unwrap_or_default())
         .parse(input)
         .map_err(|_| ())?;
 
