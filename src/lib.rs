@@ -105,13 +105,26 @@ pub mod pipeline {
         }
 
         fn implicit_sort(multi_agg: &MultiAggregateOperator) -> SortOperator {
+            let timeslice_col = Expr::column("_timeslice");
+            let (opt_timeslice, direction) = if multi_agg.key_cols.contains(&timeslice_col) {
+                (Some(timeslice_col), SortMode::Ascending)
+            } else {
+                (None, SortMode::Descending)
+            };
+
+            let sort_cols: Vec<Expr> = opt_timeslice
+                .into_iter()
+                .chain(
+                    multi_agg
+                        .aggregate_functions
+                        .iter()
+                        .map(|&(ref k, _)| Expr::column(k)),
+                )
+                .collect();
+
             SortOperator {
-                sort_cols: multi_agg
-                    .aggregate_functions
-                    .iter()
-                    .map(|&(ref k, _)| Expr::column(k))
-                    .collect(),
-                direction: SortMode::Descending,
+                sort_cols,
+                direction,
             }
         }
 
