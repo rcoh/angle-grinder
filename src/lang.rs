@@ -841,8 +841,13 @@ fn escaped_ident(input: Span) -> IResult<Span, String> {
 /// Parses the basic unit of an expression
 fn atomic(input: Span) -> IResult<Span, Expr> {
     let num = digit1.map(|s: Span| data::Value::from_string(*s.fragment()));
+    let bool_lit = alt((
+        tag("true").map(|_| data::Value::Bool(true)),
+        tag("false").map(|_| data::Value::Bool(false)),
+    ));
+    let null = tag("null").map(|_| data::Value::None);
     let quoted_string_value = quoted_string.map(data::Value::Str);
-    let value = alt((quoted_string_value, num)).map(Expr::Value);
+    let value = alt((quoted_string_value, num, bool_lit, null)).map(Expr::Value);
     let parens = expect_delimited(tag("("), expr, tag(")"), |qc, r| {
         qc.report_error_for("unterminated parenthesized expression")
             .with_code_range(r, "unterminated parenthesized expression")
@@ -850,7 +855,7 @@ fn atomic(input: Span) -> IResult<Span, Expr> {
             .send_report()
     });
 
-    alt((fcall, column_ref, value, parens)).parse(input)
+    alt((fcall, value, column_ref, parens)).parse(input)
 }
 
 /// Parses an atomic expression with an optional unary prefix
@@ -877,10 +882,12 @@ fn comp_op(input: Span) -> IResult<Span, ComparisonOp> {
     alt((
         tag("==").map(|_| ComparisonOp::Eq),
         tag("!=").map(|_| ComparisonOp::Neq),
+        tag("<>").map(|_| ComparisonOp::Neq),
         tag(">=").map(|_| ComparisonOp::Gte),
         tag("<=").map(|_| ComparisonOp::Lte),
         tag(">").map(|_| ComparisonOp::Gt),
         tag("<").map(|_| ComparisonOp::Lt),
+        tag("=").map(|_| ComparisonOp::Eq),
     ))(input)
 }
 
@@ -1833,6 +1840,29 @@ mod tests {
               |               ^ dangling binary operator
               |
               = help: Add the operand or delete the operator"#]],
+        );
+        check_query(
+            "* | null as n",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..13,
+                            value: FieldExpression {
+                                value: Value(
+                                    None,
+                                ),
+                                name: "n",
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
         );
     }
 

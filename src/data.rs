@@ -297,6 +297,7 @@ impl TryFrom<&Value> for f64 {
             Value::Int(i) => Ok(*i as f64),
             Value::Float(f) => Ok(f.0),
             Value::Str(s) => Value::aggressively_to_num(s),
+            Value::DateTime(dt) => Ok(dt.timestamp_millis() as f64),
             _ => Err(EvalError::ExpectedNumber {
                 found: format!("{}", value),
             }),

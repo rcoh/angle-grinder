@@ -245,7 +245,8 @@ made up of the following:
 * `+`, `-`, `*`, `/`: Mathematical operators with the normal precedence rules.
   The operators work on numeric values and strings that can automatically be
   converted to numbers.
-* `==`, `!=`, `<=`, `>=`, `<`, `>`: Boolean operators work on most data types.
+* `==` (or `=`), `!=` (or `<>`), `<=`, `>=`, `<`, `>`: Boolean operators work
+  on most data types.
 * `<field>`: The name of a field in the current row.  If the row does not
   contain the given field, an error will be reported.
 * Parentheses to group operations
@@ -259,9 +260,20 @@ The following functions are supported within expressions:
 * concat(arg0, ..., argN) - Concatenate the arguments into a string
 * contains(haystack, needle) - Return true if the haystack contains the needle.
 * length(str) - Returns the number of characters in "str".
+* now() - Returns the current date and time.
+* num(value) - Returns the given value as a number.
 * parseDate(str) - Attempt to parse a date from the given string.
+* parseHex(str) - Attempt to convert a hexadecimal string into an integer.
 * substring(str, startOffset, \[endOffset\]) - Returns the part of the string
   specified by the given starting offset up to the end offset (if specified).
+* toLowerCase(str) - Returns the lowercase version of the string.
+* toUpperCase(str) - Returns the uppercase version of the string.
+* isNull(value) - Returns true if value is `null`, false otherwise.
+* isEmpty(value) - Returns true if value is `null` or an empty string, false
+  otherwise.
+* isBlank(value) - Returns true if value is `null`, an empty string, or a
+  whitespace-only string, false otherwise.
+* isNumeric(str) - Returns true if the given string is a number.
 
 *Examples*
 Multiply `value` by 100 to get the percentage
