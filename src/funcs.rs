@@ -206,7 +206,8 @@ fn to_upper_case(s: &str) -> Result<data::Value, EvalError> {
 
 fn is_null(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     match args.as_slice() {
-        [arg0] => Ok(data::Value::Bool(*arg0 == data::Value::None)),
+        [data::Value::None] => Ok(data::Value::Bool(true)),
+        [_arg] => Ok(data::Value::Bool(false)),
         _ => Err(EvalError::InvalidFunctionArguments {
             name: "isNull",
             expected: 1,
@@ -218,7 +219,8 @@ fn is_null(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
 fn is_empty(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     match args.as_slice() {
         [data::Value::None] => Ok(data::Value::Bool(true)),
-        [arg0] => Ok(data::Value::Bool(arg0.to_string().is_empty())),
+        [data::Value::Str(ref s)] => Ok(data::Value::Bool(s.is_empty())),
+        [_arg0] => Ok(data::Value::Bool(false)),
         _ => Err(EvalError::InvalidFunctionArguments {
             name: "isEmpty",
             expected: 1,
@@ -230,7 +232,8 @@ fn is_empty(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
 fn is_blank(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     match args.as_slice() {
         [data::Value::None] => Ok(data::Value::Bool(true)),
-        [arg0] => Ok(data::Value::Bool(arg0.to_string().trim().is_empty())),
+        [data::Value::Str(ref s)] => Ok(data::Value::Bool(s.trim().is_empty())),
+        [_arg0] => Ok(data::Value::Bool(false)),
         _ => Err(EvalError::InvalidFunctionArguments {
             name: "isBlank",
             expected: 1,

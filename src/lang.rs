@@ -887,7 +887,6 @@ fn comp_op(input: Span) -> IResult<Span, ComparisonOp> {
         tag("<=").map(|_| ComparisonOp::Lte),
         tag(">").map(|_| ComparisonOp::Gt),
         tag("<").map(|_| ComparisonOp::Lt),
-        tag("=").map(|_| ComparisonOp::Eq),
     ))(input)
 }
 
