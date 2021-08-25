@@ -1,5 +1,5 @@
 use crate::operator::{EvalError, Evaluatable, Expr, ValueRef};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use serde::ser::SerializeMap;
@@ -51,6 +51,7 @@ pub enum Value {
     Float(OrderedFloat<f64>),
     Bool(bool),
     DateTime(DateTime<Utc>),
+    Duration(Duration),
     Obj(im::HashMap<String, Value>),
     Array(Vec<Value>),
     None,
@@ -67,6 +68,7 @@ impl serde::Serialize for Value {
             Value::Float(ofloat) => serializer.serialize_f64(ofloat.0),
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::DateTime(dt) => serializer.serialize_str(dt.to_rfc3339().as_str()),
+            Value::Duration(d) => serializer.serialize_str(d.to_string().as_str()),
             Value::Obj(map) => {
                 let mut m = serializer.serialize_map(Some(map.len()))?;
                 for (k, v) in map {
@@ -96,6 +98,7 @@ impl Ord for Value {
             (&Value::Str(ref l), &Value::Str(ref r)) => l.cmp(r),
             (&Value::Bool(l), &Value::Bool(r)) => l.cmp(&r),
             (&Value::DateTime(l), &Value::DateTime(r)) => l.cmp(&r),
+            (&Value::Duration(l), &Value::Duration(r)) => l.cmp(&r),
             (&Value::Obj(ref l), &Value::Obj(ref r)) => l.cmp(r),
             // All these remaining cases aren't directly comparable
             (unrelated_l, unrelated_r) => unrelated_l.rank().cmp(&unrelated_r.rank()),
@@ -117,6 +120,7 @@ impl Display for Value {
             Value::Float(ref s) => write!(f, "{}", s),
             Value::Bool(ref s) => write!(f, "{}", s),
             Value::DateTime(ref dt) => write!(f, "{:?}", dt),
+            Value::Duration(ref d) => write!(f, "{:?}", d),
             Value::Obj(ref o) => write!(f, "{:?}", o),
             Value::Array(ref o) => write!(f, "{:?}", o),
             Value::None => write!(f, "None"),
@@ -129,6 +133,9 @@ impl Add for Value {
 
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
+            (Value::DateTime(ldt), Value::Duration(rd)) => Ok(Value::DateTime(ldt.add(rd))),
+            (Value::Duration(ld), Value::DateTime(rdt)) => Ok(Value::DateTime(rdt.add(ld))),
+            (Value::Duration(ld), Value::Duration(rd)) => Ok(Value::Duration(ld.add(rd))),
             (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf + rf)),
             (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li + ri)),
             (left, right) => left.binary_op(&f64::add, "+", &right),
@@ -141,6 +148,9 @@ impl Sub for Value {
 
     fn sub(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
+            (Value::DateTime(ldt), Value::Duration(rf)) => Ok(Value::DateTime(ldt.sub(rf))),
+            (Value::DateTime(ldt), Value::DateTime(rdt)) => Ok(Value::Duration(ldt.sub(rdt))),
+            (Value::Duration(ld), Value::Duration(rd)) => Ok(Value::Duration(ld.sub(rd))),
             (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf - rf)),
             (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li - ri)),
             (left, right) => left.binary_op(&f64::sub, "-", &right),
@@ -153,6 +163,8 @@ impl Mul for Value {
 
     fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
+            (Value::Duration(ld), Value::Int(ri)) => Ok(Value::Duration(ld.mul(ri as i32))),
+            (Value::Int(li), Value::Duration(rd)) => Ok(Value::Duration(rd.mul(li as i32))),
             (Value::Float(lf), Value::Float(rf)) => Ok(Value::Float(lf * rf)),
             (Value::Int(li), Value::Int(ri)) => Ok(Value::Int(li * ri)),
             (left, right) => left.binary_op(&f64::mul, "*", &right),
@@ -164,7 +176,10 @@ impl Div for Value {
     type Output = Result<Value, EvalError>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        self.binary_op(&f64::div, "/", &rhs)
+        match (self, rhs) {
+            (Value::Duration(ld), Value::Int(ri)) => Ok(Value::Duration(ld.div(ri as i32))),
+            (left, right) => left.binary_op(&f64::div, "/", &right),
+        }
     }
 }
 
@@ -189,8 +204,9 @@ impl Value {
             Value::Float(_) => 2,
             Value::Str(_) => 3,
             Value::DateTime(_) => 4,
-            Value::Array(_) => 5,
-            Value::Obj(_) => 6,
+            Value::Duration(_) => 5,
+            Value::Array(_) => 6,
+            Value::Obj(_) => 7,
         }
     }
 
@@ -202,6 +218,33 @@ impl Value {
             Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
             Value::Bool(ref s) => format!("{}", s),
             Value::DateTime(ref dt) => format!("{}", dt),
+            Value::Duration(ref d) => {
+                let mut remaining: Duration = d.clone();
+                let weeks = remaining.num_seconds() / Duration::weeks(1).num_seconds();
+                remaining = remaining - Duration::weeks(weeks);
+                let days = remaining.num_seconds() / Duration::days(1).num_seconds();
+                remaining = remaining - Duration::days(days);
+                let hours = remaining.num_seconds() / Duration::hours(1).num_seconds();
+                remaining = remaining - Duration::hours(hours);
+                let mins = remaining.num_seconds() / Duration::minutes(1).num_seconds();
+                remaining = remaining - Duration::minutes(mins);
+                let secs = remaining.num_seconds() / Duration::seconds(1).num_seconds();
+                remaining = remaining - Duration::seconds(secs);
+                let msecs = remaining.num_milliseconds();
+                remaining = remaining - Duration::milliseconds(msecs);
+                let usecs = remaining.num_microseconds().unwrap_or(0);
+
+                let syms = &["w", "d", "h", "m", "s", "ms", "us"];
+                let vals = &[weeks, days, hours, mins, secs, msecs, usecs];
+
+                vals.iter()
+                    .zip(syms.iter())
+                    .filter(|(val, _sym)| **val != 0)
+                    .fold(String::new(), |mut acc, (val, sym)| {
+                        acc.push_str(format!("{}{}", val, sym).as_str());
+                        acc
+                    })
+            }
             Value::Obj(ref o) => {
                 // todo: this is pretty janky...
                 // These values are sorted so the output is deterministic.
@@ -516,6 +559,26 @@ impl Record {
 mod tests {
     use super::*;
     use maplit::hashmap;
+    use std::str::FromStr;
+
+    #[test]
+    fn render_duration() {
+        let cfg = DisplayConfig { floating_points: 2 };
+
+        assert_eq!("2w", Value::Duration(Duration::weeks(2)).render(&cfg));
+        assert_eq!(
+            "2w2d5h25m4s232ms",
+            Value::Duration(
+                Duration::weeks(2)
+                    + Duration::days(2)
+                    + Duration::hours(5)
+                    + Duration::minutes(25)
+                    + Duration::seconds(4)
+                    + Duration::milliseconds(232)
+            )
+            .render(&cfg)
+        );
+    }
 
     #[test]
     fn record_put_get() {
@@ -702,6 +765,29 @@ mod tests {
         assert_eq!(
             Value::from_float(2.),
             (Value::from_float(4.) / Value::Int(2)).unwrap()
+        );
+
+        assert_eq!(
+            Value::Duration(Duration::days(1)),
+            (Value::DateTime(DateTime::<Utc>::from_str("2021-08-11T00:00:00Z").unwrap())
+                - Value::DateTime(DateTime::<Utc>::from_str("2021-08-10T00:00:00Z").unwrap()))
+            .unwrap()
+        );
+        assert_eq!(
+            Value::Duration(Duration::days(1)),
+            (Value::Duration(Duration::days(2)) - Value::Duration(Duration::days(1))).unwrap()
+        );
+        assert_eq!(
+            Value::Duration(Duration::days(3)),
+            (Value::Duration(Duration::days(2)) + Value::Duration(Duration::days(1))).unwrap()
+        );
+        assert_eq!(
+            Value::Duration(Duration::days(4)),
+            (Value::Duration(Duration::days(2)) * Value::Int(2)).unwrap()
+        );
+        assert_eq!(
+            Value::Duration(Duration::days(1)),
+            (Value::Duration(Duration::days(2)) / Value::Int(2)).unwrap()
         );
     }
 }

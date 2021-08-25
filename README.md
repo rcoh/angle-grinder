@@ -244,7 +244,9 @@ made up of the following:
 
 * `+`, `-`, `*`, `/`: Mathematical operators with the normal precedence rules.
   The operators work on numeric values and strings that can automatically be
-  converted to numbers.
+  converted to a number.  In addition, these operators work for date-time and
+  duration values when appropriate.  For example, you can take the difference
+  between two date-times, but cannot add them together.
 * `==`, `!=` (or `<>`), `<=`, `>=`, `<`, `>`: Boolean operators work
   on most data types.
 * `<field>`: The name of a field in the current row.  If the row does not
@@ -393,6 +395,9 @@ given duration to allow for partitioning messages into slices of time.  The
 `parseDate()` function.  The duration is an amount followed by one of the
 following units:
 
+* `ns` - nanoseconds
+* `us` - microseconds
+* `ms` - milliseconds
 * `s` - seconds
 * `m` - minutes
 * `h` - hours

@@ -5,7 +5,7 @@ use std::str;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use nom::combinator::not;
-use nom::multi::fold_many0;
+use nom::multi::{fold_many0, fold_many1};
 use nom::sequence::{delimited, separated_pair};
 use nom::{
     branch::alt,
@@ -774,10 +774,14 @@ fn is_keyword(c: char) -> bool {
     }
 }
 
-fn duration(input: Span) -> IResult<Span, chrono::Duration> {
+/// Parses a single number with a time suffix
+fn duration_fragment(input: Span) -> IResult<Span, chrono::Duration> {
     let (input, amount) = i64_parse(input)?;
 
     let retval = alt((
+        tag("ns").map(|_| chrono::Duration::nanoseconds(amount)),
+        tag("us").map(|_| chrono::Duration::microseconds(amount)),
+        tag("ms").map(|_| chrono::Duration::milliseconds(amount)),
         tag("s").map(|_| chrono::Duration::seconds(amount)),
         tag("m").map(|_| chrono::Duration::minutes(amount)),
         tag("h").map(|_| chrono::Duration::hours(amount)),
@@ -787,6 +791,15 @@ fn duration(input: Span) -> IResult<Span, chrono::Duration> {
     .parse(input);
 
     retval
+}
+
+/// Parses a duration that can be made up of multiple integer/time-suffix values
+fn duration(input: Span) -> IResult<Span, chrono::Duration> {
+    fold_many1(
+        duration_fragment,
+        chrono::Duration::zero(),
+        |left, right| left + right,
+    )(input)
 }
 
 fn dot_property(input: Span) -> IResult<Span, DataAccessAtom> {
@@ -847,7 +860,8 @@ fn atomic(input: Span) -> IResult<Span, Expr> {
     ));
     let null = tag("null").map(|_| data::Value::None);
     let quoted_string_value = quoted_string.map(data::Value::Str);
-    let value = alt((quoted_string_value, num, bool_lit, null)).map(Expr::Value);
+    let duration_value = duration.map(data::Value::Duration);
+    let value = alt((quoted_string_value, duration_value, num, bool_lit, null)).map(Expr::Value);
     let parens = expect_delimited(tag("("), expr, tag(")"), |qc, r| {
         qc.report_error_for("unterminated parenthesized expression")
             .with_code_range(r, "unterminated parenthesized expression")
@@ -1824,6 +1838,43 @@ mod tests {
 
     #[test]
     fn parse_expr() {
+        check_query(
+            "* | now() - 1w2d as yesterday",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..29,
+                                value: FieldExpression {
+                                    value: Binary {
+                                        op: Arithmetic(
+                                            Subtract,
+                                        ),
+                                        left: FunctionCall {
+                                            name: "now",
+                                            args: [],
+                                        },
+                                        right: Value(
+                                            Duration(
+                                                Duration {
+                                                    secs: 777600,
+                                                    nanos: 0,
+                                                },
+                                            ),
+                                        ),
+                                    },
+                                    name: "yesterday",
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
+        );
         check_query(
             "* | where foo *  ",
             expect![[r#"
