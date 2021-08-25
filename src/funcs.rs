@@ -3,7 +3,7 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 
@@ -148,6 +148,15 @@ fn parse_date(date_str: &str) -> Result<data::Value, EvalError> {
         })
 }
 
+fn parse_hex(num_str: &str) -> Result<data::Value, EvalError> {
+    i64::from_str_radix(num_str.trim().trim_start_matches("0x"), 16)
+        .map(data::Value::Int)
+        .map_err(|_| EvalError::FunctionFailed {
+            name: "parseHex",
+            msg: format!("invalid hex string -- {}", num_str),
+        })
+}
+
 fn substring(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     match args.as_slice() {
         [arg0, arg1, arg2] => {
@@ -187,6 +196,80 @@ fn substring(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     }
 }
 
+fn to_lower_case(s: &str) -> Result<data::Value, EvalError> {
+    Ok(data::Value::from_string(s.to_lowercase()))
+}
+
+fn to_upper_case(s: &str) -> Result<data::Value, EvalError> {
+    Ok(data::Value::from_string(s.to_uppercase()))
+}
+
+fn is_null(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+    match args.as_slice() {
+        [data::Value::None] => Ok(data::Value::Bool(true)),
+        [_arg] => Ok(data::Value::Bool(false)),
+        _ => Err(EvalError::InvalidFunctionArguments {
+            name: "isNull",
+            expected: 1,
+            found: args.len(),
+        }),
+    }
+}
+
+fn is_empty(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+    match args.as_slice() {
+        [data::Value::None] => Ok(data::Value::Bool(true)),
+        [data::Value::Str(ref s)] => Ok(data::Value::Bool(s.is_empty())),
+        [_arg0] => Ok(data::Value::Bool(false)),
+        _ => Err(EvalError::InvalidFunctionArguments {
+            name: "isEmpty",
+            expected: 1,
+            found: args.len(),
+        }),
+    }
+}
+
+fn is_blank(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+    match args.as_slice() {
+        [data::Value::None] => Ok(data::Value::Bool(true)),
+        [data::Value::Str(ref s)] => Ok(data::Value::Bool(s.trim().is_empty())),
+        [_arg0] => Ok(data::Value::Bool(false)),
+        _ => Err(EvalError::InvalidFunctionArguments {
+            name: "isBlank",
+            expected: 1,
+            found: args.len(),
+        }),
+    }
+}
+
+fn is_numeric(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+    match args.as_slice() {
+        [arg0] => Ok(data::Value::Bool(
+            <f64 as TryFrom<&data::Value>>::try_from(arg0).is_ok(),
+        )),
+        _ => Err(EvalError::InvalidFunctionArguments {
+            name: "isNumeric",
+            expected: 1,
+            found: args.len(),
+        }),
+    }
+}
+
+fn num(value: f64) -> f64 {
+    value
+}
+
+fn now(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+    match args.as_slice() {
+        [] => Ok(data::Value::DateTime(Utc::now())),
+        _ => Err(EvalError::InvalidFunctionArguments {
+            name: "now",
+            expected: 0,
+            found: args.len(),
+        }),
+    }
+}
+
 lazy_static! {
     pub static ref FUNC_MAP: HashMap<&'static str, FunctionContainer> = {
         [
@@ -220,7 +303,17 @@ lazy_static! {
             FunctionContainer::new("contains", FunctionWrapper::String2(contains)),
             FunctionContainer::new("length", FunctionWrapper::Generic(length)),
             FunctionContainer::new("parseDate", FunctionWrapper::String1(parse_date)),
+            FunctionContainer::new("parseHex", FunctionWrapper::String1(parse_hex)),
             FunctionContainer::new("substring", FunctionWrapper::Generic(substring)),
+            FunctionContainer::new("toLowerCase", FunctionWrapper::String1(to_lower_case)),
+            FunctionContainer::new("toUpperCase", FunctionWrapper::String1(to_upper_case)),
+            FunctionContainer::new("isNull", FunctionWrapper::Generic(is_null)),
+            FunctionContainer::new("isEmpty", FunctionWrapper::Generic(is_empty)),
+            FunctionContainer::new("isBlank", FunctionWrapper::Generic(is_blank)),
+            FunctionContainer::new("isNumeric", FunctionWrapper::Generic(is_numeric)),
+            FunctionContainer::new("num", FunctionWrapper::Float1(num)),
+
+            FunctionContainer::new("now", FunctionWrapper::Generic(now)),
         ]
         .iter()
         .map(|wrap| (wrap.name, *wrap))
@@ -268,6 +361,25 @@ mod tests {
             Ok(data::Value::Int(1)),
             length(&vec!(data::Value::Obj(map)))
         );
+    }
+
+    #[test]
+    fn parse_hex_str() {
+        assert_eq!(Ok(data::Value::Int(123)), parse_hex("0x7b"));
+        assert_eq!(Ok(data::Value::Int(123)), parse_hex("7b"));
+        assert_eq!(
+            Err(EvalError::FunctionFailed {
+                name: "parseHex",
+                msg: "invalid hex string -- not a hex".to_string()
+            }),
+            parse_hex("not a hex")
+        );
+    }
+
+    #[test]
+    fn case_funcs() {
+        assert_eq!(Ok(data::Value::from_string("ABC")), to_upper_case("abc"));
+        assert_eq!(Ok(data::Value::from_string("def")), to_lower_case("DEF"));
     }
 
     #[test]
@@ -322,6 +434,65 @@ mod tests {
                 data::Value::Str("2".to_string()),
                 data::Value::Int(0)
             ))
+        );
+    }
+
+    #[test]
+    fn value_predicates() {
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_null(&vec![data::Value::None])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(false)),
+            is_null(&vec![data::Value::Str("".to_string())])
+        );
+
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_empty(&vec![data::Value::None])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_empty(&vec![data::Value::Str("".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(false)),
+            is_empty(&vec![data::Value::Str(" ".to_string())])
+        );
+
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_blank(&vec![data::Value::None])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_blank(&vec![data::Value::Str("".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_blank(&vec![data::Value::Str(" ".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(false)),
+            is_blank(&vec![data::Value::Str("abc".to_string())])
+        );
+
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_numeric(&vec![data::Value::Str("123".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_numeric(&vec![data::Value::Str("1.23".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_numeric(&vec![data::Value::Str("1e3".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(false)),
+            is_numeric(&vec![data::Value::Str("abc".to_string())])
         );
     }
 }
