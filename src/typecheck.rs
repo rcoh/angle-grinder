@@ -124,6 +124,15 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                     Err(TypeError::UnknownFunction { name })
                 }
             }
+            lang::Expr::IfOp {
+                cond,
+                value_if_true,
+                value_if_false,
+            } => Ok(operator::Expr::IfOp {
+                cond: Box::new(cond.type_check(error_builder)?),
+                value_if_true: Box::new(value_if_true.type_check(error_builder)?),
+                value_if_false: Box::new(value_if_false.type_check(error_builder)?),
+            }),
             lang::Expr::Value(value) => {
                 let boxed = Box::new(value);
                 let static_value: &'static mut Value = Box::leak(boxed);

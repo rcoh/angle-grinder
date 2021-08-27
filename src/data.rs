@@ -339,6 +339,22 @@ impl From<f64> for Value {
     }
 }
 
+impl From<&Value> for bool {
+    fn from(value: &Value) -> Self {
+        match value {
+            Value::Str(s) => !s.is_empty(),
+            Value::Int(i) => *i != 0,
+            Value::Float(f) => *f != 0.0,
+            Value::Bool(b) => *b,
+            Value::DateTime(_dt) => true,
+            Value::Duration(d) => !d.is_zero(),
+            Value::Obj(hm) => !hm.is_empty(),
+            Value::Array(a) => !a.is_empty(),
+            Value::None => false,
+        }
+    }
+}
+
 impl TryFrom<&Value> for f64 {
     type Error = EvalError;
 
@@ -509,6 +525,12 @@ impl Record {
                 return Err(EvalError::ExpectedXYZ {
                     expected: "valid expr".to_string(),
                     found: "function call".to_string(),
+                })
+            }
+            Expr::IfOp { .. } => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "if operator".to_string(),
                 })
             }
             Expr::Value(_) => {

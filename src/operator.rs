@@ -236,6 +236,11 @@ pub enum Expr {
         func: &'static funcs::FunctionContainer,
         args: Vec<Expr>,
     },
+    IfOp {
+        cond: Box<Expr>,
+        value_if_true: Box<Expr>,
+        value_if_false: Box<Expr>,
+    },
     Value(&'static data::Value),
 }
 
@@ -407,6 +412,19 @@ impl Evaluatable<data::Value> for Expr {
                     args.into_iter().map(|expr| expr.eval(record)).collect();
 
                 func.eval_func(&evaluated_args?)
+            }
+            Expr::IfOp {
+                ref cond,
+                ref value_if_true,
+                ref value_if_false,
+            } => {
+                let evaluated_cond: bool = (*cond).eval(record)?;
+
+                if evaluated_cond {
+                    (*value_if_true).eval(record)
+                } else {
+                    (*value_if_false).eval(record)
+                }
             }
             Expr::Value(v) => Ok(v.clone()),
         }

@@ -284,6 +284,19 @@ Multiply `value` by 100 to get the percentage
 * | json | value * 100 as percentage
 ```
 
+##### `if` Operator
+
+`if(<condition>, <value-if-true>, <value-if-false>)`: Choose between two values
+based on the provided condition.
+
+*Examples*
+
+To get byte counts for successful requests:
+
+```agrind
+* | json | if(status == 200, sc_bytes, 0) as ok_bytes
+```
+
 #### Aggregate Operators
 Aggregate operators group and combine your data by 0 or more key fields. The same query can include multiple aggregates.
 The general syntax is:

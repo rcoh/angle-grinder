@@ -1,0 +1,13 @@
+query = """* | json | if(kind == 1, v1, v2) as vany"""
+input = """
+{"kind": 1, "v1": 5}
+{"kind": 1, "v1": 6}
+{"kind": 2, "v2": 7}
+{"kind": 1, "v1": 8}
+"""
+output = """
+[kind=1]           [v1=5]         [vany=5]
+[kind=1]           [v1=6]         [vany=6]
+[kind=2]                          [vany=7]           [v2=7]
+[kind=1]           [v1=8]         [vany=8]
+"""
