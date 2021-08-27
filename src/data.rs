@@ -234,16 +234,23 @@ impl Value {
                 remaining = remaining - Duration::milliseconds(msecs);
                 let usecs = remaining.num_microseconds().unwrap_or(0);
 
-                let syms = &["w", "d", "h", "m", "s", "ms", "us"];
-                let vals = &[weeks, days, hours, mins, secs, msecs, usecs];
+                let pairs = &[
+                    (weeks, "w"),
+                    (days, "d"),
+                    (hours, "h"),
+                    (mins, "m"),
+                    (secs, "s"),
+                    (msecs, "ms"),
+                    (usecs, "us"),
+                ];
 
-                vals.iter()
-                    .zip(syms.iter())
-                    .filter(|(val, _sym)| **val != 0)
-                    .fold(String::new(), |mut acc, (val, sym)| {
+                pairs.iter().filter(|(val, _sym)| *val != 0).fold(
+                    String::new(),
+                    |mut acc, (val, sym)| {
                         acc.push_str(format!("{}{}", val, sym).as_str());
                         acc
-                    })
+                    },
+                )
             }
             Value::Obj(ref o) => {
                 // todo: this is pretty janky...
