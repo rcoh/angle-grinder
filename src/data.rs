@@ -511,6 +511,12 @@ impl Record {
                     found: "function call".to_string(),
                 })
             }
+            Expr::IfOp { .. } => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "if operator".to_string(),
+                })
+            }
             Expr::Value(_) => {
                 return Err(EvalError::ExpectedXYZ {
                     expected: "valid expr".to_string(),

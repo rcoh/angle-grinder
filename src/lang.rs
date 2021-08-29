@@ -194,6 +194,11 @@ pub enum Expr {
         name: String,
         args: Vec<Expr>,
     },
+    IfOp {
+        cond: Box<Expr>,
+        value_if_true: Box<Expr>,
+        value_if_false: Box<Expr>,
+    },
     Value(data::Value),
     Error,
 }
@@ -649,6 +654,30 @@ fn fcall(input: Span) -> IResult<Span, Expr> {
         .parse(input)
 }
 
+fn if_op(input: Span) -> IResult<Span, Expr> {
+    tag("if")
+        .precedes(with_pos(arg_list))
+        .map(|Positioned { range, value: args }| match args.as_slice() {
+            [cond, value_if_true, value_if_false] => Expr::IfOp {
+                cond: Box::new(cond.clone()),
+                value_if_true: Box::new(value_if_true.clone()),
+                value_if_false: Box::new(value_if_false.clone()),
+            },
+            _ => {
+                input
+                    .extra
+                    .report_error_for(
+                        "the 'if' operator expects exactly 3 arguments, the condition, \
+                        value-if-true, and value-if-false",
+                    )
+                    .with_code_range(range, format!("supplied {} arguments", args.len()))
+                    .send_report();
+                Expr::Error
+            }
+        })
+        .parse(input)
+}
+
 fn filter_atom(input: Span) -> IResult<Span, Option<Search>> {
     let keyword = take_while1(is_keyword).map(|i: Span| Search::from_keyword_input(i.fragment()));
 
@@ -869,7 +898,7 @@ fn atomic(input: Span) -> IResult<Span, Expr> {
             .send_report()
     });
 
-    alt((fcall, value, column_ref, parens)).parse(input)
+    alt((if_op, fcall, value, column_ref, parens)).parse(input)
 }
 
 /// Parses an atomic expression with an optional unary prefix
@@ -1838,6 +1867,36 @@ mod tests {
 
     #[test]
     fn parse_expr() {
+        check_query(
+            "* | if() as i",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: the 'if' operator expects exactly 3 arguments, the condition, value-if-true, and value-if-false
+                  |
+                1 | * | if() as i
+                  |       ^^ supplied 0 arguments
+                  |"#]],
+        );
+        check_query(
+            "* | if(a, b, c, d) as i",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: the 'if' operator expects exactly 3 arguments, the condition, value-if-true, and value-if-false
+                  |
+                1 | * | if(a, b, c, d) as i
+                  |       ^^^^^^^^^^^^ supplied 4 arguments
+                  |"#]],
+        );
         check_query(
             "* | now() - 1w2d as yesterday",
             expect![[r#"

@@ -1,0 +1,15 @@
+query = """* | json | if(kind, v1, v2) as vany"""
+input = """
+{"kind": 1, "v1": 5}
+{"kind": 1, "v1": 6}
+{"kind": 2, "v2": 7}
+{"kind": 1, "v1": 8}
+"""
+output = """
+"""
+error = """
+error: Expected boolean, found 1
+error: Expected boolean, found 1
+error: Expected boolean, found 2
+error: Expected boolean, found 1
+"""
