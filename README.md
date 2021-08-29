@@ -249,6 +249,7 @@ made up of the following:
   between two date-times, but cannot add them together.
 * `==`, `!=` (or `<>`), `<=`, `>=`, `<`, `>`: Boolean operators work
   on most data types.
+* `and`, `or`: Short-circuiting logical operators.
 * `<field>`: The name of a field in the current row.  If the row does not
   contain the given field, an error will be reported.
 * Parentheses to group operations

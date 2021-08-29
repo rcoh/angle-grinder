@@ -505,6 +505,12 @@ impl Record {
                     found: "arithmetic expr".to_string(),
                 })
             }
+            Expr::Logical(_) => {
+                return Err(EvalError::ExpectedXYZ {
+                    expected: "valid expr".to_string(),
+                    found: "logical expr".to_string(),
+                })
+            }
             Expr::FunctionCall { .. } => {
                 return Err(EvalError::ExpectedXYZ {
                     expected: "valid expr".to_string(),

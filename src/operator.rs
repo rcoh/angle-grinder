@@ -232,6 +232,7 @@ pub enum Expr {
     BoolUnary(UnaryExpr<BoolUnaryExpr>),
     Comparison(BinaryExpr<BoolExpr>),
     Arithmetic(BinaryExpr<ArithmeticExpr>),
+    Logical(BinaryExpr<LogicalExpr>),
     FunctionCall {
         func: &'static funcs::FunctionContainer,
         args: Vec<Expr>,
@@ -289,6 +290,12 @@ pub enum ArithmeticExpr {
     Divide,
 }
 
+#[derive(Clone, Debug)]
+pub enum LogicalExpr {
+    And,
+    Or,
+}
+
 impl<T: Copy + Send + Sync> Evaluatable<T> for T {
     fn eval(&self, _record: &HashMap<String, data::Value>) -> Result<T, EvalError> {
         Ok(*self)
@@ -320,6 +327,28 @@ impl Evaluatable<data::Value> for BinaryExpr<ArithmeticExpr> {
             ArithmeticExpr::Subtract => l - r,
             ArithmeticExpr::Multiply => l * r,
             ArithmeticExpr::Divide => l / r,
+        }
+    }
+}
+
+impl Evaluatable<data::Value> for BinaryExpr<LogicalExpr> {
+    fn eval(&self, record: &HashMap<String, data::Value>) -> Result<data::Value, EvalError> {
+        let l: bool = self.left.eval(record)?;
+        match self.operator {
+            LogicalExpr::And => {
+                if l {
+                    self.right.eval(record)
+                } else {
+                    Ok(data::Value::Bool(false))
+                }
+            }
+            LogicalExpr::Or => {
+                if l {
+                    Ok(data::Value::Bool(true))
+                } else {
+                    self.right.eval(record)
+                }
+            }
         }
     }
 }
@@ -407,6 +436,7 @@ impl Evaluatable<data::Value> for Expr {
                 Ok(data::Value::from_bool(bool_res))
             }
             Expr::Arithmetic(ref binary_expr) => binary_expr.eval(record),
+            Expr::Logical(ref logical_expr) => logical_expr.eval(record),
             Expr::FunctionCall { ref func, ref args } => {
                 let evaluated_args: Result<Vec<data::Value>, EvalError> =
                     args.into_iter().map(|expr| expr.eval(record)).collect();

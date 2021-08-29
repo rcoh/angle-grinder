@@ -1,0 +1,11 @@
+query = """* | json | if(!isNull(a), a, b) as value"""
+input = """
+{"a": null, "b": "goodbye"}
+{"a": "hello", "b": "abc"}
+{"a": "world", "b": "def"}
+"""
+output = """
+[a=None]        [b=goodbye]        [value=goodbye]
+[a=hello]       [b=abc]            [value=hello]
+[a=world]       [b=def]            [value=world]
+"""

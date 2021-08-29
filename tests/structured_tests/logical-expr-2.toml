@@ -1,0 +1,9 @@
+query = """* | json | where a and b"""
+input = """
+{"a": false}
+{"a": true, "b": false}
+{"a": true, "b": true}
+"""
+output = """
+[a=true]        [b=true]
+"""
