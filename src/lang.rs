@@ -1033,10 +1033,13 @@ fn logical_and(input: Span) -> IResult<Span, Expr> {
     let qc = &input.extra;
 
     let retval = fold_many0(
-        pair(
-            multispace1.precedes(with_pos(tag("and"))),
-            opt(multispace1.precedes(cmp_expr)),
-        )
+        alt((
+            pair(
+                multispace1.precedes(with_pos(tag("and"))),
+                opt(multispace1.precedes(cmp_expr)),
+            ),
+            pair(with_pos(tag("&&").delimited_by(multispace0)), opt(cmp_expr)),
+        ))
         .map(|(pos_and, opt_right)| {
             if let Some(right) = opt_right {
                 right
@@ -1066,10 +1069,16 @@ fn logical_or(input: Span) -> IResult<Span, Expr> {
     let qc = &input.extra;
 
     let retval = fold_many0(
-        pair(
-            multispace1.precedes(with_pos(tag("or"))),
-            opt(multispace1.precedes(logical_and)),
-        )
+        alt((
+            pair(
+                multispace1.precedes(with_pos(tag("or"))),
+                opt(multispace1.precedes(logical_and)),
+            ),
+            pair(
+                with_pos(tag("||").delimited_by(multispace0)),
+                opt(logical_and),
+            ),
+        ))
         .map(|(pos_or, opt_right)| {
             if let Some(right) = opt_right {
                 right
@@ -1945,6 +1954,124 @@ mod tests {
     #[test]
     fn parse_expr() {
         check_query(
+            "* | k1&&k2&&k3 and k4 as value",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..30,
+                            value: FieldExpression {
+                                value: Binary {
+                                    op: Logical(
+                                        And,
+                                    ),
+                                    left: Binary {
+                                        op: Logical(
+                                            And,
+                                        ),
+                                        left: Binary {
+                                            op: Logical(
+                                                And,
+                                            ),
+                                            left: Column {
+                                                head: Key(
+                                                    "k1",
+                                                ),
+                                                rest: [],
+                                            },
+                                            right: Column {
+                                                head: Key(
+                                                    "k2",
+                                                ),
+                                                rest: [],
+                                            },
+                                        },
+                                        right: Column {
+                                            head: Key(
+                                                "k3",
+                                            ),
+                                            rest: [],
+                                        },
+                                    },
+                                    right: Column {
+                                        head: Key(
+                                            "k4",
+                                        ),
+                                        rest: [],
+                                    },
+                                },
+                                name: "value",
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | k1||k2||k3 or k4 as value",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..29,
+                            value: FieldExpression {
+                                value: Binary {
+                                    op: Logical(
+                                        Or,
+                                    ),
+                                    left: Binary {
+                                        op: Logical(
+                                            Or,
+                                        ),
+                                        left: Binary {
+                                            op: Logical(
+                                                Or,
+                                            ),
+                                            left: Column {
+                                                head: Key(
+                                                    "k1",
+                                                ),
+                                                rest: [],
+                                            },
+                                            right: Column {
+                                                head: Key(
+                                                    "k2",
+                                                ),
+                                                rest: [],
+                                            },
+                                        },
+                                        right: Column {
+                                            head: Key(
+                                                "k3",
+                                            ),
+                                            rest: [],
+                                        },
+                                    },
+                                    right: Column {
+                                        head: Key(
+                                            "k4",
+                                        ),
+                                        rest: [],
+                                    },
+                                },
+                                name: "value",
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
             "* | k1 + 0 > 2 or k3 > 4 and k5 < 6 as value",
             expect![[r#"
                 Query {
@@ -2031,6 +2158,37 @@ mod tests {
                     ],
                 }
             "#]],
+        );
+        check_query(
+            "* | lowercase(and) as value",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..27,
+                            value: FieldExpression {
+                                value: FunctionCall {
+                                    name: "lowercase",
+                                    args: [
+                                        Column {
+                                            head: Key(
+                                                "and",
+                                            ),
+                                            rest: [],
+                                        },
+                                    ],
+                                },
+                                name: "value",
+                            },
+                        },
+                    ),
+                ],
+            }
+        "#]],
         );
         check_query(
             "* | if(abc and, abc, def) as value",
