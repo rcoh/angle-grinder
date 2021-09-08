@@ -66,6 +66,18 @@ impl TypeCheck<operator::ArithmeticExpr> for lang::ArithmeticOp {
     }
 }
 
+impl TypeCheck<operator::LogicalExpr> for lang::LogicalOp {
+    fn type_check<E: ErrorBuilder>(
+        self,
+        _error_builder: &E,
+    ) -> Result<operator::LogicalExpr, TypeError> {
+        match self {
+            lang::LogicalOp::And => Ok(operator::LogicalExpr::And),
+            lang::LogicalOp::Or => Ok(operator::LogicalExpr::Or),
+        }
+    }
+}
+
 impl TypeCheck<operator::Expr> for lang::Expr {
     fn type_check<E: ErrorBuilder>(self, error_builder: &E) -> Result<operator::Expr, TypeError> {
         match self {
@@ -107,6 +119,15 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
                         operator: arith_op.type_check(error_builder)?,
+                    }))
+                }
+                lang::BinaryOp::Logical(logical_op) => {
+                    Ok(operator::Expr::Logical(operator::BinaryExpr::<
+                        operator::LogicalExpr,
+                    > {
+                        left: Box::new((*left).type_check(error_builder)?),
+                        right: Box::new((*right).type_check(error_builder)?),
+                        operator: logical_op.type_check(error_builder)?,
                     }))
                 }
             },
