@@ -193,6 +193,28 @@ expression will match _any_ whitespace character in the input text (eg. a litera
 ```
 ![parse.gif](/screen_shots/parse.gif)
 
+##### Parse Regex
+`parse regex "<regex-with-named-captures>" [from field] [nodrop]`: Match the
+input text against a regular expression and populate the record with the named
+captures.  Lines that don't match the pattern will be dropped unless `nodrop` is
+specified. By default, `parse` operates on the raw text of the message. With
+`from field_name`, parse will instead process input from a specific column.
+
+*Notes*:
+
+- Only named captures are supported.  If the regular expression includes any
+  unnamed captures, an error will be raised.
+- The [Rust regular expression syntax](https://docs.rs/regex/latest/regex/#syntax) is used.
+- Escape sequences do not require an extra backslash (i.e. `\w` works as-is).
+
+*Examples*:
+To parse the phrase "Hello, ...!" and capture the value of the "..." in the
+name field:
+
+```agrind
+* | parse regex "Hello, (?P<name>\w+)"
+```
+
 ##### Fields
 `fields [only|except|-|+] a, b`: Drop fields `a, b` or include only `a, b` depending on specified mode.
 

@@ -4,12 +4,13 @@ use std::str;
 
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use nom::bytes::complete::escaped;
 use nom::combinator::not;
 use nom::multi::{fold_many0, fold_many1};
 use nom::sequence::{delimited, separated_pair};
 use nom::{
     branch::alt,
-    bytes::complete::{escaped, take_while, take_while1},
+    bytes::complete::{take, take_while, take_while1},
     character::complete::{anychar, digit1, multispace0, multispace1, none_of, satisfy},
     character::{is_alphabetic, is_alphanumeric},
     combinator::{eof, map, map_res, opt, peek, recognize},
@@ -17,7 +18,7 @@ use nom::{
     multi::{many0, many_till, separated_list0, separated_list1},
     number::complete::double,
     sequence::{pair, tuple},
-    IResult, Parser, Slice,
+    IResult, InputIter, Parser, Slice,
 };
 use nom_locate::position;
 use nom_locate::LocatedSpan;
@@ -364,9 +365,10 @@ where
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum KeywordType {
     /// The keyword string should exactly match the input.
-    EXACT,
+    Exact,
     /// The keyword string can contain wildcards.
-    WILDCARD,
+    Wildcard,
+    Regex,
 }
 
 /// Represents a `keyword` search string.
@@ -376,12 +378,17 @@ pub struct Keyword(String, KeywordType);
 impl Keyword {
     /// Create a Keyword that will exactly match an input string.
     pub fn new_exact(str: String) -> Keyword {
-        Keyword(str, KeywordType::EXACT)
+        Keyword(str, KeywordType::Exact)
     }
 
     /// Create a Keyword that can contain wildcards
     pub fn new_wildcard(str: String) -> Keyword {
-        Keyword(str, KeywordType::WILDCARD)
+        Keyword(str, KeywordType::Wildcard)
+    }
+
+    /// Create a Keyword that can contain wildcards
+    pub fn new_regex(str: String) -> Keyword {
+        Keyword(str, KeywordType::Regex)
     }
 
     /// Test if this is an empty keyword string
@@ -391,10 +398,14 @@ impl Keyword {
 
     /// Convert this keyword to a `regex::Regex` object.
     pub fn to_regex(&self) -> regex::Regex {
+        if self.1 == KeywordType::Regex {
+            return regex::Regex::new(&self.0).unwrap();
+        }
+
         let mut regex_str = regex::escape(&self.0.replace("\\\"", "\"")).replace(" ", "\\s");
 
         regex_str.insert_str(0, "(?i)");
-        if self.1 == KeywordType::WILDCARD {
+        if self.1 == KeywordType::Wildcard {
             regex_str = regex_str.replace("\\*", "(.*?)");
             // If it ends with a star, we need to ensure we read until the end.
             if self.0.ends_with('*') {
@@ -1138,8 +1149,58 @@ fn req_ident(input: Span) -> IResult<Span, String> {
     .parse(input)
 }
 
+fn escaped_chars(input: Span) -> IResult<Span, Span> {
+    alt((
+        tag("\\"),
+        tag("n"),
+        tag("n"),
+        tag("t"),
+        tag("0"),
+        tag("'"),
+        tag("\""),
+        take(1usize),
+        // TODO handle unicode
+    ))
+    .parse(input)
+}
+
+fn escaped_str_transformer(input: Span) -> String {
+    let mut in_escape = false;
+
+    input
+        .fragment()
+        .iter_elements()
+        .fold(String::new(), |mut acc, ch| {
+            let was_in_escape = in_escape;
+            match ch {
+                '\\' if !in_escape => {
+                    in_escape = true;
+                }
+                '\\' if in_escape => acc.push('\\'),
+                't' if in_escape => acc.push('\t'),
+                'r' if in_escape => acc.push('\r'),
+                'n' if in_escape => acc.push('\n'),
+                '0' if in_escape => acc.push('\0'),
+                '\'' if in_escape => acc.push('\''),
+                '"' if in_escape => acc.push('"'),
+                unhandled_escape if in_escape => {
+                    // note: unknown escapes are passed through so that escape sequences in
+                    // regexes "just work"
+                    acc.push('\\');
+                    acc.push(unhandled_escape)
+                }
+                other => acc.push(other),
+            };
+            if was_in_escape {
+                in_escape = false;
+            }
+
+            acc
+        })
+}
+
 fn quoted_string(input: Span) -> IResult<Span, String> {
-    let sq_esc = escaped(none_of("\\\'"), '\\', tag("'"));
+    let sq_esc = escaped(none_of("\\\'"), '\\', escaped_chars);
     let sq_esc_or_empty = alt((sq_esc, tag("")));
     let single_quoted = expect_delimited(tag("'"), sq_esc_or_empty, tag("'"), |qc, r| {
         qc.report_error_for("unterminated single quoted string")
@@ -1148,7 +1209,7 @@ fn quoted_string(input: Span) -> IResult<Span, String> {
             .send_report()
     });
 
-    let dq_esc = escaped(none_of("\\\""), '\\', tag("\""));
+    let dq_esc = escaped(none_of("\\\""), '\\', escaped_chars);
     let dq_esc_or_empty = alt((dq_esc, tag("")));
     let double_quoted = expect_delimited(tag("\""), dq_esc_or_empty, tag("\""), |qc, r| {
         qc.report_error_for("unterminated double quoted string")
@@ -1158,7 +1219,7 @@ fn quoted_string(input: Span) -> IResult<Span, String> {
     });
 
     alt((single_quoted, double_quoted))
-        .map(|s: Span| s.to_string())
+        .map(escaped_str_transformer)
         .parse(input)
 }
 
@@ -1187,17 +1248,70 @@ fn var_list(input: Span) -> IResult<Span, Vec<String>> {
 fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
     with_pos(
         tuple((
-            tag("parse").precedes(multispace1.precedes(req_quoted_string)),
+            tag("parse").precedes(multispace1),
+            opt(tag("regex").precedes(multispace1)),
+            with_pos(req_quoted_string),
             opt(multispace1.precedes(with_pos(pair(tag("from"), multispace1).precedes(expr)))),
-            tag("as").preceded_by(multispace1).precedes(var_list),
+            opt(with_pos(tag("as").preceded_by(multispace1).precedes(var_list))),
             opt(multispace1.precedes(with_pos(pair(tag("from"), multispace1).precedes(expr)))),
             opt(tag("nodrop").preceded_by(multispace1)).map(|nd| nd.is_some()),
         ))
-        .map(|(s, e1, fields, e2, no_drop)| InlineOperator::Parse {
-            pattern: Keyword::new_wildcard(s),
-            fields,
-            input_column: (e1, e2),
-            no_drop,
+        .map(|(_p, is_regex, s, e1, user_fields_opt, e2, no_drop)| {
+            let (pattern, fields) = if is_regex.is_some() {
+                let named_fields: Vec<String> = match regex::Regex::new(&s.value) {
+                    Err(regex_err) => {
+                        input
+                            .extra
+                            .report_error_for("invalid regular expression")
+                            .with_code_range(s.range, format!("{}", regex_err))
+                            .send_report();
+                        Vec::new()
+                    }
+                    Ok(re) => {
+                        let named_caps: Vec<String> = re
+                            .capture_names()
+                            .into_iter()
+                            .flatten()
+                            .map_into()
+                            .collect();
+                        let unnamed_capture_count = re.captures_len() - 1 - named_caps.len();
+
+                        if unnamed_capture_count > 0 {
+                            input
+                                .extra
+                                .report_error_for("regular expression for the parse operator cannot have unnamed captures")
+                                .with_code_range(s.range, format!(
+                                    "contains {} unnamed capture(s)", unnamed_capture_count))
+                                .with_resolution("name the capture groups by adding -- ?P<capname> -- right after the left parenthesis")
+                                .send_report();
+                            Vec::new()
+                        } else if let Some(user_fields) = user_fields_opt {
+                            input
+                                .extra
+                                .report_error_for("the parse regex operator does not accept user-defined field names")
+                                .with_code_range(user_fields.range, "remove this")
+                                .send_report();
+                            Vec::new()
+                        } else {
+                            named_caps
+                        }
+                    }
+                };
+
+                (Keyword::new_regex(s.value), named_fields)
+            } else {
+                (
+                    Keyword::new_wildcard(s.value),
+                    user_fields_opt.map(|user_fields| user_fields.value).unwrap_or_default(),
+                )
+            };
+
+            InlineOperator::Parse {
+                pattern,
+                fields,
+                input_column: (e1, e2),
+                no_drop,
+            }
         }),
     )
     .terminated(expect_pipe(
@@ -1719,6 +1833,86 @@ mod tests {
     #[test]
     fn parse_parses() {
         check_query(
+            r#"* | parse regex "(?P<abc>def)""#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..30,
+                                value: Parse {
+                                    pattern: Keyword(
+                                        "(?P<abc>def)",
+                                        Regex,
+                                    ),
+                                    fields: [
+                                        "abc",
+                                    ],
+                                    input_column: (
+                                        None,
+                                        None,
+                                    ),
+                                    no_drop: false,
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
+        );
+        check_query(
+            r#"* | parse regex "(?<abc>def""#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: invalid regular expression
+                  |
+                1 | * | parse regex "(?<abc>def"
+                  |                 ^^^^^^^^^^^^ regex parse error:
+                    (?<abc>def
+                      ^
+                error: unrecognized flag
+                  |"#]],
+        );
+        check_query(
+            r#"* | parse regex "(?P<abc>def)" as v"#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: the parse regex operator does not accept user-defined field names
+                  |
+                1 | * | parse regex "(?P<abc>def)" as v
+                  |                               ^^^^^ remove this
+                  |"#]],
+        );
+        check_query(
+            r#"* | parse regex "([0-9])""#,
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: regular expression for the parse operator cannot have unnamed captures
+                  |
+                1 | * | parse regex "([0-9])"
+                  |                 ^^^^^^^^^ contains 1 unnamed capture(s)
+                  |
+                  = help: name the capture groups by adding -- ?P<capname> -- right after the left parenthesis"#]],
+        );
+        check_query(
             r#"* | parse "[key=*]" as v"#,
             expect![[r#"
                 Query {
@@ -1732,7 +1926,7 @@ mod tests {
                                 value: Parse {
                                     pattern: Keyword(
                                         "[key=*]",
-                                        WILDCARD,
+                                        Wildcard,
                                     ),
                                     fields: [
                                         "v",
@@ -1763,7 +1957,7 @@ mod tests {
                                 value: Parse {
                                     pattern: Keyword(
                                         "[key=*]",
-                                        WILDCARD,
+                                        Wildcard,
                                     ),
                                     fields: [
                                         "v",
@@ -1783,34 +1977,34 @@ mod tests {
         check_query(
             r#"* | parse "[key=*][val=*]" as k,v nodrop"#,
             expect![[r#"
-            Query {
-                search: And(
-                    [],
-                ),
-                operators: [
-                    Inline(
-                        Positioned {
-                            range: 4..40,
-                            value: Parse {
-                                pattern: Keyword(
-                                    "[key=*][val=*]",
-                                    WILDCARD,
-                                ),
-                                fields: [
-                                    "k",
-                                    "v",
-                                ],
-                                input_column: (
-                                    None,
-                                    None,
-                                ),
-                                no_drop: true,
-                            },
-                        },
+                Query {
+                    search: And(
+                        [],
                     ),
-                ],
-            }
-        "#]],
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..40,
+                                value: Parse {
+                                    pattern: Keyword(
+                                        "[key=*][val=*]",
+                                        Wildcard,
+                                    ),
+                                    fields: [
+                                        "k",
+                                        "v",
+                                    ],
+                                    input_column: (
+                                        None,
+                                        None,
+                                    ),
+                                    no_drop: true,
+                                },
+                            },
+                        ),
+                    ],
+                }
+            "#]],
         );
         check_query(
             r#"* | parse "[key=*]" from field as v"#,
@@ -1826,7 +2020,7 @@ mod tests {
                                 value: Parse {
                                     pattern: Keyword(
                                         "[key=*]",
-                                        WILDCARD,
+                                        Wildcard,
                                     ),
                                     fields: [
                                         "v",
@@ -1867,7 +2061,7 @@ mod tests {
                                 value: Parse {
                                     pattern: Keyword(
                                         "[key=*]",
-                                        WILDCARD,
+                                        Wildcard,
                                     ),
                                     fields: [
                                         "v",
@@ -1916,38 +2110,38 @@ mod tests {
         check_query(
             "abc",
             expect![[r#"
-            Query {
-                search: And(
-                    [
-                        Keyword(
+                Query {
+                    search: And(
+                        [
                             Keyword(
-                                "abc",
-                                WILDCARD,
+                                Keyword(
+                                    "abc",
+                                    Wildcard,
+                                ),
                             ),
-                        ),
-                    ],
-                ),
-                operators: [],
-            }
-        "#]],
+                        ],
+                    ),
+                    operators: [],
+                }
+            "#]],
         );
         check_query(
             "one-two-three",
             expect![[r#"
-            Query {
-                search: And(
-                    [
-                        Keyword(
+                Query {
+                    search: And(
+                        [
                             Keyword(
-                                "one-two-three",
-                                WILDCARD,
+                                Keyword(
+                                    "one-two-three",
+                                    Wildcard,
+                                ),
                             ),
-                        ),
-                    ],
-                ),
-                operators: [],
-            }
-        "#]],
+                        ],
+                    ),
+                    operators: [],
+                }
+            "#]],
         );
     }
 
@@ -2458,70 +2652,70 @@ mod tests {
         check_query(
             " abc def \"*ghi*\" ",
             expect![[r#"
-            Query {
-                search: And(
-                    [
-                        Keyword(
+                Query {
+                    search: And(
+                        [
                             Keyword(
-                                "abc",
-                                WILDCARD,
+                                Keyword(
+                                    "abc",
+                                    Wildcard,
+                                ),
                             ),
-                        ),
-                        Keyword(
                             Keyword(
-                                "def",
-                                WILDCARD,
+                                Keyword(
+                                    "def",
+                                    Wildcard,
+                                ),
                             ),
-                        ),
-                        Keyword(
                             Keyword(
-                                "*ghi*",
-                                EXACT,
+                                Keyword(
+                                    "*ghi*",
+                                    Exact,
+                                ),
                             ),
-                        ),
-                    ],
-                ),
-                operators: [],
-            }
-        "#]],
+                        ],
+                    ),
+                    operators: [],
+                }
+            "#]],
         );
         check_query(
             "(abc AND def) OR xyz",
             expect![[r#"
-            Query {
-                search: And(
-                    [
-                        Or(
-                            [
-                                And(
-                                    [
-                                        Keyword(
+                Query {
+                    search: And(
+                        [
+                            Or(
+                                [
+                                    And(
+                                        [
                                             Keyword(
-                                                "abc",
-                                                WILDCARD,
+                                                Keyword(
+                                                    "abc",
+                                                    Wildcard,
+                                                ),
                                             ),
-                                        ),
-                                        Keyword(
                                             Keyword(
-                                                "def",
-                                                WILDCARD,
+                                                Keyword(
+                                                    "def",
+                                                    Wildcard,
+                                                ),
                                             ),
-                                        ),
-                                    ],
-                                ),
-                                Keyword(
-                                    Keyword(
-                                        "xyz",
-                                        WILDCARD,
+                                        ],
                                     ),
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-                operators: [],
-            }
-        "#]],
+                                    Keyword(
+                                        Keyword(
+                                            "xyz",
+                                            Wildcard,
+                                        ),
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+                    operators: [],
+                }
+            "#]],
         );
     }
 
@@ -2776,40 +2970,40 @@ mod tests {
         check_query(
             "abc OR (def OR xyz)",
             expect![[r#"
-            Query {
-                search: And(
-                    [
-                        Or(
-                            [
-                                Keyword(
+                Query {
+                    search: And(
+                        [
+                            Or(
+                                [
                                     Keyword(
-                                        "abc",
-                                        WILDCARD,
+                                        Keyword(
+                                            "abc",
+                                            Wildcard,
+                                        ),
                                     ),
-                                ),
-                                Or(
-                                    [
-                                        Keyword(
+                                    Or(
+                                        [
                                             Keyword(
-                                                "def",
-                                                WILDCARD,
+                                                Keyword(
+                                                    "def",
+                                                    Wildcard,
+                                                ),
                                             ),
-                                        ),
-                                        Keyword(
                                             Keyword(
-                                                "xyz",
-                                                WILDCARD,
+                                                Keyword(
+                                                    "xyz",
+                                                    Wildcard,
+                                                ),
                                             ),
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-                operators: [],
-            }
-        "#]],
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+                    operators: [],
+                }
+            "#]],
         );
     }
 
@@ -2818,60 +3012,114 @@ mod tests {
         check_query(
             "NOT abc",
             expect![[r#"
-            Query {
-                search: And(
-                    [
-                        Not(
-                            Keyword(
+                Query {
+                    search: And(
+                        [
+                            Not(
                                 Keyword(
-                                    "abc",
-                                    WILDCARD,
+                                    Keyword(
+                                        "abc",
+                                        Wildcard,
+                                    ),
                                 ),
                             ),
-                        ),
-                    ],
-                ),
-                operators: [],
-            }
-        "#]],
+                        ],
+                    ),
+                    operators: [],
+                }
+            "#]],
         );
         check_query(
             "(error OR warn) AND NOT hide",
             expect![[r#"
-            Query {
-                search: And(
-                    [
-                        And(
-                            [
-                                Or(
-                                    [
+                Query {
+                    search: And(
+                        [
+                            And(
+                                [
+                                    Or(
+                                        [
+                                            Keyword(
+                                                Keyword(
+                                                    "error",
+                                                    Wildcard,
+                                                ),
+                                            ),
+                                            Keyword(
+                                                Keyword(
+                                                    "warn",
+                                                    Wildcard,
+                                                ),
+                                            ),
+                                        ],
+                                    ),
+                                    Not(
                                         Keyword(
                                             Keyword(
-                                                "error",
-                                                WILDCARD,
+                                                "hide",
+                                                Wildcard,
                                             ),
-                                        ),
-                                        Keyword(
-                                            Keyword(
-                                                "warn",
-                                                WILDCARD,
-                                            ),
-                                        ),
-                                    ],
-                                ),
-                                Not(
-                                    Keyword(
-                                        Keyword(
-                                            "hide",
-                                            WILDCARD,
                                         ),
                                     ),
-                                ),
-                            ],
+                                ],
+                            ),
+                        ],
+                    ),
+                    operators: [],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn quoted_strings() {
+        check_query(
+            "* | 'abc\\tdef' as value",
+            expect![[r#"
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..23,
+                                value: FieldExpression {
+                                    value: Value(
+                                        Str(
+                                            "abc\tdef",
+                                        ),
+                                    ),
+                                    name: "value",
+                                },
+                            },
                         ),
                     ],
+                }
+            "#]],
+        );
+        check_query(
+            "* | 'abc\\d+def' as v",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
                 ),
-                operators: [],
+                operators: [
+                    Inline(
+                        Positioned {
+                            range: 4..20,
+                            value: FieldExpression {
+                                value: Value(
+                                    Str(
+                                        "abc\\d+def",
+                                    ),
+                                ),
+                                name: "v",
+                            },
+                        },
+                    ),
+                ],
             }
         "#]],
         );
