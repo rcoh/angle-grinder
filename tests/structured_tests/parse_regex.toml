@@ -1,4 +1,4 @@
-query = """db-1 response | parse regex "in (?P<duration>\\\\d+)ms" """
+query = 'db-1 response | parse regex "in (?P<duration>\d+)ms"'
 input = """
 INFO Server db-1 loaded response in 500ms
 INFO Server db-2 loaded response in 394ms
