@@ -1152,12 +1152,14 @@ fn req_ident(input: Span) -> IResult<Span, String> {
 fn escaped_chars(input: Span) -> IResult<Span, Span> {
     alt((
         tag("\\"),
-        tag("n"),
+        tag("r"),
         tag("n"),
         tag("t"),
         tag("0"),
         tag("'"),
         tag("\""),
+        // Accept other characters and pass them through
+        // so the user doesn't have to do extra escaping
         take(1usize),
         // TODO handle unicode
     ))
@@ -1256,7 +1258,7 @@ fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
             opt(multispace1.precedes(with_pos(pair(tag("from"), multispace1).precedes(expr)))),
             opt(tag("nodrop").preceded_by(multispace1)).map(|nd| nd.is_some()),
         ))
-        .map(|(_p, is_regex, s, e1, user_fields_opt, e2, no_drop)| {
+        .map(|(_p, is_regex, s, from_col_before, user_fields_opt, from_col_after, no_drop)| {
             let (pattern, fields) = if is_regex.is_some() {
                 let named_fields: Vec<String> = match regex::Regex::new(&s.value) {
                     Err(regex_err) => {
@@ -1288,8 +1290,9 @@ fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
                         } else if let Some(user_fields) = user_fields_opt {
                             input
                                 .extra
-                                .report_error_for("the parse regex operator does not accept user-defined field names")
+                                .report_error_for("the parse regex operator does not support an 'as' clause")
                                 .with_code_range(user_fields.range, "remove this")
+                                .with_resolution("remove the 'as' clause, the named capture groups in the regular expression determine the output column")
                                 .send_report();
                             Vec::new()
                         } else {
@@ -1309,7 +1312,7 @@ fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
             InlineOperator::Parse {
                 pattern,
                 fields,
-                input_column: (e1, e2),
+                input_column: (from_col_before, from_col_after),
                 no_drop,
             }
         }),
@@ -1890,11 +1893,12 @@ mod tests {
                     ),
                     operators: [],
                 }
-                error: the parse regex operator does not accept user-defined field names
+                error: the parse regex operator does not support an 'as' clause
                   |
                 1 | * | parse regex "(?P<abc>def)" as v
                   |                               ^^^^^ remove this
-                  |"#]],
+                  |
+                  = help: remove the 'as' clause, the named capture groups in the regular expression determine the output column"#]],
         );
         check_query(
             r#"* | parse regex "([0-9])""#,
