@@ -398,6 +398,7 @@ impl TypeCheck<Box<dyn operator::AggregateFunction>> for lang::Positioned<lang::
 
                 Err(TypeError::ExpectedExpr)
             }
+            lang::AggregateFunction::Error => unreachable!(),
         }
     }
 }
