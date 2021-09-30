@@ -94,7 +94,7 @@ fn get_input(rec: &Record, col: &Option<Expr>) -> Result<String, EvalError> {
     match col {
         Some(expr) => {
             let res: String = expr.eval(&rec.data)?;
-            Ok(res.to_string())
+            Ok(res)
         }
         None => Ok(rec.raw.clone()),
     }
@@ -437,9 +437,9 @@ impl Evaluatable<data::Value> for Expr {
             }
             Expr::Arithmetic(ref binary_expr) => binary_expr.eval(record),
             Expr::Logical(ref logical_expr) => logical_expr.eval(record),
-            Expr::FunctionCall { ref func, ref args } => {
+            Expr::FunctionCall { func, ref args } => {
                 let evaluated_args: Result<Vec<data::Value>, EvalError> =
-                    args.into_iter().map(|expr| expr.eval(record)).collect();
+                    args.iter().map(|expr| expr.eval(record)).collect();
 
                 func.eval_func(&evaluated_args?)
             }
@@ -573,7 +573,7 @@ impl CountDistinct {
 impl AggregateFunction for CountDistinct {
     fn process(&mut self, rec: &Data) -> Result<(), EvalError> {
         let value: data::Value = self.column.eval(rec)?;
-        self.state.insert(value.clone());
+        self.state.insert(value);
         Ok(())
     }
 
@@ -834,7 +834,7 @@ impl MultiGrouper {
     fn process_map(&mut self, data: &Data) {
         let key_values = self.key_cols.iter().map(|expr| expr.eval(data));
         let key_columns: Vec<data::Value> = key_values
-            .map(|value_res| value_res.unwrap_or_else(|_| data::Value::None))
+            .map(|value_res| value_res.unwrap_or(data::Value::None))
             .collect();
         let agg_col = &self.agg_col;
         let row = self.state.entry(key_columns).or_insert_with(|| {
@@ -1088,7 +1088,7 @@ impl UnaryPreAggFunction for Timeslice {
                 Ok(Some(rec))
             }
             _ => Err(EvalError::ExpectedDate {
-                found: format!("{}", inp.to_string()),
+                found: inp.to_string(),
             }),
         }
     }
@@ -1192,7 +1192,7 @@ impl UnaryPreAggFunction for ParseJson {
                 JsonValue::Bool(b) => data::Value::Bool(b),
                 JsonValue::Object(map) => data::Value::Obj(
                     map.into_iter()
-                        .map(|(k, v)| (k.to_string(), json_to_value(v)))
+                        .map(|(k, v)| (k, json_to_value(v)))
                         .collect::<HashMap<String, data::Value>>()
                         .into(),
                 ),
@@ -1242,7 +1242,7 @@ impl UnaryPreAggFunction for ParseLogfmt {
             let inp = get_input(&rec, &self.input_column)?;
             // Record includes the trailing newline, while logfmt considers that part of the
             // message if present. Trim any trailing whitespace.
-            logfmt::parse(&inp.trim_end())
+            logfmt::parse(inp.trim_end())
         };
         let res = {
             pairs.into_iter().fold(rec, |record, pair| match pair.val {

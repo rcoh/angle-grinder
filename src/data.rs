@@ -219,7 +219,7 @@ impl Value {
             Value::Bool(ref s) => format!("{}", s),
             Value::DateTime(ref dt) => format!("{}", dt),
             Value::Duration(ref d) => {
-                let mut remaining: Duration = d.clone();
+                let mut remaining: Duration = *d;
                 let weeks = remaining.num_seconds() / Duration::weeks(1).num_seconds();
                 remaining = remaining - Duration::weeks(weeks);
                 let days = remaining.num_seconds() / Duration::days(1).num_seconds();
@@ -543,7 +543,7 @@ impl Record {
     pub fn ordering<T: Into<Expr> + Send + Sync>(
         columns: Vec<T>,
     ) -> impl Fn(&VMap, &VMap) -> Result<Ordering, EvalError> + Send + Sync {
-        let columns: Vec<Expr> = columns.into_iter().map(|col| col.into()).collect();
+        let columns: Vec<Expr> = columns.into_iter().map(Into::into).collect();
         move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
                 let l_val: Value = col.eval(rec_l)?;
