@@ -1,0 +1,20 @@
+query = "* | json | p10(num_things), p90(num_things)"
+input = """
+{"level": "info", "num_things": 100}
+{"level": "info", "num_things": 200}
+{"level": "info", "num_things": 100}
+{"level": "info", "num_things": 10}
+{"level": "info", "num_things": 50}
+{"level": "info", "num_things": 105}
+{"level": "info", "num_things": 1000}
+{"level": "info", "num_things": 1100}
+{"level": "info", "num_things": 150}
+{"level": "info", "num_things": 175}
+"""
+output = """
+p10        p90
+-----------------------
+10         1000
+"""
+error = """
+"""

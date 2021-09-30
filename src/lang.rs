@@ -537,6 +537,7 @@ pub enum AggregateFunction {
     CountDistinct {
         column: Option<Positioned<Vec<Expr>>>,
     },
+    Error,
 }
 
 impl AggregateFunction {
@@ -547,8 +548,11 @@ impl AggregateFunction {
             AggregateFunction::Min { .. } => "_min".to_string(),
             AggregateFunction::Average { .. } => "_average".to_string(),
             AggregateFunction::Max { .. } => "_max".to_string(),
-            AggregateFunction::Percentile { .. } => "p".to_string(),
+            AggregateFunction::Percentile {
+                ref percentile_str, ..
+            } => format!("p{}", percentile_str),
             AggregateFunction::CountDistinct { .. } => "_countDistinct".to_string(),
+            AggregateFunction::Error => "_err".to_string(),
         }
     }
 }
@@ -1343,6 +1347,31 @@ fn fields(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
     .parse(input)
 }
 
+fn pct(input: Span) -> IResult<Span, Positioned<AggregateFunction>> {
+    with_pos(
+        alt((tag("pct"), tag("percentile"), tag("p")))
+            .precedes(with_pos(digit1))
+            .and(req_single_arg("the value to compute the percentile of"))
+            .map(|(pct_pos, column)| match pct_pos.value.parse::<f64>() {
+                Ok(pct) if pct > 0.0 && pct < 100.0 => AggregateFunction::Percentile {
+                    column,
+                    percentile: pct / 100.0,
+                    percentile_str: pct.to_string(),
+                },
+                _ => {
+                    input
+                        .extra
+                        .report_error_for(format!("invalid percentile number: {}", pct_pos.value))
+                        .with_code_range(pct_pos.range, "expecting a number between (0, 100)")
+                        .send_report();
+
+                    AggregateFunction::Error
+                }
+            }),
+    )
+    .parse(input)
+}
+
 pub fn with_pos<'a, O, E: ParseError<Span<'a>>, F>(
     mut f: F,
 ) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Positioned<O>, E>
@@ -1505,16 +1534,6 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
         tag("sum")
             .precedes(req_single_arg("the numeric value to find the sum of"))
             .map(|column| AggregateFunction::Sum { column }),
-    );
-    let pct = with_pos(
-        alt((tag("pct"), tag("percentile"), tag("p")))
-            .precedes(digit1)
-            .and(req_single_arg("the value to compute the percentile"))
-            .map(|(pct, column)| AggregateFunction::Percentile {
-                column,
-                percentile: format!(".{}", pct).parse::<f64>().unwrap(),
-                percentile_str: pct.to_string(),
-            }),
     );
     let avg = with_pos(
         tag("avg")
@@ -2839,6 +2858,21 @@ mod tests {
 
     #[test]
     fn parse_agg_operator() {
+        check_query(
+            "* | p200(abc)",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [],
+            }
+            error: invalid percentile number: 200
+              |
+            1 | * | p200(abc)
+              |      ^^^ expecting a number between (0, 100)
+              |"#]],
+        );
         check_query(
             "* | count()",
             expect![[r#"
