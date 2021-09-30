@@ -17,7 +17,7 @@ pub enum FunctionWrapper {
     Float2(fn(f64, f64) -> f64),
     String1(fn(&str) -> Result<data::Value, EvalError>),
     String2(fn(&str, &str) -> Result<data::Value, EvalError>),
-    Generic(fn(&Vec<data::Value>) -> Result<data::Value, EvalError>),
+    Generic(fn(&[data::Value]) -> Result<data::Value, EvalError>),
 }
 
 /// Struct used to capture the name of the function in the expression language and a pointer
@@ -42,9 +42,9 @@ impl FunctionContainer {
     fn eval1<'v, A: TryFrom<&'v data::Value, Error = EvalError>, O: Into<data::Value>>(
         &self,
         f: fn(A) -> O,
-        args: &'v Vec<data::Value>,
+        args: &'v [data::Value],
     ) -> Result<data::Value, EvalError> {
-        match args.as_slice() {
+        match args {
             [arg0] => {
                 let arg0_a = arg0.try_into()?;
                 Ok(f(arg0_a).into())
@@ -60,9 +60,9 @@ impl FunctionContainer {
     fn eval2<'v, A: TryFrom<&'v data::Value, Error = EvalError>, O: Into<data::Value>>(
         &self,
         f: fn(A, A) -> O,
-        args: &'v Vec<data::Value>,
+        args: &'v [data::Value],
     ) -> Result<data::Value, EvalError> {
-        match args.as_slice() {
+        match args {
             [arg0, arg1] => {
                 let arg0_a = arg0.try_into()?;
                 let arg1_a = arg1.try_into()?;
@@ -76,12 +76,12 @@ impl FunctionContainer {
         }
     }
 
-    pub fn eval_func(&self, args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+    pub fn eval_func(&self, args: &[data::Value]) -> Result<data::Value, EvalError> {
         match self.func {
             FunctionWrapper::Float1(func) => self.eval1(func, args),
             FunctionWrapper::Float2(func) => self.eval2(func, args),
             FunctionWrapper::String1(func) => {
-                if let [arg0] = args.as_slice() {
+                if let [arg0] = args {
                     func(arg0.to_string().as_str())
                 } else {
                     Err(EvalError::InvalidFunctionArguments {
@@ -92,7 +92,7 @@ impl FunctionContainer {
                 }
             }
             FunctionWrapper::String2(func) => {
-                if let [arg0, arg1] = args.as_slice() {
+                if let [arg0, arg1] = args {
                     func(arg0.to_string().as_str(), arg1.to_string().as_str())
                 } else {
                     Err(EvalError::InvalidFunctionArguments {
@@ -111,9 +111,9 @@ impl FunctionContainer {
 // TODO add some macro magic to extract doc attributes so the function reference
 // docs can be generated automatically
 
-fn concat(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
+fn concat(args: &[data::Value]) -> Result<data::Value, EvalError> {
     Ok(data::Value::Str(
-        args.into_iter().map(|arg| arg.to_string()).join(""),
+        args.iter().map(|arg| arg.to_string()).join(""),
     ))
 }
 
@@ -121,8 +121,8 @@ fn contains(left: &str, right: &str) -> Result<data::Value, EvalError> {
     Ok(data::Value::from_bool(left.contains(right)))
 }
 
-fn length(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
-    match args.as_slice() {
+fn length(args: &[data::Value]) -> Result<data::Value, EvalError> {
+    match args {
         [data::Value::Array(vec)] => Ok(data::Value::Int(vec.len() as i64)),
         [data::Value::Obj(map)] => Ok(data::Value::Int(map.len() as i64)),
         [arg0] => Ok(data::Value::Int(arg0.to_string().chars().count() as i64)),
@@ -138,8 +138,11 @@ fn parse_date(date_str: &str) -> Result<data::Value, EvalError> {
     dtparse::parse(date_str)
         .map(|pair| {
             data::Value::DateTime(
-                DateTime::<FixedOffset>::from_utc(pair.0, pair.1.unwrap_or(FixedOffset::west(0)))
-                    .into(),
+                DateTime::<FixedOffset>::from_utc(
+                    pair.0,
+                    pair.1.unwrap_or_else(|| FixedOffset::west(0)),
+                )
+                .into(),
             )
         })
         .map_err(|parse_err| EvalError::FunctionFailed {
@@ -157,8 +160,8 @@ fn parse_hex(num_str: &str) -> Result<data::Value, EvalError> {
         })
 }
 
-fn substring(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
-    match args.as_slice() {
+fn substring(args: &[data::Value]) -> Result<data::Value, EvalError> {
+    match args {
         [arg0, arg1, arg2] => {
             let src_str = arg0.to_string();
             let start_off: usize = arg1.try_into()?;
@@ -204,8 +207,8 @@ fn to_upper_case(s: &str) -> Result<data::Value, EvalError> {
     Ok(data::Value::from_string(s.to_uppercase()))
 }
 
-fn is_null(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
-    match args.as_slice() {
+fn is_null(args: &[data::Value]) -> Result<data::Value, EvalError> {
+    match args {
         [data::Value::None] => Ok(data::Value::Bool(true)),
         [_arg] => Ok(data::Value::Bool(false)),
         _ => Err(EvalError::InvalidFunctionArguments {
@@ -216,8 +219,8 @@ fn is_null(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     }
 }
 
-fn is_empty(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
-    match args.as_slice() {
+fn is_empty(args: &[data::Value]) -> Result<data::Value, EvalError> {
+    match args {
         [data::Value::None] => Ok(data::Value::Bool(true)),
         [data::Value::Str(ref s)] => Ok(data::Value::Bool(s.is_empty())),
         [_arg0] => Ok(data::Value::Bool(false)),
@@ -229,8 +232,8 @@ fn is_empty(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     }
 }
 
-fn is_blank(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
-    match args.as_slice() {
+fn is_blank(args: &[data::Value]) -> Result<data::Value, EvalError> {
+    match args {
         [data::Value::None] => Ok(data::Value::Bool(true)),
         [data::Value::Str(ref s)] => Ok(data::Value::Bool(s.trim().is_empty())),
         [_arg0] => Ok(data::Value::Bool(false)),
@@ -242,8 +245,8 @@ fn is_blank(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
     }
 }
 
-fn is_numeric(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
-    match args.as_slice() {
+fn is_numeric(args: &[data::Value]) -> Result<data::Value, EvalError> {
+    match args {
         [arg0] => Ok(data::Value::Bool(
             <f64 as TryFrom<&data::Value>>::try_from(arg0).is_ok(),
         )),
@@ -259,8 +262,8 @@ fn num(value: f64) -> f64 {
     value
 }
 
-fn now(args: &Vec<data::Value>) -> Result<data::Value, EvalError> {
-    match args.as_slice() {
+fn now(args: &[data::Value]) -> Result<data::Value, EvalError> {
+    match args {
         [] => Ok(data::Value::DateTime(Utc::now())),
         _ => Err(EvalError::InvalidFunctionArguments {
             name: "now",

@@ -121,7 +121,7 @@ fn parse_output(output_param: &str) -> Result<OutputMode, InvalidArgs> {
         ("legacy", "") => Ok(OutputMode::Legacy),
         ("json", "") => Ok(OutputMode::Json),
         ("logfmt", "") => Ok(OutputMode::Logfmt),
-        ("format", v) if v != "" => Ok(OutputMode::Format(v.to_owned())),
+        ("format", v) if !v.is_empty() => Ok(OutputMode::Format(v.to_owned())),
         ("format", "") => Err(InvalidFormatString),
         (other, _v) => Err(InvalidOutputMode {
             choice: other.to_owned(),

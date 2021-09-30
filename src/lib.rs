@@ -286,10 +286,10 @@ pub mod pipeline {
                     break;
                 }
                 let data = std::str::from_utf8(&line[..ct]).unwrap();
-                if self.filter.matches(data) {
-                    if !Pipeline::proc_preagg(Record::new(data), &mut preaggs, &tx) {
-                        break;
-                    }
+                if self.filter.matches(data)
+                    && !Pipeline::proc_preagg(Record::new(data), &mut preaggs, &tx)
+                {
+                    break;
                 }
                 line.clear();
             }

@@ -112,10 +112,9 @@ impl<'a> ToRange for Span<'a> {
 
     fn to_sync_point(&self) -> Range<usize> {
         let s: &str = self.fragment();
-        let sync = s.chars().find_position(|ch| match ch {
-            '|' | ')' | ']' | '}' => true,
-            _ => false,
-        });
+        let sync = s
+            .chars()
+            .find_position(|ch| matches!(ch, '|' | ')' | ']' | '}'));
 
         let end = sync.map(|pair| pair.0).unwrap_or(s.len());
 
@@ -127,10 +126,9 @@ impl<'a> ToRange for Span<'a> {
 
     fn to_whitespace(&self) -> Range<usize> {
         let s: &str = self.fragment();
-        let sync = s.chars().find_position(|ch| match ch {
-            ' ' | '\t' | '\n' => true,
-            _ => false,
-        });
+        let sync = s
+            .chars()
+            .find_position(|ch| matches!(ch, ' ' | '\t' | '\n'));
 
         let end = sync.map(|pair| pair.0).unwrap_or(s.len());
 
@@ -1602,7 +1600,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
                 let m = crate::errors::did_you_mean(
                     &i,
                     if is_agg {
-                        &VALID_AGGREGATES
+                        VALID_AGGREGATES
                     } else {
                         &VALID_OPERATORS
                     },

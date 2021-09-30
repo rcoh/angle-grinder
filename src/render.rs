@@ -1,6 +1,5 @@
 use crate::data;
 use failure::Error;
-use std;
 use std::io::Write;
 
 use crate::data::DisplayConfig;

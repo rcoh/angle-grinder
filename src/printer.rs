@@ -1,6 +1,5 @@
 use crate::data;
 use failure::Error;
-use std;
 use std::collections::HashMap;
 
 use crate::data::{Aggregate, DisplayConfig, Record};

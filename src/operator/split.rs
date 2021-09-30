@@ -43,7 +43,7 @@ fn find_close_delimiter<'a>(
         }
     }
     // We end up here if we never found a close quote. In that case, don't strip the leading quote.
-    (&s, &s[0..0])
+    (s, &s[0..0])
 }
 
 fn split_once<'a>(s: &'a str, p: &'a str) -> (&'a str, &'a str) {
