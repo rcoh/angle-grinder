@@ -38,8 +38,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             file: "benches/10k.inp".to_owned(),
         },
         E2eTest {
-            name: "star-count".to_owned(),
-            query: "* | count".to_owned(),
+            name: "star-parse-count".to_owned(),
+            query: "* | parse '*' as k | count by k".to_owned(),
             file: "benches/10k.inp".to_owned(),
         },
         E2eTest {
