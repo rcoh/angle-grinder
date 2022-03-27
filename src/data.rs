@@ -1,4 +1,4 @@
-use crate::operator::{EvalError, Evaluatable, Expr, ValueRef};
+use crate::operator::{EvalError, Expr, ValueRef};
 use chrono::{DateTime, Duration, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -546,8 +546,8 @@ impl Record {
         let columns: Vec<Expr> = columns.into_iter().map(Into::into).collect();
         move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
-                let l_val: Value = col.eval(rec_l)?;
-                let r_val: Value = col.eval(rec_r)?;
+                let l_val = col.eval_value(rec_l)?;
+                let r_val = col.eval_value(rec_r)?;
                 let cmp = l_val.cmp(&r_val);
                 if cmp != Ordering::Equal {
                     return Ok(cmp);
