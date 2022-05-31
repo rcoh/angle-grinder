@@ -10,7 +10,7 @@ use std::io::{stdout, BufReader};
 use structopt::StructOpt;
 
 #[global_allocator]
-static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use crate::InvalidArgs::{CantSupplyBoth, InvalidFormatString, InvalidOutputMode};
 use structopt::clap::ArgGroup;
