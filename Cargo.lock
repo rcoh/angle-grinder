@@ -28,7 +28,7 @@ dependencies = [
  "chrono",
  "cool_asserts",
  "criterion",
- "crossbeam-channel 0.3.9",
+ "crossbeam-channel",
  "dtparse",
  "expect-test",
  "failure",
@@ -386,21 +386,12 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8ec7fcd21571dc78f96cc96243cab8d8f035247c3efd16c687be154c3fa9efa"
-dependencies = [
- "crossbeam-utils 0.6.6",
-]
-
-[[package]]
-name = "crossbeam-channel"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06ed27e177f16d65f0f0c22a213e17c696ace5dd64b14258b52f9417ccb52db4"
 dependencies = [
  "cfg-if 1.0.0",
- "crossbeam-utils 0.8.4",
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -411,7 +402,7 @@ checksum = "6455c0ca19f0d2fbf751b908d5c55c1f5cbc65e03c4225427254b46890bdde1e"
 dependencies = [
  "cfg-if 1.0.0",
  "crossbeam-epoch",
- "crossbeam-utils 0.8.4",
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -421,20 +412,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52fb27eab85b17fbb9f6fd667089e07d6a2eb8743d02639ee7f6a7a7729c9c94"
 dependencies = [
  "cfg-if 1.0.0",
- "crossbeam-utils 0.8.4",
+ "crossbeam-utils",
  "lazy_static",
  "memoffset",
  "scopeguard",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.6.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04973fa96e96579258a5091af6003abde64af786b860f18622b82e026cca60e6"
-dependencies = [
- "cfg-if 0.1.10",
- "lazy_static",
 ]
 
 [[package]]
@@ -930,7 +911,7 @@ version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b287fb45c60bb826a0dc68ff08742b9d88a2fea13d6e0c286b3172065aaf878c"
 dependencies = [
- "crossbeam-utils 0.8.4",
+ "crossbeam-utils",
  "globset",
  "lazy_static",
  "log",
@@ -1683,9 +1664,9 @@ version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ab346ac5921dc62ffa9f89b7a773907511cdfa5490c572ae9be1be33e8afa4a"
 dependencies = [
- "crossbeam-channel 0.5.1",
+ "crossbeam-channel",
  "crossbeam-deque",
- "crossbeam-utils 0.8.4",
+ "crossbeam-utils",
  "lazy_static",
  "num_cpus",
 ]
