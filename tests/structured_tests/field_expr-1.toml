@@ -23,5 +23,5 @@ output = """
 """
 error = """
 error: Expected numeric operands, found not_a_number * 2
-error: No value for key num_things
+error: No value for key "num_things"
 """

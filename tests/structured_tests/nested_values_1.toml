@@ -12,6 +12,6 @@ output = """
 """
 
 error = """
-error: No value for key x
+error: No value for key "x"
 error: Expected array, found {a:5}
 """

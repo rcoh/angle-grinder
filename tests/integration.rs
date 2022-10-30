@@ -72,7 +72,7 @@ mod integration {
         run()
             .assert()
             .failure()
-            .stderr(predicate::str::contains("[OPTIONS]"));
+            .stderr(predicate::str::contains("MissingQuery"));
     }
 
     #[test]

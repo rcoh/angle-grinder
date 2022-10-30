@@ -1,52 +1,43 @@
 use ag::pipeline::{OutputMode, Pipeline, QueryContainer, TermErrorReporter};
 use human_panic::setup_panic;
-use quicli::prelude::*;
 
+use clap::Parser;
 #[cfg(feature = "self_update")]
 use self_update;
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufReader};
-use structopt::StructOpt;
+use thiserror::Error;
 
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use crate::InvalidArgs::{CantSupplyBoth, InvalidFormatString, InvalidOutputMode};
-use structopt::clap::ArgGroup;
 
-// Needed to require either "--self-update" or a query
-fn main_arg_group() -> ArgGroup<'static> {
-    ArgGroup::with_name("main").required(true)
-}
-
-#[derive(Debug, StructOpt)]
-#[structopt(
-    after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder",
-    raw(group = "main_arg_group()")
-)]
+#[derive(Debug, Parser)]
+#[command(after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder")]
 struct Cli {
     /// The query
-    #[structopt(group = "main")]
+    #[arg(group = "main")]
     query: Option<String>,
 
     #[cfg(feature = "self_update")]
     /// Update agrind to the latest published version Github (https://github.com/rcoh/angle-grinder)
-    #[structopt(long = "self-update", group = "main")]
+    #[arg(long = "self-update", group = "main")]
     update: bool,
 
     /// Optionally reads from a file instead of Stdin
-    #[structopt(long = "file", short = "f")]
+    #[arg(long = "file", short = 'f')]
     file: Option<String>,
 
     /// DEPRECATED. Use -o format=... instead. Provide a Rust std::fmt string to format output
-    #[structopt(long = "format", short = "m")]
+    #[arg(long = "format", short = 'm')]
     format: Option<String>,
 
     /// Set output format. One of (json|legacy|format=<rust fmt str>|logfmt)
-    #[structopt(
+    #[arg(
         long = "output",
-        short = "o",
+        short = 'o',
         long_help = "Set output format. Options: \n\
                      - `json`,\n\
                      - `logfmt`\n\
@@ -54,31 +45,26 @@ struct Cli {
                      - `legacy` The original output format, auto aligning [k=v]"
     )]
     output: Option<String>,
-
-    #[structopt(flatten)]
-    verbosity: Verbosity,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum InvalidArgs {
-    #[fail(display = "Query was missing. Usage: `agrind 'query'`")]
+    #[error("Query was missing. Usage: `agrind 'query'`")]
     MissingQuery,
 
-    #[fail(display = "Invalid output mode {}. Valid choices: {}", choice, choices)]
+    #[error("Invalid output mode {}. Valid choices: {}", choice, choices)]
     InvalidOutputMode { choice: String, choices: String },
 
-    #[fail(
-        display = "Invalid format string. Expected something like `-o format='{{src}} => {{dst}}'`"
-    )]
+    #[error("Invalid format string. Expected something like `-o format='{{src}} => {{dst}}'`")]
     InvalidFormatString,
 
-    #[fail(display = "Can't supply a format string and an output mode")]
+    #[error("Can't supply a format string and an output mode")]
     CantSupplyBoth,
 }
 
-fn main() -> CliResult {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_panic!();
-    let args = Cli::from_args();
+    let args = Cli::parse();
     #[cfg(feature = "self_update")]
     if args.update {
         return update();
@@ -87,7 +73,7 @@ fn main() -> CliResult {
         args.query.ok_or(InvalidArgs::MissingQuery)?,
         Box::new(TermErrorReporter {}),
     );
-    args.verbosity.setup_env_logger("agrind")?;
+    //args.verbosity.setup_env_logger("agrind")?;
     let output_mode = match (args.output, args.format) {
         (Some(_output), Some(_format)) => Err(CantSupplyBoth),
         (Some(output), None) => parse_output(&output),
@@ -131,7 +117,7 @@ fn parse_output(output_param: &str) -> Result<OutputMode, InvalidArgs> {
 }
 
 #[cfg(feature = "self_update")]
-fn update() -> CliResult {
+fn update() -> Result<(), Box<dyn StdErr>> {
     let crate_version = self_update::cargo_crate_version!();
     let status = self_update::backends::github::Update::configure()
         .repo_owner("rcoh")

@@ -21,23 +21,23 @@ pub mod pipeline {
     use crate::printer::{agg_printer, raw_printer};
     use crate::render::{RenderConfig, Renderer, TerminalConfig};
     use crate::typecheck::{TypeCheck, TypeError};
+    use anyhow::Error;
     use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
-    use failure::Error;
-    use failure::Fail;
     use std::collections::VecDeque;
     use std::io::{BufRead, Write};
     use std::thread;
     use std::time::Duration;
+    use thiserror::Error;
 
-    #[derive(Debug, Fail)]
+    #[derive(Debug, Error)]
     pub enum CompileError {
-        #[fail(display = "Failed to parse query")]
+        #[error("Failed to parse query")]
         Parse,
 
-        #[fail(display = "Non aggregate operators can't follow aggregate operators")]
+        #[error("Non aggregate operators can't follow aggregate operators")]
         NonAggregateAfterAggregate,
 
-        #[fail(display = "Unexpected failure: {}", message)]
+        #[error("Unexpected failure: {}", message)]
         Unexpected { message: String },
     }
 

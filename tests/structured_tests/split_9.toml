@@ -13,7 +13,7 @@ output = """
 [level=WARN]         [oh_boy=[{abc:[a, c]}]]                       [raw={nested:a-c}]
 """
 error = """
-error: No value for key oh_boy
-error: No value for key raw
+error: No value for key "oh_boy"
+error: No value for key "raw"
 error: Index 0 out of range
 """

@@ -10,6 +10,6 @@ output = """
 [bval=false]        [thing_a=6]
 """
 error = """
-error: No value for key bval
+error: No value for key "bval"
 error: Expected boolean, found 1
 """

@@ -17,7 +17,6 @@ const ALIASES_DIR: Dir = include_dir!("aliases");
 lazy_static! {
     pub static ref LOADED_ALIASES: Vec<AliasPipeline> = ALIASES_DIR
         .files()
-        .iter()
         .map(|file| {
             let config: AliasConfig =
                 toml::from_str(file.contents_utf8().expect("load string")).expect("toml valid");

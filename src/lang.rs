@@ -846,7 +846,7 @@ fn duration_fragment(input: Span) -> IResult<Span, chrono::Duration> {
 fn duration(input: Span) -> IResult<Span, chrono::Duration> {
     fold_many1(
         duration_fragment,
-        chrono::Duration::zero(),
+        || chrono::Duration::zero(),
         |left, right| left + right,
     )(input)
 }
@@ -984,7 +984,7 @@ fn term(input: Span) -> IResult<Span, Expr> {
                 }
             },
         ),
-        init,
+        || init.clone(),
         |left, (op, right)| Expr::Binary {
             left: Box::new(left),
             op: BinaryOp::Arithmetic(op),
@@ -998,6 +998,7 @@ fn term(input: Span) -> IResult<Span, Expr> {
 /// Parses a chain of plus/minus expressions
 fn arith_expr(input: Span) -> IResult<Span, Expr> {
     let (input, init) = term(input)?;
+    let init = move || init.clone();
 
     fold_many0(
         pair(
@@ -1065,7 +1066,7 @@ fn logical_and(input: Span) -> IResult<Span, Expr> {
                 Expr::Error
             }
         }),
-        init,
+        || init.clone(),
         |left, right| Expr::Binary {
             op: BinaryOp::Logical(LogicalOp::And),
             left: Box::new(left),
@@ -1104,7 +1105,7 @@ fn logical_or(input: Span) -> IResult<Span, Expr> {
                 Expr::Error
             }
         }),
-        init,
+        || init.clone(),
         |left, right| Expr::Binary {
             op: BinaryOp::Logical(LogicalOp::Or),
             left: Box::new(left),
