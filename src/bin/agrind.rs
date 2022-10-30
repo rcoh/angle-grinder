@@ -117,7 +117,7 @@ fn parse_output(output_param: &str) -> Result<OutputMode, InvalidArgs> {
 }
 
 #[cfg(feature = "self_update")]
-fn update() -> Result<(), Box<dyn StdErr>> {
+fn update() -> Result<(), Box<dyn std::error::Error>> {
     let crate_version = self_update::cargo_crate_version!();
     let status = self_update::backends::github::Update::configure()
         .repo_owner("rcoh")
