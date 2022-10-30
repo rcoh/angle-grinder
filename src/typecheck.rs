@@ -3,32 +3,33 @@ use crate::errors::ErrorBuilder;
 use crate::funcs;
 use crate::lang;
 use crate::operator;
-use failure::Fail;
+use thiserror::Error;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum TypeError {
-    #[fail(display = "Expected boolean expression, found {}", found)]
+    #[error("Expected boolean expression, found {}", found)]
     ExpectedBool { found: String },
 
-    #[fail(display = "Expected an expression")]
+    #[error("Expected an expression")]
     ExpectedExpr,
 
-    #[fail(
-        display = "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
-        pattern, extracted
+    #[error(
+        "Wrong number of patterns for parse. Pattern has {} but {} were extracted",
+        pattern,
+        extracted
     )]
     ParseNumPatterns { pattern: usize, extracted: usize },
 
-    #[fail(display = "Two `from` clauses were provided")]
+    #[error("Two `from` clauses were provided")]
     DoubleFromClause,
 
-    #[fail(display = "Limit must be a non-zero integer, found {}", limit)]
+    #[error("Limit must be a non-zero integer, found {}", limit)]
     InvalidLimit { limit: f64 },
 
-    #[fail(display = "Unknown function {}", name)]
+    #[error("Unknown function {}", name)]
     UnknownFunction { name: String },
 
-    #[fail(display = "Expected a duration for the timeslice (e.g. 1h)")]
+    #[error("Expected a duration for the timeslice (e.g. 1h)")]
     ExpectedDuration,
 }
 

@@ -2,8 +2,6 @@ use crate::data;
 use crate::data::{Aggregate, DisplayConfig, Record, Row};
 use crate::funcs;
 use chrono::DurationRound;
-use failure::Fail;
-use failure::_core::fmt::Debug;
 use quantiles::ckms::CKMS;
 use serde_json::Value as JsonValue;
 use std::borrow::Cow;
@@ -14,59 +12,62 @@ use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::iter;
 use std::iter::FromIterator;
+use thiserror::Error;
 
 type Data = HashMap<String, data::Value>;
 
 mod split;
 
-#[derive(Debug, Fail, PartialEq)]
+#[derive(Debug, Error, PartialEq)]
 pub enum EvalError {
-    #[fail(display = "No value for key {}", key)]
+    #[error("No value for key {key:?}")]
     NoValueForKey { key: String },
 
-    #[fail(display = "Expected {}, found {}", expected, found)]
+    #[error("Expected {}, found {}", expected, found)]
     ExpectedXYZ { expected: String, found: String },
 
-    #[fail(display = "Index {} out of range", index)]
+    #[error("Index {} out of range", index)]
     IndexOutOfRange { index: i64 },
 
-    #[fail(display = "Found None, expected {}", tpe)]
+    #[error("Found None, expected {}", tpe)]
     UnexpectedNone { tpe: String },
 
-    #[fail(display = "Expected JSON, found {}", found)]
+    #[error("Expected JSON, found {}", found)]
     ExpectedJson { found: String },
 
-    #[fail(display = "Expected string, found {}", found)]
+    #[error("Expected string, found {}", found)]
     ExpectedString { found: String },
 
-    #[fail(display = "Expected number, found {}", found)]
+    #[error("Expected number, found {}", found)]
     ExpectedNumber { found: String },
 
-    #[fail(
-        display = "Expected date, found '{}'.  Use parseDate() to convert a value to a date",
+    #[error(
+        "Expected date, found '{}'.  Use parseDate() to convert a value to a date",
         found
     )]
     ExpectedDate { found: String },
 
-    #[fail(display = "Expected positive number, found {}", found)]
+    #[error("Expected positive number, found {}", found)]
     ExpectedPositiveNumber { found: String },
 
-    #[fail(display = "Expected numeric operands, found {} {} {}", left, op, right)]
+    #[error("Expected numeric operands, found {} {} {}", left, op, right)]
     ExpectedNumericOperands {
         left: String,
         op: &'static str,
         right: String,
     },
 
-    #[fail(display = "Expected boolean, found {}", found)]
+    #[error("Expected boolean, found {}", found)]
     ExpectedBoolean { found: String },
 
-    #[fail(display = "Unknown function {}", name)]
+    #[error("Unknown function {}", name)]
     UnknownFunction { name: String },
 
-    #[fail(
-        display = "The '{}' function expects {} arguments, found {}",
-        name, expected, found
+    #[error(
+        "The '{}' function expects {} arguments, found {}",
+        name,
+        expected,
+        found
     )]
     InvalidFunctionArguments {
         name: &'static str,
@@ -74,10 +75,10 @@ pub enum EvalError {
         found: usize,
     },
 
-    #[fail(display = "The '{}' function failed with the error: {}", name, msg)]
+    #[error("The '{}' function failed with the error: {}", name, msg)]
     FunctionFailed { name: &'static str, msg: String },
 
-    #[fail(display = "Duration is not valid for timeslice: {}", error)]
+    #[error("Duration is not valid for timeslice: {}", error)]
     InvalidDuration { error: String },
 }
 

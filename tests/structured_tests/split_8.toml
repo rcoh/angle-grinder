@@ -11,5 +11,5 @@ output = """
 [level=WARN]         [raw={foo:bar, nested:[ab, c]}]        [hello=world]
 """
 error = """
-error: No value for key raw
+error: No value for key "raw"
 """

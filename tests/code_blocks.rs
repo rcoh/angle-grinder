@@ -16,7 +16,7 @@ fn extract_blocks<'md, I: Iterator<Item = Event<'md>>>(md_events: I) -> Vec<Code
     for event in md_events {
         match (event, in_block) {
             (Event::Start(Tag::CodeBlock(flags)), _) => {
-                current_flag = (&flags).to_string();
+                current_flag = format!("{:?}", flags);
                 current_block.clear();
                 in_block = true;
             }

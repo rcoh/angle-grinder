@@ -11,7 +11,7 @@ output = """
 [bval=true]        [thing_a=0]
 """
 error = """
-error: No value for key bval
+error: No value for key "bval"
 error: Expected boolean, found 1
 """
 

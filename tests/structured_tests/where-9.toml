@@ -11,6 +11,6 @@ output = """
 [response_ms=2]
 """
 error = """
-error: No value for key response_ms
+error: No value for key "response_ms"
 error: Expected numeric operands, found five / 2
 """
