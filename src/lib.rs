@@ -41,7 +41,7 @@ pub mod pipeline {
         Unexpected { message: String },
     }
 
-    #[derive(Clone, PartialEq)]
+    #[derive(Clone, PartialEq, Eq)]
     pub enum OutputMode {
         Legacy,
         Logfmt,
@@ -133,8 +133,7 @@ pub mod pipeline {
             output: W,
             output_mode: OutputMode,
         ) -> Result<Self, Error> {
-            let parsed = pipeline.parse().map_err(|_pos| CompileError::Parse);
-            let query = parsed?;
+            let query = pipeline.parse()?;
             let filters = convert_filter(query.search);
             let mut in_agg = false;
             let mut pre_agg: Vec<Box<dyn operator::UnaryPreAggOperator>> = Vec::new();
@@ -165,14 +164,13 @@ pub mod pipeline {
                         if let Ok(op) = Pipeline::convert_multi_agg(agg_op, pipeline) {
                             post_agg.push(op);
 
-                            let needs_sort = match op_deque.front() {
+                            let needs_sort = matches!(
+                                op_deque.front(),
                                 Some(Operator::Inline(Positioned {
                                     value: InlineOperator::Limit { .. },
                                     ..
-                                })) => true,
-                                None => true,
-                                _ => false,
-                            };
+                                })) | None
+                            );
                             if needs_sort {
                                 post_agg.push(Pipeline::convert_sort(sorter, pipeline)?);
                             }
@@ -196,7 +194,7 @@ pub mod pipeline {
             let raw_printer =
                 raw_printer(&output_mode, render_config.clone(), TerminalConfig::load())?;
             let agg_printer = agg_printer(&output_mode, render_config, TerminalConfig::load())?;
-            Result::Ok(Pipeline {
+            Ok(Pipeline {
                 filter: filters,
                 pre_aggregates: pre_agg,
                 aggregators: post_agg,
@@ -248,7 +246,7 @@ pub mod pipeline {
 
                 if renderer.should_print() {
                     let result =
-                        renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), false);
+                        renderer.render(&Pipeline::run_agg_pipeline(&*head, &mut rest), false);
 
                     if let Err(e) = result {
                         eprintln!("error: {}", e);
@@ -256,11 +254,10 @@ pub mod pipeline {
                     }
                 }
             }
-            let result = renderer.render(&Pipeline::run_agg_pipeline(&head, &mut rest), true);
+            let result = renderer.render(&Pipeline::run_agg_pipeline(&*head, &mut rest), true);
 
             if let Err(e) = result {
                 eprintln!("error: {}", e);
-                return;
             }
         }
 
@@ -335,7 +332,7 @@ pub mod pipeline {
         }
 
         pub fn run_agg_pipeline(
-            head: &Box<dyn operator::AggregateOperator>,
+            head: &dyn operator::AggregateOperator,
             rest: &mut [Box<dyn operator::AggregateOperator>],
         ) -> Row {
             let mut row = Row::Aggregate((*head).emit());

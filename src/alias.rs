@@ -34,7 +34,7 @@ lazy_static! {
         LOADED_ALIASES.iter().map(|a| a.keyword.as_str()).collect();
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct AliasConfig {
     keyword: String,
     template: String,

@@ -18,7 +18,7 @@ type Data = HashMap<String, data::Value>;
 
 mod split;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum EvalError {
     #[error("No value for key {key:?}")]
     NoValueForKey { key: String },
@@ -739,6 +739,7 @@ pub enum SortDirection {
 pub struct Sorter {
     columns: Vec<String>,
     state: Vec<Data>,
+    #[allow(clippy::type_complexity)]
     ordering: Box<dyn Fn(&Data, &Data) -> Result<Ordering, EvalError> + Send + Sync>,
     direction: SortDirection,
 }

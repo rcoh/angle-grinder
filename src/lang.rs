@@ -29,6 +29,7 @@ use nom_supreme::tag::complete::tag;
 use crate::alias::{self, AliasPipeline};
 use crate::data;
 use crate::errors::{ErrorBuilder, QueryContainer};
+use crate::pipeline::CompileError;
 
 pub const VALID_AGGREGATES: &[&str] = &[
     "count",
@@ -77,7 +78,7 @@ pub type LResult<I, O, E = ErrorTree<I>> = Result<(I, O), nom::Err<E>>;
 pub type QueryRange = Range<usize>;
 
 /// Container for values from the query that records the location in the query string.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Positioned<T> {
     pub range: QueryRange,
     pub value: T,
@@ -400,7 +401,7 @@ impl Keyword {
             return regex::Regex::new(&self.0).unwrap();
         }
 
-        let mut regex_str = regex::escape(&self.0.replace("\\\"", "\"")).replace(" ", "\\s");
+        let mut regex_str = regex::escape(&self.0.replace("\\\"", "\"")).replace(' ', "\\s");
 
         regex_str.insert_str(0, "(?i)");
         if self.1 == KeywordType::Wildcard {
@@ -504,7 +505,7 @@ pub enum FieldMode {
     Except,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 pub enum SortMode {
     Ascending,
     Descending,
@@ -562,7 +563,7 @@ pub struct MultiAggregateOperator {
     pub aggregate_functions: Vec<(String, Positioned<AggregateFunction>)>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SortOperator {
     pub sort_cols: Vec<Expr>,
     pub direction: SortMode,
@@ -735,7 +736,7 @@ fn sort(input: Span) -> IResult<Span, Operator> {
             opt(tag("by")
                 .delimited_by(multispace1)
                 .precedes(sourced_expr_list))
-            .map(|opt_cols| opt_cols.unwrap_or_else(Vec::new)),
+            .map(|opt_cols| opt_cols.unwrap_or_default()),
         ),
         opt(sort_mode.preceded_by(multispace1))
             .map(|opt_mode| opt_mode.unwrap_or(SortMode::Ascending)),
@@ -827,28 +828,24 @@ fn is_keyword(c: char) -> bool {
 fn duration_fragment(input: Span) -> IResult<Span, chrono::Duration> {
     let (input, amount) = i64_parse(input)?;
 
-    let retval = alt((
-        tag("ns").map(|_| chrono::Duration::nanoseconds(amount)),
-        tag("us").map(|_| chrono::Duration::microseconds(amount)),
-        tag("ms").map(|_| chrono::Duration::milliseconds(amount)),
-        tag("s").map(|_| chrono::Duration::seconds(amount)),
-        tag("m").map(|_| chrono::Duration::minutes(amount)),
-        tag("h").map(|_| chrono::Duration::hours(amount)),
-        tag("d").map(|_| chrono::Duration::days(amount)),
-        tag("w").map(|_| chrono::Duration::weeks(amount)),
+    alt((
+        tag("ns").map(move |_| chrono::Duration::nanoseconds(amount)),
+        tag("us").map(move |_| chrono::Duration::microseconds(amount)),
+        tag("ms").map(move |_| chrono::Duration::milliseconds(amount)),
+        tag("s").map(move |_| chrono::Duration::seconds(amount)),
+        tag("m").map(move |_| chrono::Duration::minutes(amount)),
+        tag("h").map(move |_| chrono::Duration::hours(amount)),
+        tag("d").map(move |_| chrono::Duration::days(amount)),
+        tag("w").map(move |_| chrono::Duration::weeks(amount)),
     ))
-    .parse(input);
-
-    retval
+    .parse(input)
 }
 
 /// Parses a duration that can be made up of multiple integer/time-suffix values
 fn duration(input: Span) -> IResult<Span, chrono::Duration> {
-    fold_many1(
-        duration_fragment,
-        || chrono::Duration::zero(),
-        |left, right| left + right,
-    )(input)
+    fold_many1(duration_fragment, chrono::Duration::zero, |left, right| {
+        left + right
+    })(input)
 }
 
 fn dot_property(input: Span) -> IResult<Span, DataAccessAtom> {
@@ -1551,7 +1548,7 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
             .terminated(multispace1)
             .precedes(sourced_expr_list))
         .terminated(end_of_query)
-        .map(|opt_cols| opt_cols.unwrap_or_else(Vec::new)),
+        .map(|opt_cols| opt_cols.unwrap_or_default()),
     ))
     .map(|(aggregate_functions, cols)| {
         let (key_col_headers, key_cols) = cols.iter().cloned().unzip();
@@ -1648,23 +1645,23 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     separated_list1(tag("|"), opers.delimited_by(multispace0)).parse(input)
 }
 
-pub fn pipeline_template(input: &QueryContainer) -> Result<Vec<Operator>, ()> {
+pub fn pipeline_template(input: &QueryContainer) -> Result<Vec<Operator>, CompileError> {
     let span = Span::new_extra(input.query.as_str(), input);
-    let (_input, operators) = parse_operators(span).map_err(|_| ())?;
+    let (_input, operators) = parse_operators(span).map_err(|_| CompileError::Parse)?;
 
     Ok(operators)
 }
 
-pub fn query(input: &QueryContainer) -> Result<Query, ()> {
+pub fn query(input: &QueryContainer) -> Result<Query, CompileError> {
     let span = Span::new_extra(input.query.as_str(), input);
-    let (input, search) = parse_search(span).map_err(|_| ())?;
+    let (input, search) = parse_search(span).map_err(|_| CompileError::Parse)?;
     let (input, operators) = opt(tag("|").precedes(parse_operators))
         .map(|ops| ops.unwrap_or_default())
         .parse(input)
-        .map_err(|_| ())?;
+        .map_err(|_| CompileError::Parse)?;
 
     if input.extra.get_error_count() > 0 {
-        Err(())
+        Err(CompileError::Parse)
     } else {
         Ok(Query { search, operators })
     }

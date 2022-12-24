@@ -40,7 +40,7 @@ impl serde::Serialize for WrappedAggregateRow<'_> {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Aggregate {
     pub columns: Vec<String>,
     pub data: Vec<VMap>,
@@ -66,7 +66,7 @@ impl serde::Serialize for Aggregate {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Record {
     pub data: VMap,
     pub raw: String,

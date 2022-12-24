@@ -43,7 +43,7 @@ impl TerminalConfig {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct TerminalSize {
     pub height: u16,
     pub width: u16,
