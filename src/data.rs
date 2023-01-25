@@ -22,7 +22,7 @@ pub enum Row {
 /// Serde serializers are not allowed to emit nested serializations directly, so
 /// it's necesssary to create an intermediary type for each row, and to provide
 /// it with the columns to enable ordering.
-pub struct WrappedAggregateRow<'a> {
+pub(crate) struct WrappedAggregateRow<'a> {
     pub columns: &'a Vec<String>,
     pub data: &'a VMap,
 }
