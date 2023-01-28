@@ -125,7 +125,7 @@ impl Printer<data::Aggregate> for JsonPrinter {
     }
 
     fn final_print(&mut self, row: &Aggregate, _display_config: &DisplayConfig) -> String {
-        let mut o = serde_json::to_string(&row.data).unwrap();
+        let mut o = serde_json::to_string(&row).unwrap();
         o.push('\n');
         o
     }

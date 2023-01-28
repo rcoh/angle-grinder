@@ -2,7 +2,7 @@ use crate::operator::{EvalError, Expr, ValueRef};
 use chrono::{DateTime, Duration, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use serde::ser::SerializeMap;
+use serde::ser::{SerializeMap, SerializeSeq};
 use serde::Serializer;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -18,10 +18,52 @@ pub enum Row {
     Record(Record),
 }
 
+/// Helper to allow for a custom serde Serializer for the rows in an Aggregate.
+/// Serde serializers are not allowed to emit nested serializations directly, so
+/// it's necesssary to create an intermediary type for each row, and to provide
+/// it with the columns to enable ordering.
+pub(crate) struct WrappedAggregateRow<'a> {
+    pub columns: &'a Vec<String>,
+    pub data: &'a VMap,
+}
+
+impl serde::Serialize for WrappedAggregateRow<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.columns.len()))?;
+        for k in self.columns {
+            map.serialize_entry(k, self.data.get(k).unwrap_or(&Value::None))?;
+        }
+        map.end()
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Aggregate {
     pub columns: Vec<String>,
     pub data: Vec<VMap>,
+}
+
+// This custom serializer respects column order, whereas directly serializing
+// the `data` map would not.  (At least not while VMap is a HashMap.  serde_json
+// supports a "preserve_order" feature that uses the "indexmap" crate.  But
+// since we already have the info necessary for ordering, we use that.)
+impl serde::Serialize for Aggregate {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(self.data.len()))?;
+        for row in &self.data {
+            seq.serialize_element(&WrappedAggregateRow {
+                columns: &self.columns,
+                data: &row,
+            })?
+        }
+        seq.end()
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
