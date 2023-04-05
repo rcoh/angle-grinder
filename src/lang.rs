@@ -1145,7 +1145,7 @@ fn req_ident(input: Span) -> IResult<Span, String> {
             .with_resolution("Give the value a name")
             .send_report();
     })
-    .map(|opt_id| opt_id.unwrap_or_else(|| "".to_string()))
+    .map(|opt_id| opt_id.unwrap_or_default())
     .parse(input)
 }
 
@@ -1272,7 +1272,6 @@ fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
                     Ok(re) => {
                         let named_caps: Vec<String> = re
                             .capture_names()
-                            .into_iter()
                             .flatten()
                             .map_into()
                             .collect();
@@ -1691,14 +1690,10 @@ mod tests {
             );
             let r = query(&qc);
 
-            if r.is_ok() {
-                r.unwrap()
-            } else {
-                Query {
-                    search: Search::And(vec![]),
-                    operators: vec![],
-                }
-            }
+            r.unwrap_or_else(|_| Query {
+                search: Search::And(vec![]),
+                operators: vec![],
+            })
         };
 
         {

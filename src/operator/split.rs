@@ -75,7 +75,7 @@ pub fn split_with_delimiters<'a>(
 
         // If we're left with a quoted string, consume it, otherwise read until the next separator
         let (token, rest) = match leading_delimiter {
-            Some((term_start, term_end)) => find_close_delimiter(wip, *term_start, *term_end),
+            Some((term_start, term_end)) => find_close_delimiter(wip, term_start, term_end),
             None => split_once(wip, separator),
         };
         let token = token.trim();

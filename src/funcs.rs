@@ -332,7 +332,7 @@ mod tests {
     fn unicode_length() {
         assert_eq!(
             data::Value::Int(1),
-            length(&vec!(data::Value::Str("\u{2603}".to_string()))).unwrap()
+            length(&[data::Value::Str("\u{2603}".to_string())]).unwrap()
         );
     }
 
@@ -340,30 +340,24 @@ mod tests {
     fn array_length() {
         assert_eq!(
             Ok(data::Value::Int(3)),
-            length(&vec!(data::Value::Array(vec!(
+            length(&[data::Value::Array(vec!(
                 data::Value::Int(0),
                 data::Value::Int(1),
                 data::Value::Int(2)
-            ))))
+            ))])
         );
     }
 
     #[test]
     fn int_length() {
-        assert_eq!(
-            Ok(data::Value::Int(3)),
-            length(&vec!(data::Value::Int(123)))
-        );
+        assert_eq!(Ok(data::Value::Int(3)), length(&[data::Value::Int(123)]));
     }
 
     #[test]
     fn object_length() {
         let mut map = im::HashMap::new();
         map.insert("abc".to_string(), data::Value::from_bool(true));
-        assert_eq!(
-            Ok(data::Value::Int(1)),
-            length(&vec!(data::Value::Obj(map)))
-        );
+        assert_eq!(Ok(data::Value::Int(1)), length(&[data::Value::Obj(map)]));
     }
 
     #[test]
@@ -417,11 +411,11 @@ mod tests {
     fn substring_of_num() {
         assert_eq!(
             Ok(data::Value::Str("12".to_string())),
-            substring(&vec!(
+            substring(&[
                 data::Value::Int(123),
                 data::Value::Int(0),
                 data::Value::Int(2)
-            ))
+            ])
         );
     }
 
@@ -432,70 +426,61 @@ mod tests {
                 name: "substring",
                 msg: "end offset (0) is less than the start offset (2)".to_string()
             }),
-            substring(&vec!(
+            substring(&[
                 data::Value::Int(123),
                 data::Value::Str("2".to_string()),
                 data::Value::Int(0)
-            ))
+            ])
         );
     }
 
     #[test]
     fn value_predicates() {
+        assert_eq!(Ok(data::Value::Bool(true)), is_null(&[data::Value::None]));
+        assert_eq!(
+            Ok(data::Value::Bool(false)),
+            is_null(&[data::Value::Str("".to_string())])
+        );
+
+        assert_eq!(Ok(data::Value::Bool(true)), is_empty(&[data::Value::None]));
         assert_eq!(
             Ok(data::Value::Bool(true)),
-            is_null(&vec![data::Value::None])
+            is_empty(&[data::Value::Str("".to_string())])
         );
         assert_eq!(
             Ok(data::Value::Bool(false)),
-            is_null(&vec![data::Value::Str("".to_string())])
+            is_empty(&[data::Value::Str(" ".to_string())])
+        );
+
+        assert_eq!(Ok(data::Value::Bool(true)), is_blank(&[data::Value::None]));
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_blank(&[data::Value::Str("".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_blank(&[data::Value::Str(" ".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(false)),
+            is_blank(&[data::Value::Str("abc".to_string())])
         );
 
         assert_eq!(
             Ok(data::Value::Bool(true)),
-            is_empty(&vec![data::Value::None])
+            is_numeric(&[data::Value::Str("123".to_string())])
         );
         assert_eq!(
             Ok(data::Value::Bool(true)),
-            is_empty(&vec![data::Value::Str("".to_string())])
+            is_numeric(&[data::Value::Str("1.23".to_string())])
+        );
+        assert_eq!(
+            Ok(data::Value::Bool(true)),
+            is_numeric(&[data::Value::Str("1e3".to_string())])
         );
         assert_eq!(
             Ok(data::Value::Bool(false)),
-            is_empty(&vec![data::Value::Str(" ".to_string())])
-        );
-
-        assert_eq!(
-            Ok(data::Value::Bool(true)),
-            is_blank(&vec![data::Value::None])
-        );
-        assert_eq!(
-            Ok(data::Value::Bool(true)),
-            is_blank(&vec![data::Value::Str("".to_string())])
-        );
-        assert_eq!(
-            Ok(data::Value::Bool(true)),
-            is_blank(&vec![data::Value::Str(" ".to_string())])
-        );
-        assert_eq!(
-            Ok(data::Value::Bool(false)),
-            is_blank(&vec![data::Value::Str("abc".to_string())])
-        );
-
-        assert_eq!(
-            Ok(data::Value::Bool(true)),
-            is_numeric(&vec![data::Value::Str("123".to_string())])
-        );
-        assert_eq!(
-            Ok(data::Value::Bool(true)),
-            is_numeric(&vec![data::Value::Str("1.23".to_string())])
-        );
-        assert_eq!(
-            Ok(data::Value::Bool(true)),
-            is_numeric(&vec![data::Value::Str("1e3".to_string())])
-        );
-        assert_eq!(
-            Ok(data::Value::Bool(false)),
-            is_numeric(&vec![data::Value::Str("abc".to_string())])
+            is_numeric(&[data::Value::Str("abc".to_string())])
         );
     }
 }

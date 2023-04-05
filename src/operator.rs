@@ -842,7 +842,7 @@ impl MultiGrouper {
         let row = self.state.entry(key_columns).or_insert_with(|| {
             agg_col
                 .iter()
-                .map(|&(ref k, ref v)| (k.to_owned(), v.empty_box()))
+                .map(|(k, v)| (k.to_owned(), v.empty_box()))
                 .collect()
         });
         for fun in row.values_mut() {
@@ -855,7 +855,7 @@ impl MultiGrouper {
 impl AggregateOperator for MultiGrouper {
     fn emit(&self) -> Aggregate {
         let mut columns = self.key_col_headers.to_vec();
-        columns.extend(self.agg_col.iter().map(|&(ref k, ..)| k.to_string()));
+        columns.extend(self.agg_col.iter().map(|(k, ..)| k.to_string()));
         let data = self.state.iter().map(|(key_values, agg_map)| {
             let key_values = key_values.iter().cloned();
             let key_cols = self.key_col_headers.iter().map(|s| s.to_owned());
@@ -1365,7 +1365,7 @@ mod tests {
     #[test]
     fn test_nested_eval() {
         let rec = Record::new(
-            &(r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n"),
+            r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n",
         );
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
@@ -1380,7 +1380,7 @@ mod tests {
     #[test]
     fn test_nested_eval_error() {
         let rec = Record::new(
-            &(r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n"),
+            r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n",
         );
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
@@ -1403,7 +1403,7 @@ mod tests {
     #[test]
     fn json() {
         let rec = Record::new(
-            &(r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n"),
+            r#"{"k1": 5, "k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}"#.to_string() + "\n",
         );
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
@@ -1422,7 +1422,7 @@ mod tests {
     #[test]
     fn nested_json() {
         let rec = Record::new(
-            &(r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n"),
+            r#"{"k1": {"k2": 5.5, "k3": "str", "k4": null, "k5": [1,2,3]}}"#.to_string() + "\n",
         );
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
@@ -1443,7 +1443,7 @@ mod tests {
 
     #[test]
     fn logfmt() {
-        let rec = Record::new(&(r#"k1=5 k2=5.5 k3="a str" k4="#.to_string() + "\n"));
+        let rec = Record::new(r#"k1=5 k2=5.5 k3="a str" k4="#.to_string() + "\n");
         let parser = ParseLogfmt::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
@@ -1617,7 +1617,7 @@ mod tests {
             vec![("_count".to_string(), Box::new(Count::unconditional()))];
         let mut count_agg = MultiGrouper::new(&[], vec![], ops);
         (0..10)
-            .map(|n| Record::new(&n.to_string()))
+            .map(|n| Record::new(n.to_string()))
             .for_each(|rec| count_agg.process(Row::Record(rec)));
         let agg = count_agg.emit();
         assert_eq!(agg.columns, vec!["_count"]);
@@ -1626,7 +1626,7 @@ mod tests {
             vec![hashmap! {"_count".to_string() => data::Value::Int(10)}]
         );
         (0..10)
-            .map(|n| Record::new(&n.to_string()))
+            .map(|n| Record::new(n.to_string()))
             .for_each(|rec| count_agg.process(Row::Record(rec)));
         assert_eq!(
             count_agg.emit().data,
@@ -1649,30 +1649,30 @@ mod tests {
 
         let mut grouper = MultiGrouper::new(&[Expr::column("k1")], vec!["k1".to_string()], ops);
         (0..10).for_each(|n| {
-            let rec = Record::new(&n.to_string());
+            let rec = Record::new(n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
         });
         (0..10).for_each(|n| {
-            let rec = Record::new(&n.to_string());
+            let rec = Record::new(n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
         });
         (0..25).for_each(|n| {
-            let rec = Record::new(&n.to_string());
+            let rec = Record::new(n.to_string());
             let rec = rec.put("k1", data::Value::Str("not ok".to_string()));
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
         });
         (0..3).for_each(|n| {
-            let rec = Record::new(&n.to_string());
+            let rec = Record::new(n.to_string());
             let rec = rec.put("v1", data::Value::Int(n));
             grouper.process(Row::Record(rec));
         });
         let agg = grouper.emit();
-        let mut sorted_data = agg.data.clone();
+        let mut sorted_data = agg.data;
         let ordering = Record::ordering(vec!["_count".to_string()]);
         sorted_data.sort_by(|l, r| ordering(l, r).unwrap_or(Ordering::Less));
         sorted_data.reverse();
@@ -1713,21 +1713,21 @@ mod tests {
             vec![("_count".to_string(), Box::new(Count::unconditional()))];
         let mut count_agg = MultiGrouper::new(&[Expr::column("k1")], vec!["k1".to_string()], ops);
         (0..10).for_each(|n| {
-            let rec = Record::new(&n.to_string());
+            let rec = Record::new(n.to_string());
             let rec = rec.put("k1", data::Value::Str("ok".to_string()));
             count_agg.process(Row::Record(rec));
         });
         (0..25).for_each(|n| {
-            let rec = Record::new(&n.to_string());
+            let rec = Record::new(n.to_string());
             let rec = rec.put("k1", data::Value::Str("not ok".to_string()));
             count_agg.process(Row::Record(rec));
         });
         (0..3).for_each(|n| {
-            let rec = Record::new(&n.to_string());
+            let rec = Record::new(n.to_string());
             count_agg.process(Row::Record(rec));
         });
         let agg = count_agg.emit();
-        let mut sorted_data = agg.data.clone();
+        let mut sorted_data = agg.data;
         let ordering = Record::ordering(vec!["_count".to_string()]);
         sorted_data.sort_by(|l, r| ordering(l, r).unwrap_or(Ordering::Less));
         sorted_data.reverse();
@@ -1775,12 +1775,12 @@ mod tests {
         );
         let mut sorter = Sorter::new(vec![Expr::column("count")], SortDirection::Ascending);
         sorter.process(data::Row::Aggregate(agg.clone()));
-        assert_eq!(sorter.emit(), agg.clone());
+        assert_eq!(sorter.emit(), agg);
 
         let mut sorter = Sorter::new(vec![Expr::column("count")], SortDirection::Descending);
         sorter.process(data::Row::Aggregate(agg.clone()));
 
-        let mut revagg = agg.clone();
+        let mut revagg = agg;
         revagg.data.reverse();
         assert_eq!(sorter.emit(), revagg);
     }
@@ -1810,8 +1810,8 @@ mod tests {
                 ),
             ],
         );
-        let _: () = adapted.process(Row::Aggregate(agg.clone()));
-        assert_eq!(adapted.emit(), agg.clone());
+        adapted.process(Row::Aggregate(agg.clone()));
+        assert_eq!(adapted.emit(), agg);
     }
 
     #[test]
@@ -1845,7 +1845,7 @@ mod tests {
         assert_eq!(result[0].get("_total").unwrap(), &Value::from_float(100.0));
         assert_eq!(result[1].get("_total").unwrap(), &Value::from_float(600.0));
         assert_eq!(result.len(), 2);
-        total_op.process(Row::Aggregate(agg.clone()));
+        total_op.process(Row::Aggregate(agg));
         let result = total_op.emit().data;
         assert_eq!(result[0].get("_total").unwrap(), &Value::from_float(100.0));
         assert_eq!(result[1].get("_total").unwrap(), &Value::from_float(600.0));

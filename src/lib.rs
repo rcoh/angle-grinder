@@ -118,7 +118,7 @@ pub mod pipeline {
                     multi_agg
                         .aggregate_functions
                         .iter()
-                        .map(|&(ref k, _)| Expr::column(k)),
+                        .map(|(k, _)| Expr::column(k)),
                 )
                 .collect();
 

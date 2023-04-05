@@ -128,20 +128,19 @@ impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
             // Ints and floats are converted to floats
-            (&Value::Int(ref int_val), &Value::Float(ref float_val)) => {
+            (Value::Int(int_val), Value::Float(float_val)) => {
                 (OrderedFloat::from(*int_val as f64)).cmp(float_val)
             }
-            (&Value::Float(ref float_val), &Value::Int(ref int_val)) => {
+            (Value::Float(float_val), Value::Int(int_val)) => {
                 float_val.cmp(&OrderedFloat::from(*int_val as f64))
             }
-
-            (&Value::Float(ref l), &Value::Float(ref r)) => l.cmp(r),
-            (&Value::Int(ref l), &Value::Int(ref r)) => l.cmp(r),
-            (&Value::Str(ref l), &Value::Str(ref r)) => l.cmp(r),
-            (&Value::Bool(l), &Value::Bool(r)) => l.cmp(&r),
-            (&Value::DateTime(l), &Value::DateTime(r)) => l.cmp(&r),
-            (&Value::Duration(l), &Value::Duration(r)) => l.cmp(&r),
-            (&Value::Obj(ref l), &Value::Obj(ref r)) => l.cmp(r),
+            (Value::Float(l), Value::Float(r)) => l.cmp(r),
+            (Value::Int(l), Value::Int(r)) => l.cmp(r),
+            (Value::Str(l), Value::Str(r)) => l.cmp(r),
+            (Value::Bool(l), Value::Bool(r)) => l.cmp(r),
+            (Value::DateTime(l), Value::DateTime(r)) => l.cmp(r),
+            (Value::Duration(l), Value::Duration(r)) => l.cmp(r),
+            (Value::Obj(l), Value::Obj(r)) => l.cmp(r),
             // All these remaining cases aren't directly comparable
             (unrelated_l, unrelated_r) => unrelated_l.rank().cmp(&unrelated_r.rank()),
         }
@@ -318,7 +317,7 @@ impl Value {
 
     pub fn from_float(f: f64) -> Value {
         let rounded = f as i64;
-        if (f - f.floor()).abs() < std::f64::EPSILON {
+        if (f - f.floor()).abs() < f64::EPSILON {
             Value::Int(rounded)
         } else {
             Value::Float(OrderedFloat(f))
@@ -429,7 +428,7 @@ impl Aggregate {
         agg_column: String,
         data: &[(HashMap<String, String>, Value)],
     ) -> Aggregate {
-        data.iter().for_each(|&(ref row, ref _value)| {
+        data.iter().for_each(|(row, _value)| {
             if row.len() != key_columns.len() {
                 panic!("Invalid number of key columns")
             }
@@ -440,10 +439,10 @@ impl Aggregate {
             });
         });
         let raw_data: Vec<HashMap<String, Value>> = data
-            .into_iter()
+            .iter()
             .map(|(keycols, value)| {
                 let mut new_map: HashMap<String, Value> = keycols
-                    .into_iter()
+                    .iter()
                     .map(|(keycol, val)| (keycol.clone(), Value::Str(val.clone())))
                     .collect();
                 new_map.insert(agg_column.clone(), value.clone());
@@ -717,13 +716,10 @@ mod tests {
             Value::from_string("1,000,000"),
             Value::Str("1,000,000".to_owned())
         );
-        assert_eq!(
-            Value::aggressively_to_num("1,000,000"),
-            Ok(1_000_000 as f64)
-        );
+        assert_eq!(Value::aggressively_to_num("1,000,000"), Ok(1_000_000_f64));
         assert_eq!(
             Value::aggressively_to_num("1,000,000.1"),
-            Ok(1_000_000.1 as f64)
+            Ok(1_000_000.1_f64)
         );
     }
 
