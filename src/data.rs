@@ -59,7 +59,7 @@ impl serde::Serialize for Aggregate {
         for row in &self.data {
             seq.serialize_element(&WrappedAggregateRow {
                 columns: &self.columns,
-                data: &row,
+                data: row,
             })?
         }
         seq.end()
