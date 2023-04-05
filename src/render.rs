@@ -34,7 +34,7 @@ impl TerminalConfig {
     pub fn load() -> Self {
         let tsize_opt =
             terminal_size().map(|(Width(width), Height(height))| TerminalSize { width, height });
-        let is_tty = tsize_opt != None;
+        let is_tty = tsize_opt.is_some();
         TerminalConfig {
             size: tsize_opt,
             is_tty,
@@ -43,7 +43,7 @@ impl TerminalConfig {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct TerminalSize {
     pub height: u16,
     pub width: u16,

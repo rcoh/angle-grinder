@@ -1,4 +1,5 @@
 use crate::lang::{query, Positioned, Query};
+use crate::pipeline::CompileError;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 use atty::Stream;
 use std::env;
@@ -31,8 +32,8 @@ impl QueryContainer {
     }
 
     /// Parse the contained query string.
-    pub fn parse(&self) -> Result<Query, ()> {
-        query(self)
+    pub fn parse(&self) -> Result<Query, CompileError> {
+        query(self).map_err(|_| CompileError::Parse)
     }
 }
 
