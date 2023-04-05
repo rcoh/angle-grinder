@@ -1,0 +1,7 @@
+query = """* | k8singressnginx"""
+input = """
+172.70.127.35 - - [22/Feb/2023:22:02:59 +0000] "POST /twirp/example.v1.ServiceAPI/TestJob HTTP/1.1" 200 16 "-" "tasks/testing" 902 0.247 [test-grpc] [] 10.0.74.255:8080 16 0.248 200 89f3c824055b4d87942831d74343fb9a
+"""
+output = """
+[body_bytes_sent=16]                     [http_referer=-]                   [http_user_agent=tasks/testing]          [method=POST]          [protocol=HTTP/1.1]        [proxy_alternative_upstream_name=]                                       [proxy_upstream_name=test-grpc]                  [remote_addr=172.70.127.35]        [remote_user=-]                  [req_id=89f3c824055b4d87942831d74343fb9a]        [request_length=902]                   [request_time=0.25]                [status=200]           [timestamp=22/Feb/2023:22:02:59 +0000]        [upstream_addr=10.0.74.255:8080]        [upstream_response_length=16]                              [upstream_response_time=0.25]                          [upstream_status=200]                    [url=/twirp/example.v1.ServiceAPI/TestJob]
+"""
