@@ -1,0 +1,7 @@
+query = """* | nginx"""
+input = """
+127.0.0.1 - - [23/Feb/2023:17:05:13 +0000] "GET / HTTP/1.1" 200 615 "-" "curl/7.77.0" "-"
+"""
+output = """
+[addr=127.0.0.1]        [bytes_sent=615]               [gzip_ratio=-]                 [http_referer=-]                   [http_user_agent=curl/7.77.0]            [method=GET]           [protocol=HTTP/1.1]        [status=200]           [timestamp=23/Feb/2023:17:05:13 +0000]        [url=/]          [user=-]
+"""
