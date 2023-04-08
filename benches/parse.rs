@@ -1,7 +1,8 @@
 use ag::data::Record;
 use ag::lang::Keyword;
-use ag::operator::{Parse, ParseOptions, UnaryPreAggFunction};
+use ag::operator::UnaryPreAggFunction;
 
+use ag::operator::parse::{Parse, ParseOptions};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
