@@ -10,6 +10,7 @@ struct TestDefinition {
     input: String,
     output: String,
     error: Option<String>,
+    #[allow(dead_code)]
     notes: Option<String>,
     succeeds: Option<bool>,
     enabled: Option<bool>,
@@ -23,7 +24,6 @@ mod integration {
     use predicates::prelude::predicate;
     use std::fs;
     use std::io::stdout;
-    use toml;
 
     pub struct EmptyErrorReporter;
 
@@ -55,7 +55,7 @@ mod integration {
         let asserter = run()
             .env("RUST_BACKTRACE", "0")
             .write_stdin(conf.input)
-            .args(&[&conf.query])
+            .args([&conf.query])
             .assert();
 
         let asserter = asserter.stdout(conf.output).stderr(err);
@@ -78,7 +78,7 @@ mod integration {
     #[test]
     fn parse_failure() {
         run()
-            .args(&["* | pasres"])
+            .args(["* | pasres"])
             .assert()
             .failure()
             .stderr(predicate::str::contains("Failed to parse query"));
@@ -87,7 +87,7 @@ mod integration {
     #[test]
     fn test_where_typecheck() {
         run()
-            .args(&["* | where 5"])
+            .args(["* | where 5"])
             .assert()
             .failure()
             .stderr(predicate::str::contains(
@@ -98,14 +98,14 @@ mod integration {
     #[test]
     fn test_limit_typecheck() {
         run()
-            .args(&["* | limit 0"])
+            .args(["* | limit 0"])
             .assert()
             .failure()
             .stderr(predicate::str::contains(
                 "Error: Limit must be a non-zero integer, found 0",
             ));
         run()
-            .args(&["* | limit 0.1"])
+            .args(["* | limit 0.1"])
             .assert()
             .failure()
             .stderr(predicate::str::contains(
@@ -117,7 +117,7 @@ mod integration {
     fn basic_count() {
         run()
             .write_stdin("1\n2\n3\n")
-            .args(&["* | count"])
+            .args(["* | count"])
             .assert()
             .stdout("_count\n--------------\n3\n");
     }
@@ -125,7 +125,7 @@ mod integration {
     #[test]
     fn file_input() {
         run()
-            .args(&[
+            .args([
                 "* | json | count by level",
                 "--file",
                 "test_files/test_json.log",
@@ -143,11 +143,11 @@ None         1\n",
     #[test]
     fn filter_wildcard() {
         run()
-            .args(&[r#""*STAR*""#, "--file", "test_files/filter_test.log"])
+            .args([r#""*STAR*""#, "--file", "test_files/filter_test.log"])
             .assert()
             .stdout("[INFO] Match a *STAR*!\n");
         run()
-            .args(&[r#"*STAR*"#, "--file", "test_files/filter_test.log"])
+            .args([r#"*STAR*"#, "--file", "test_files/filter_test.log"])
             .assert()
             .stdout("[INFO] Match a *STAR*!\n[INFO] Not a STAR!\n");
     }
@@ -155,7 +155,7 @@ None         1\n",
     #[test]
     fn test_limit() {
         run()
-            .args(&[r#"* | limit 2"#, "--file", "test_files/filter_test.log"])
+            .args([r#"* | limit 2"#, "--file", "test_files/filter_test.log"])
             .assert()
             .stdout("[INFO] I am a log!\n[WARN] Uh oh, danger ahead!\n");
     }
@@ -163,7 +163,7 @@ None         1\n",
     #[test]
     fn custom_format_backcompat() {
         run()
-            .args(&[
+            .args([
                 "* | logfmt",
                 "--format",
                 "{level} | {msg:<30} module={module}",
@@ -181,7 +181,7 @@ warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManag
     #[test]
     fn custom_format() {
         run()
-            .args(&[
+            .args([
                 "-o",
                 "format={level} | {msg:<30} module={module}",
                 "--file",
@@ -198,10 +198,12 @@ warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManag
 
     fn ensure_parses(query: &str) {
         let query_container = QueryContainer::new(query.to_string(), Box::new(EmptyErrorReporter));
-        Pipeline::new(&query_container, stdout(), OutputMode::Legacy).expect(&format!(
-            "Query: `{}` from the README should have parsed",
-            query
-        ));
+        Pipeline::new(&query_container, stdout(), OutputMode::Legacy).unwrap_or_else(|err| {
+            panic!(
+                "Query: `{}` from the README should have parsed {}",
+                query, err
+            )
+        });
         println!("validated {}", query);
     }
 

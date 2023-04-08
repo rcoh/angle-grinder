@@ -1,4 +1,5 @@
-use crate::operator::{EvalError, Expr, ValueRef};
+use crate::operator::expr::{Expr, ValueRef};
+use crate::operator::EvalError;
 use chrono::{DateTime, Duration, Utc};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;

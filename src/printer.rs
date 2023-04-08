@@ -358,6 +358,7 @@ impl PrettyPrinter {
 mod tests {
     use super::*;
     use crate::data::*;
+    use crate::operator::parse::ParseJson;
     use crate::operator::*;
     use maplit::hashmap;
 

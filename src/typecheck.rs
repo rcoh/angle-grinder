@@ -1,8 +1,11 @@
 use crate::data::Value;
 use crate::errors::ErrorBuilder;
-use crate::funcs;
 use crate::lang;
-use crate::operator;
+use crate::operator::{
+    average, count, count_distinct, expr, fields, limit, max, min, parse, percentile, split, sum,
+    timeslice, total, where_op,
+};
+use crate::{funcs, operator};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -37,44 +40,41 @@ pub trait TypeCheck<O> {
     fn type_check<E: ErrorBuilder>(self, error_builder: &E) -> Result<O, TypeError>;
 }
 
-impl TypeCheck<operator::BoolExpr> for lang::ComparisonOp {
-    fn type_check<E: ErrorBuilder>(
-        self,
-        _error_builder: &E,
-    ) -> Result<operator::BoolExpr, TypeError> {
+impl TypeCheck<expr::BoolExpr> for lang::ComparisonOp {
+    fn type_check<E: ErrorBuilder>(self, _error_builder: &E) -> Result<expr::BoolExpr, TypeError> {
         match self {
-            lang::ComparisonOp::Eq => Ok(operator::BoolExpr::Eq),
-            lang::ComparisonOp::Neq => Ok(operator::BoolExpr::Neq),
-            lang::ComparisonOp::Gt => Ok(operator::BoolExpr::Gt),
-            lang::ComparisonOp::Lt => Ok(operator::BoolExpr::Lt),
-            lang::ComparisonOp::Gte => Ok(operator::BoolExpr::Gte),
-            lang::ComparisonOp::Lte => Ok(operator::BoolExpr::Lte),
+            lang::ComparisonOp::Eq => Ok(expr::BoolExpr::Eq),
+            lang::ComparisonOp::Neq => Ok(expr::BoolExpr::Neq),
+            lang::ComparisonOp::Gt => Ok(expr::BoolExpr::Gt),
+            lang::ComparisonOp::Lt => Ok(expr::BoolExpr::Lt),
+            lang::ComparisonOp::Gte => Ok(expr::BoolExpr::Gte),
+            lang::ComparisonOp::Lte => Ok(expr::BoolExpr::Lte),
         }
     }
 }
 
-impl TypeCheck<operator::ArithmeticExpr> for lang::ArithmeticOp {
+impl TypeCheck<expr::ArithmeticExpr> for lang::ArithmeticOp {
     fn type_check<E: ErrorBuilder>(
         self,
         _error_builder: &E,
-    ) -> Result<operator::ArithmeticExpr, TypeError> {
+    ) -> Result<expr::ArithmeticExpr, TypeError> {
         match self {
-            lang::ArithmeticOp::Add => Ok(operator::ArithmeticExpr::Add),
-            lang::ArithmeticOp::Subtract => Ok(operator::ArithmeticExpr::Subtract),
-            lang::ArithmeticOp::Multiply => Ok(operator::ArithmeticExpr::Multiply),
-            lang::ArithmeticOp::Divide => Ok(operator::ArithmeticExpr::Divide),
+            lang::ArithmeticOp::Add => Ok(expr::ArithmeticExpr::Add),
+            lang::ArithmeticOp::Subtract => Ok(expr::ArithmeticExpr::Subtract),
+            lang::ArithmeticOp::Multiply => Ok(expr::ArithmeticExpr::Multiply),
+            lang::ArithmeticOp::Divide => Ok(expr::ArithmeticExpr::Divide),
         }
     }
 }
 
-impl TypeCheck<operator::LogicalExpr> for lang::LogicalOp {
+impl TypeCheck<expr::LogicalExpr> for lang::LogicalOp {
     fn type_check<E: ErrorBuilder>(
         self,
         _error_builder: &E,
-    ) -> Result<operator::LogicalExpr, TypeError> {
+    ) -> Result<expr::LogicalExpr, TypeError> {
         match self {
-            lang::LogicalOp::And => Ok(operator::LogicalExpr::And),
-            lang::LogicalOp::Or => Ok(operator::LogicalExpr::Or),
+            lang::LogicalOp::And => Ok(expr::LogicalExpr::And),
+            lang::LogicalOp::Or => Ok(expr::LogicalExpr::Or),
         }
     }
 }
@@ -90,23 +90,23 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                 let rest = rest
                     .iter()
                     .map(|s| match s {
-                        lang::DataAccessAtom::Key(s) => operator::ValueRef::Field(s.to_string()),
-                        lang::DataAccessAtom::Index(i) => operator::ValueRef::IndexAt(*i),
+                        lang::DataAccessAtom::Key(s) => expr::ValueRef::Field(s.to_string()),
+                        lang::DataAccessAtom::Index(i) => expr::ValueRef::IndexAt(*i),
                     })
                     .collect();
 
                 Ok(operator::Expr::NestedColumn { head, rest })
             }
             lang::Expr::Unary { op, operand } => match op {
-                lang::UnaryOp::Not => Ok(operator::Expr::BoolUnary(operator::UnaryExpr {
-                    operator: operator::BoolUnaryExpr::Not,
+                lang::UnaryOp::Not => Ok(operator::Expr::BoolUnary(expr::UnaryExpr {
+                    operator: expr::BoolUnaryExpr::Not,
                     operand: Box::new((*operand).type_check(error_builder)?),
                 })),
             },
             lang::Expr::Binary { op, left, right } => match op {
                 lang::BinaryOp::Comparison(com_op) => {
-                    Ok(operator::Expr::Comparison(operator::BinaryExpr::<
-                        operator::BoolExpr,
+                    Ok(operator::Expr::Comparison(expr::BinaryExpr::<
+                        expr::BoolExpr,
                     > {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
@@ -114,8 +114,8 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                     }))
                 }
                 lang::BinaryOp::Arithmetic(arith_op) => {
-                    Ok(operator::Expr::Arithmetic(operator::BinaryExpr::<
-                        operator::ArithmeticExpr,
+                    Ok(operator::Expr::Arithmetic(expr::BinaryExpr::<
+                        expr::ArithmeticExpr,
                     > {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
@@ -123,8 +123,8 @@ impl TypeCheck<operator::Expr> for lang::Expr {
                     }))
                 }
                 lang::BinaryOp::Logical(logical_op) => {
-                    Ok(operator::Expr::Logical(operator::BinaryExpr::<
-                        operator::LogicalExpr,
+                    Ok(operator::Expr::Logical(expr::BinaryExpr::<
+                        expr::LogicalExpr,
                     > {
                         left: Box::new((*left).type_check(error_builder)?),
                         right: Box::new((*right).type_check(error_builder)?),
@@ -177,18 +177,16 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
         error_builder: &T,
     ) -> Result<Box<dyn operator::OperatorBuilder + Send + Sync>, TypeError> {
         match self.value {
-            lang::InlineOperator::Json { input_column } => Ok(Box::new(operator::ParseJson::new(
+            lang::InlineOperator::Json { input_column } => Ok(Box::new(parse::ParseJson::new(
                 input_column
                     .map(|e| e.type_check(error_builder))
                     .transpose()?,
             ))),
-            lang::InlineOperator::Logfmt { input_column } => {
-                Ok(Box::new(operator::ParseLogfmt::new(
-                    input_column
-                        .map(|e| e.type_check(error_builder))
-                        .transpose()?,
-                )))
-            }
+            lang::InlineOperator::Logfmt { input_column } => Ok(Box::new(parse::ParseLogfmt::new(
+                input_column
+                    .map(|e| e.type_check(error_builder))
+                    .transpose()?,
+            ))),
             lang::InlineOperator::Parse {
                 pattern,
                 fields,
@@ -218,13 +216,13 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                         extracted: fields.len(),
                     })
                 } else {
-                    Ok(Box::new(operator::Parse::new(
+                    Ok(Box::new(parse::Parse::new(
                         regex,
                         fields,
                         input_column
                             .map(|e| e.type_check(error_builder))
                             .transpose()?,
-                        operator::ParseOptions {
+                        parse::ParseOptions {
                             drop_nonmatching: !no_drop,
                         },
                     )))
@@ -232,10 +230,10 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
             }
             lang::InlineOperator::Fields { fields, mode } => {
                 let omode = match mode {
-                    lang::FieldMode::Except => operator::FieldMode::Except,
-                    lang::FieldMode::Only => operator::FieldMode::Only,
+                    lang::FieldMode::Except => fields::FieldMode::Except,
+                    lang::FieldMode::Only => fields::FieldMode::Only,
                 };
-                Ok(Box::new(operator::Fields::new(&fields, omode)))
+                Ok(Box::new(fields::Fields::new(&fields, omode)))
             }
             lang::InlineOperator::Where { expr: Some(expr) } => match expr
                 .value
@@ -243,7 +241,7 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
             {
                 operator::Expr::Value(constant) => {
                     if let Value::Bool(bool_value) = constant {
-                        Ok(Box::new(operator::Where::new(*bool_value)))
+                        Ok(Box::new(where_op::Where::new(*bool_value)))
                     } else {
                         let e = TypeError::ExpectedBool {
                             found: format!("{:?}", constant),
@@ -259,7 +257,7 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                         Err(e)
                     }
                 }
-                generic_expr => Ok(Box::new(operator::Where::new(generic_expr))),
+                generic_expr => Ok(Box::new(where_op::Where::new(generic_expr))),
             },
             lang::InlineOperator::Where { expr: None } => {
                 let e = TypeError::ExpectedExpr;
@@ -296,16 +294,16 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
 
                     Err(e)
                 }
-                limit => Ok(Box::new(operator::LimitDef::new(limit as i64))),
+                limit => Ok(Box::new(limit::LimitDef::new(limit as i64))),
             },
             lang::InlineOperator::Limit { count: None } => {
-                Ok(Box::new(operator::LimitDef::new(DEFAULT_LIMIT)))
+                Ok(Box::new(limit::LimitDef::new(DEFAULT_LIMIT)))
             }
             lang::InlineOperator::Split {
                 separator,
                 input_column,
                 output_column,
-            } => Ok(Box::new(operator::Split::new(
+            } => Ok(Box::new(split::Split::new(
                 separator,
                 input_column
                     .map(|e| e.type_check(error_builder))
@@ -321,7 +319,7 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                 input_column,
                 duration: Some(duration),
                 output_column,
-            } => Ok(Box::new(operator::Timeslice::new(
+            } => Ok(Box::new(timeslice::Timeslice::new(
                 input_column.type_check(error_builder)?,
                 duration,
                 output_column,
@@ -329,12 +327,12 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
             lang::InlineOperator::Total {
                 input_column,
                 output_column,
-            } => Ok(Box::new(operator::TotalDef::new(
+            } => Ok(Box::new(total::TotalDef::new(
                 input_column.type_check(error_builder)?,
                 output_column,
             ))),
             lang::InlineOperator::FieldExpression { value, name } => Ok(Box::new(
-                operator::FieldExpressionDef::new(value.type_check(error_builder)?, name),
+                fields::FieldExpressionDef::new(value.type_check(error_builder)?, name),
             )),
         }
     }
@@ -348,29 +346,29 @@ impl TypeCheck<Box<dyn operator::AggregateFunction>> for lang::Positioned<lang::
         match self.value {
             lang::AggregateFunction::Count { condition } => {
                 let expr = condition.map(|c| c.type_check(error_builder)).transpose()?;
-                Ok(Box::new(operator::Count::new(expr)))
+                Ok(Box::new(count::Count::new(expr)))
             }
-            lang::AggregateFunction::Min { column } => Ok(Box::new(operator::Min::empty(
+            lang::AggregateFunction::Min { column } => {
+                Ok(Box::new(min::Min::empty(column.type_check(error_builder)?)))
+            }
+            lang::AggregateFunction::Average { column } => Ok(Box::new(average::Average::empty(
                 column.type_check(error_builder)?,
             ))),
-            lang::AggregateFunction::Average { column } => Ok(Box::new(operator::Average::empty(
-                column.type_check(error_builder)?,
-            ))),
-            lang::AggregateFunction::Max { column } => Ok(Box::new(operator::Max::empty(
-                column.type_check(error_builder)?,
-            ))),
-            lang::AggregateFunction::Sum { column } => Ok(Box::new(operator::Sum::empty(
-                column.type_check(error_builder)?,
-            ))),
+            lang::AggregateFunction::Max { column } => {
+                Ok(Box::new(max::Max::empty(column.type_check(error_builder)?)))
+            }
+            lang::AggregateFunction::Sum { column } => {
+                Ok(Box::new(sum::Sum::empty(column.type_check(error_builder)?)))
+            }
             lang::AggregateFunction::Percentile {
                 column, percentile, ..
-            } => Ok(Box::new(operator::Percentile::empty(
+            } => Ok(Box::new(percentile::Percentile::empty(
                 column.type_check(error_builder)?,
                 percentile,
             ))),
             lang::AggregateFunction::CountDistinct { column: Some(pos) } => {
                 match pos.value.as_slice() {
-                    [column] => Ok(Box::new(operator::CountDistinct::empty(
+                    [column] => Ok(Box::new(count_distinct::CountDistinct::empty(
                         column.clone().type_check(error_builder)?,
                     ))),
                     _ => {

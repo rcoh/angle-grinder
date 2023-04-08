@@ -18,6 +18,7 @@ pub mod pipeline {
     use crate::filter;
     use crate::lang::*;
     use crate::operator;
+    use crate::operator::sort;
     use crate::printer::{agg_printer, raw_printer};
     use crate::render::{RenderConfig, Renderer, TerminalConfig};
     use crate::typecheck::{TypeCheck, TypeError};
@@ -71,15 +72,15 @@ pub mod pipeline {
             pipeline: &QueryContainer,
         ) -> Result<Box<dyn operator::AggregateOperator>, TypeError> {
             let mode = match op.direction {
-                SortMode::Ascending => operator::SortDirection::Ascending,
-                SortMode::Descending => operator::SortDirection::Descending,
+                SortMode::Ascending => sort::SortDirection::Ascending,
+                SortMode::Descending => sort::SortDirection::Descending,
             };
             let sort_cols: Vec<operator::Expr> = op
                 .sort_cols
                 .into_iter()
                 .map(|expr| expr.type_check(pipeline))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Box::new(operator::Sorter::new(sort_cols, mode)))
+            Ok(Box::new(sort::Sorter::new(sort_cols, mode)))
         }
 
         fn convert_multi_agg(

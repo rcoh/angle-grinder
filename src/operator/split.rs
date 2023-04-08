@@ -1,3 +1,6 @@
+use crate::data::Record;
+use crate::operator::{EvalError, Expr, UnaryPreAggFunction};
+use crate::{data, operator};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
@@ -171,5 +174,38 @@ mod tests {
             ),
             vec!["Bourgogne-Franche-Comté", "hello"]
         );
+    }
+}
+
+#[derive(Clone)]
+pub struct Split {
+    separator: String,
+    input_column: Option<Expr>,
+    output_column: Option<Expr>,
+}
+
+impl Split {
+    pub fn new(separator: String, input_column: Option<Expr>, output_column: Option<Expr>) -> Self {
+        Self {
+            separator,
+            input_column,
+            output_column,
+        }
+    }
+}
+
+impl UnaryPreAggFunction for Split {
+    fn process(&self, rec: Record) -> Result<Option<Record>, EvalError> {
+        let inp = operator::get_input(&rec, &self.input_column)?;
+        let array = split_with_delimiters(&inp, &self.separator, &DEFAULT_DELIMITERS)
+            .into_iter()
+            .map(data::Value::from_string)
+            .collect();
+        let rec = if let Some(output_column) = &self.output_column {
+            rec.put_expr(output_column, data::Value::Array(array))?
+        } else {
+            rec.put("_split", data::Value::Array(array))
+        };
+        Ok(Some(rec))
     }
 }
