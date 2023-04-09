@@ -14,6 +14,8 @@ struct TestDefinition {
     notes: Option<String>,
     succeeds: Option<bool>,
     enabled: Option<bool>,
+    #[serde(default)]
+    flags: Vec<String>,
 }
 
 #[cfg(test)]
@@ -22,8 +24,11 @@ mod integration {
     use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
     use assert_cmd::Command;
     use predicates::prelude::predicate;
+
     use std::fs;
     use std::io::stdout;
+
+    const _TOUCH: usize = 0;
 
     pub struct EmptyErrorReporter;
 
@@ -55,7 +60,8 @@ mod integration {
         let asserter = run()
             .env("RUST_BACKTRACE", "0")
             .write_stdin(conf.input)
-            .args([&conf.query])
+            .arg(&conf.query)
+            .args(conf.flags)
             .assert();
 
         let asserter = asserter.stdout(conf.output).stderr(err);
