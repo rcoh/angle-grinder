@@ -1,11 +1,10 @@
 use crate::data;
 use anyhow::Error;
 use std::collections::HashMap;
-
 use std::io;
 use std::io::Write;
 
-use crate::data::{Aggregate, DisplayConfig, Record, Value, ValueDisplay};
+use crate::data::{Aggregate, DisplayConfig, Record, VMap, Value, ValueDisplay};
 use crate::pipeline::OutputMode;
 use crate::render::{RenderConfig, TerminalConfig, TerminalSize};
 use itertools::{intersperse, Itertools};
