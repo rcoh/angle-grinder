@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 
-use crate::data::{Aggregate, DisplayConfig, Record, VMap, Value, ValueDisplay};
+use crate::data::{Aggregate, DisplayConfig, Record, Value, ValueDisplay};
 use crate::pipeline::OutputMode;
 use crate::render::{RenderConfig, TerminalConfig, TerminalSize};
 use itertools::{intersperse, Itertools};
@@ -42,7 +42,7 @@ impl<T: RowPrinter> RecordPrinter for RecordFromRow<T> {
         display_config: &DisplayConfig,
     ) -> io::Result<()> {
         self.0
-            .print_row(&display_config, out, Some(&row.raw), &mut row.data.iter())
+            .print_row(display_config, out, Some(&row.raw), &mut row.data.iter())
     }
 }
 
