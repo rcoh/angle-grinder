@@ -3,7 +3,7 @@ use anyhow::Error;
 use std::io::Write;
 
 use crate::data::DisplayConfig;
-use crate::printer::Printer;
+use crate::printer::{AggregatePrinter, RecordPrinter};
 use std::time::{Duration, Instant};
 use terminal_size::{terminal_size, Height, Width};
 
@@ -50,8 +50,8 @@ pub struct TerminalSize {
 }
 
 pub struct Renderer {
-    raw_printer: Box<dyn Printer<data::Record> + Send>,
-    agg_printer: Box<dyn Printer<data::Aggregate> + Send>,
+    raw_printer: Box<dyn RecordPrinter + Send>,
+    agg_printer: Box<dyn AggregatePrinter + Send>,
     update_interval: Duration,
     stdout: Box<dyn Write + Send>,
     config: RenderConfig,
@@ -65,8 +65,8 @@ impl Renderer {
     pub fn new(
         config: RenderConfig,
         update_interval: Duration,
-        raw_printer: Box<dyn Printer<data::Record> + Send>,
-        agg_printer: Box<dyn Printer<data::Aggregate> + Send>,
+        raw_printer: Box<dyn RecordPrinter + Send>,
+        agg_printer: Box<dyn AggregatePrinter + Send>,
         output: Box<dyn Write + Send>,
     ) -> Self {
         let tsize_opt =
@@ -110,9 +110,9 @@ impl Renderer {
                 Ok(())
             }
             data::Row::Record(ref record) => {
-                let output = self.raw_printer.print(record, &self.config.display_config);
-                writeln!(self.stdout, "{}", output)?;
-
+                self.raw_printer
+                    .print(&mut self.stdout, record, &self.config.display_config)?;
+                writeln!(&mut self.stdout)?;
                 Ok(())
             }
         }

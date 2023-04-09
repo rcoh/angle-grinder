@@ -140,7 +140,7 @@ fn parse_date(date_str: &str) -> Result<data::Value, EvalError> {
             data::Value::DateTime(
                 DateTime::<FixedOffset>::from_utc(
                     pair.0,
-                    pair.1.unwrap_or_else(|| FixedOffset::west(0)),
+                    pair.1.unwrap_or_else(|| FixedOffset::west_opt(0).unwrap()),
                 )
                 .into(),
             )

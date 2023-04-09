@@ -1,27 +1,111 @@
 use crate::data;
 use anyhow::Error;
 use std::collections::HashMap;
+use std::io;
+use std::io::Write;
 
-use crate::data::{Aggregate, DisplayConfig, Record};
+use crate::data::{Aggregate, DisplayConfig, Record, VMap, Value, ValueDisplay};
 use crate::pipeline::OutputMode;
 use crate::render::{RenderConfig, TerminalConfig, TerminalSize};
-use itertools::Itertools;
+use itertools::{intersperse, Itertools};
 use strfmt::{strfmt_map, FmtError, Formatter};
 
-pub trait Printer<O> {
-    fn print(&mut self, row: &O, display_config: &DisplayConfig) -> String;
-    fn final_print(&mut self, row: &O, display_config: &DisplayConfig) -> String {
+pub trait AggregatePrinter {
+    fn print(&mut self, row: &data::Aggregate, display_config: &DisplayConfig) -> String;
+    fn final_print(&mut self, row: &data::Aggregate, display_config: &DisplayConfig) -> String {
         self.print(row, display_config)
     }
 }
 
+pub trait RecordPrinter {
+    fn print(
+        &mut self,
+        out: &mut dyn Write,
+        row: &Record,
+        display_config: &DisplayConfig,
+    ) -> io::Result<()>;
+
+    fn print_str(&mut self, row: &Record, display_config: &DisplayConfig) -> String {
+        let mut out = vec![];
+        self.print(&mut out, row, display_config).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+}
+
+impl<T: RowPrinter> RecordPrinter for T {
+    fn print(
+        &mut self,
+        out: &mut dyn Write,
+        row: &Record,
+        display_config: &DisplayConfig,
+    ) -> io::Result<()> {
+        self.print_row(&display_config, out, Some(&row.raw), &mut row.data.iter())
+    }
+}
+
+struct PrintAggregateAsRows<T> {
+    inner: T,
+}
+
+pub(crate) trait RowPrinter {
+    fn print_row(
+        &mut self,
+        display_config: &DisplayConfig,
+        out: &mut dyn Write,
+        raw: Option<&str>,
+        cols: &mut dyn Iterator<Item = (&String, &Value)>,
+    ) -> std::io::Result<()>;
+}
+
+impl<T: RowPrinter> AggregatePrinter for PrintAggregateAsRows<T> {
+    fn print(&mut self, _row: &Aggregate, _display_config: &DisplayConfig) -> String {
+        "data will be output once the computation is complete...".to_string()
+    }
+
+    fn final_print(&mut self, row: &Aggregate, display_config: &DisplayConfig) -> String {
+        let mut out = vec![];
+        let columns = &row.columns;
+        for row in &row.data {
+            let mut kv_pairs = columns
+                .iter()
+                .map(|c| (c, row.get(c).unwrap_or(&Value::None)));
+            self.inner
+                .print_row(display_config, &mut out, None, &mut kv_pairs)
+                .expect("writing to string");
+            writeln!(&mut out).unwrap();
+        }
+        String::from_utf8(out).expect("invalid UTF-8 produced")
+    }
+}
+
 struct LogFmtPrinter {}
+impl RowPrinter for LogFmtPrinter {
+    fn print_row(
+        &mut self,
+        display_config: &DisplayConfig,
+        out: &mut dyn Write,
+        _raw: Option<&str>,
+        cols: &mut dyn Iterator<Item = (&String, &Value)>,
+    ) -> io::Result<()> {
+        let columns = intersperse(cols.sorted().map(Some), None);
+
+        for col in columns {
+            match col {
+                Some((col, data)) => {
+                    write!(out, "{}={}", col, ValueDisplay::new(data, display_config))
+                }
+                None => write!(out, " "),
+            }?;
+        }
+        Ok(())
+    }
+}
 
 pub fn raw_printer(
     mode: &OutputMode,
     render_config: RenderConfig,
     terminal_config: TerminalConfig,
-) -> Result<Box<dyn Printer<data::Record> + Send>, Error> {
+) -> Result<Box<dyn RecordPrinter + Send>, Error> {
     // suppress warnings until I use these
     let _x = terminal_config.color_enabled;
     let _y = terminal_config.is_tty;
@@ -37,21 +121,14 @@ pub fn agg_printer(
     mode: &OutputMode,
     render_config: RenderConfig,
     terminal_config: TerminalConfig,
-) -> Result<Box<dyn Printer<data::Aggregate> + Send>, Error> {
+) -> Result<Box<dyn AggregatePrinter + Send>, Error> {
     match mode {
-        //OutputMode::Logfmt => Ok(Box::new(LogFmtPrinter {})),
-        OutputMode::Json => Ok(Box::new(JsonPrinter {})),
+        OutputMode::Logfmt => Ok(Box::new(PrintAggregateAsRows {
+            inner: LogFmtPrinter {},
+        })),
+        //OutputMode::Json => Ok(Box::new(JsonPrinter {})),
         _ => Ok(Box::new(LegacyPrinter::new(render_config, terminal_config))),
         //OutputMode::Format(format_str) => Ok(Box::new(FormatPrinter::new(format_str.to_owned())?)),
-    }
-}
-
-impl Printer<data::Record> for LogFmtPrinter {
-    fn print(&mut self, row: &data::Record, display_config: &DisplayConfig) -> String {
-        let columns = row.data.iter().sorted();
-        let mut kv_pairs =
-            columns.map(|(col, data)| format!("{}={}", col, data.render(display_config)));
-        kv_pairs.join(" ")
     }
 }
 
@@ -67,13 +144,18 @@ impl LegacyPrinter {
     }
 }
 
-impl Printer<data::Record> for LegacyPrinter {
-    fn print(&mut self, row: &Record, _display_config: &DisplayConfig) -> String {
-        self.pretty_printer.format_record_as_columns(row)
+impl RecordPrinter for LegacyPrinter {
+    fn print(
+        &mut self,
+        out: &mut dyn Write,
+        row: &Record,
+        _display_config: &DisplayConfig,
+    ) -> io::Result<()> {
+        write!(out, "{}", self.pretty_printer.format_record_as_columns(row))
     }
 }
 
-impl Printer<data::Aggregate> for LegacyPrinter {
+impl AggregatePrinter for LegacyPrinter {
     fn print(&mut self, row: &Aggregate, _display_config: &DisplayConfig) -> String {
         self.pretty_printer.format_aggregate(row)
     }
@@ -91,43 +173,47 @@ impl FormatPrinter {
     }
 }
 
-pub fn strformat_record(fmtstr: &str, vars: &Record) -> Result<String, FmtError> {
+pub fn strformat_record(fmtstr: &str, vars: &VMap) -> Result<String, FmtError> {
     let formatter = |mut fmt: Formatter| {
-        let v = match vars.data.get(fmt.key) {
+        let v = match vars.get(fmt.key) {
             Some(v) => v,
             None => &data::Value::None,
         };
         fmt.str(v.to_string().as_str())
     };
+
     strfmt_map(fmtstr, &formatter)
 }
 
-impl Printer<data::Record> for FormatPrinter {
-    fn print(&mut self, row: &Record, _display_config: &DisplayConfig) -> String {
-        match strformat_record(&self.format_str, row) {
-            Ok(s) => s,
-            Err(e) => format!("{}", e),
-        }
+impl RecordPrinter for FormatPrinter {
+    fn print(
+        &mut self,
+        out: &mut dyn Write,
+        row: &Record,
+        _display_config: &DisplayConfig,
+    ) -> io::Result<()> {
+        write!(
+            out,
+            "{}",
+            match strformat_record(&self.format_str, &row.data) {
+                Ok(s) => s,
+                Err(e) => format!("{}", e),
+            }
+        )
     }
 }
 
 struct JsonPrinter {}
 
-impl Printer<data::Record> for JsonPrinter {
-    fn print(&mut self, row: &Record, _display_config: &DisplayConfig) -> String {
-        serde_json::to_string(row).unwrap()
-    }
-}
-
-impl Printer<data::Aggregate> for JsonPrinter {
-    fn print(&mut self, _row: &Aggregate, _display_config: &DisplayConfig) -> String {
-        "JSON will be dumped once the pipeline is complete...\n".to_string()
-    }
-
-    fn final_print(&mut self, row: &Aggregate, _display_config: &DisplayConfig) -> String {
-        let mut o = serde_json::to_string(&row).unwrap();
-        o.push('\n');
-        o
+impl RecordPrinter for JsonPrinter {
+    fn print(
+        &mut self,
+        out: &mut dyn Write,
+        row: &Record,
+        _display_config: &DisplayConfig,
+    ) -> io::Result<()> {
+        serde_json::to_writer(out, row).expect("failed to format");
+        Ok(())
     }
 }
 
@@ -362,6 +448,12 @@ mod tests {
     use crate::operator::*;
     use maplit::hashmap;
 
+    impl LegacyPrinter {
+        fn print_record(&mut self, record: &Record, _display_config: &DisplayConfig) -> String {
+            self.pretty_printer.format_record_as_columns(record)
+        }
+    }
+
     #[test]
     fn print_raw() {
         let rec = Record::new("Hello, World!\n");
@@ -372,7 +464,7 @@ mod tests {
         };
         let display_config = DisplayConfig { floating_points: 2 };
         let mut pp = LegacyPrinter::new(render_config, TerminalConfig::load());
-        assert_eq!(pp.print(&rec, &display_config), "Hello, World!");
+        assert_eq!(pp.print_record(&rec, &display_config), "Hello, World!");
     }
 
     #[test]
@@ -388,14 +480,14 @@ mod tests {
         };
         let mut pp = LegacyPrinter::new(render_config, TerminalConfig::load());
         assert_eq!(
-            pp.print(&rec, &display_config),
+            pp.print_record(&rec, &display_config),
             "[k1=5]     [k2=5.50]    [k3=str]"
         );
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.print(&rec, &display_config),
+            pp.print_record(&rec, &display_config),
             "[k1=955]   [k2=5.50]    [k3=str3]"
         );
         let rec = Record::new(
@@ -404,14 +496,14 @@ mod tests {
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.print(&rec, &display_config),
+            pp.print_record(&rec, &display_config),
             "[k1=here is a amuch longer stsring]    [k2=5.50]    [k3=str3]"
         );
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.print(&rec, &display_config),
+            pp.print_record(&rec, &display_config),
             "[k1=955]                               [k2=5.50]    [k3=str3]"
         );
     }
@@ -423,12 +515,15 @@ mod tests {
         let display_config = DisplayConfig { floating_points: 2 };
         let rec = parser.process(rec).unwrap().unwrap();
         let mut pp = FormatPrinter::new("{k1:>3} k2={k2:<10.3} k3[{k3}]".to_string()).unwrap();
-        assert_eq!(pp.print(&rec, &display_config), "  5 k2=5.5        k3[str]");
+        assert_eq!(
+            pp.print_str(&rec, &display_config),
+            "  5 k2=5.5        k3[str]"
+        );
         let rec = Record::new(r#"{"k1": 955, "k2": 5.5000001, "k3": "str3"}"#);
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.print(&rec, &display_config),
+            pp.print_str(&rec, &display_config),
             "955 k2=5.5        k3[str3]"
         );
         let rec = Record::new(
@@ -437,7 +532,7 @@ mod tests {
         let parser = ParseJson::new(None);
         let rec = parser.process(rec).unwrap().unwrap();
         assert_eq!(
-            pp.print(&rec, &display_config),
+            pp.print_str(&rec, &display_config),
             "here is a amuch longer stsring k2=5.5        k3[str3]"
         );
     }
@@ -464,7 +559,10 @@ mod tests {
                 color_enabled: false,
             },
         );
-        assert_eq!(pp.print(&rec, &display_config), "[k1=5][k2=5.50][k3=str]");
+        assert_eq!(
+            pp.print_record(&rec, &display_config),
+            "[k1=5][k2=5.50][k3=str]"
+        );
     }
 
     #[test]

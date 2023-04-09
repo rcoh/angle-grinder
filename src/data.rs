@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Sub};
 
 pub type VMap = HashMap<String, Value>;
@@ -236,30 +236,36 @@ impl Default for DisplayConfig {
     }
 }
 
-impl Value {
-    /// Used to sort mixed values
-    pub fn rank(&self) -> u8 {
-        match self {
-            Value::None => 0,
-            Value::Bool(_) => 1,
-            Value::Int(_) => 2,
-            Value::Float(_) => 2,
-            Value::Str(_) => 3,
-            Value::DateTime(_) => 4,
-            Value::Duration(_) => 5,
-            Value::Array(_) => 6,
-            Value::Obj(_) => 7,
+pub(crate) struct ValueDisplay<'a> {
+    value: &'a Value,
+    display_config: &'a DisplayConfig,
+}
+
+impl<'a> ValueDisplay<'a> {
+    pub(crate) fn new(value: &'a Value, display_config: &'a DisplayConfig) -> Self {
+        Self {
+            value,
+            display_config,
         }
     }
 
-    pub fn render(&self, render_config: &DisplayConfig) -> String {
-        match *self {
-            Value::Str(ref s) => s.to_string(),
-            Value::Int(ref s) => format!("{}", s),
-            Value::None => "None".to_string(),
-            Value::Float(ref s) => format!("{:.*}", render_config.floating_points, s),
-            Value::Bool(ref s) => format!("{}", s),
-            Value::DateTime(ref dt) => format!("{}", dt),
+    fn nested(&self, new_value: &'a Value) -> ValueDisplay<'a> {
+        ValueDisplay {
+            value: new_value,
+            display_config: self.display_config,
+        }
+    }
+}
+
+impl Display for ValueDisplay<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match *self.value {
+            Value::Str(ref s) => write!(f, "{}", s),
+            Value::Int(ref s) => write!(f, "{}", s),
+            Value::None => write!(f, "None"),
+            Value::Float(ref s) => write!(f, "{:.*}", self.display_config.floating_points, s),
+            Value::Bool(ref s) => write!(f, "{}", s),
+            Value::DateTime(ref dt) => write!(f, "{}", dt),
             Value::Duration(ref d) => {
                 let mut remaining: Duration = *d;
                 let weeks = remaining.num_seconds() / Duration::weeks(1).num_seconds();
@@ -286,13 +292,10 @@ impl Value {
                     (usecs, "us"),
                 ];
 
-                pairs.iter().filter(|(val, _sym)| *val != 0).fold(
-                    String::new(),
-                    |mut acc, (val, sym)| {
-                        acc.push_str(format!("{}{}", val, sym).as_str());
-                        acc
-                    },
-                )
+                for (val, sym) in pairs.iter().filter(|(val, _sym)| *val != 0) {
+                    write!(f, "{}{}", val, sym)?;
+                }
+                Ok(())
             }
             Value::Obj(ref o) => {
                 // todo: this is pretty janky...
@@ -302,14 +305,35 @@ impl Value {
 
                 let mut rendered = items
                     .iter()
-                    .map(|(k, v)| format!("{}:{}", k, v.render(render_config)));
-                format!("{{{}}}", rendered.join(", "))
+                    .map(|(k, v)| format!("{}:{}", k, self.nested(v)));
+                write!(f, "{{{}}}", rendered.join(", "))
             }
             Value::Array(ref o) => {
-                let rendered: Vec<String> = o.iter().map(|v| v.render(render_config)).collect();
-                format!("[{}]", rendered.join(", "))
+                let rendered: Vec<_> = o.iter().map(|v| format!("{}", self.nested(v))).collect();
+                write!(f, "[{}]", rendered.join(", "))
             }
         }
+    }
+}
+
+impl Value {
+    /// Used to sort mixed values
+    pub fn rank(&self) -> u8 {
+        match self {
+            Value::None => 0,
+            Value::Bool(_) => 1,
+            Value::Int(_) => 2,
+            Value::Float(_) => 2,
+            Value::Str(_) => 3,
+            Value::DateTime(_) => 4,
+            Value::Duration(_) => 5,
+            Value::Array(_) => 6,
+            Value::Obj(_) => 7,
+        }
+    }
+
+    pub fn render(&self, render_config: &DisplayConfig) -> String {
+        ValueDisplay::new(self, render_config).to_string()
     }
 
     pub fn from_bool(b: bool) -> Value {
