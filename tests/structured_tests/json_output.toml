@@ -1,0 +1,12 @@
+query = """* | parse "thing_a:* thing_b:*" as thing_a, thing_b"""
+input = """
+thing_a:5 thing_b:red
+thing_a:6 thing_b:yellow
+thing_a:7 thing_b:blue
+"""
+flags = ["--output", "json"]
+output = """
+{"thing_a":5,"thing_b":"red"}
+{"thing_a":6,"thing_b":"yellow"}
+{"thing_a":7,"thing_b":"blue"}
+"""

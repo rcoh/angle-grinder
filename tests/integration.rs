@@ -28,7 +28,7 @@ mod integration {
     use std::fs;
     use std::io::stdout;
 
-    const _TOUCH: usize = 0;
+    const _TOUCH: usize = 3;
 
     pub struct EmptyErrorReporter;
 

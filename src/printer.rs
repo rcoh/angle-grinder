@@ -1,10 +1,11 @@
 use crate::data;
 use anyhow::Error;
 use std::collections::HashMap;
+
 use std::io;
 use std::io::Write;
 
-use crate::data::{Aggregate, DisplayConfig, Record, VMap, Value, ValueDisplay};
+use crate::data::{Aggregate, DisplayConfig, Record, Value, ValueDisplay};
 use crate::pipeline::OutputMode;
 use crate::render::{RenderConfig, TerminalConfig, TerminalSize};
 use itertools::{intersperse, Itertools};
@@ -32,20 +33,21 @@ pub trait RecordPrinter {
     }
 }
 
-impl<T: RowPrinter> RecordPrinter for T {
+struct RecordFromRow<T>(T);
+
+impl<T: RowPrinter> RecordPrinter for RecordFromRow<T> {
     fn print(
         &mut self,
         out: &mut dyn Write,
         row: &Record,
         display_config: &DisplayConfig,
     ) -> io::Result<()> {
-        self.print_row(&display_config, out, Some(&row.raw), &mut row.data.iter())
+        self.0
+            .print_row(&display_config, out, Some(&row.raw), &mut row.data.iter())
     }
 }
 
-struct PrintAggregateAsRows<T> {
-    inner: T,
-}
+struct PrintAggregateAsRows<T>(T);
 
 pub(crate) trait RowPrinter {
     fn print_row(
@@ -54,7 +56,7 @@ pub(crate) trait RowPrinter {
         out: &mut dyn Write,
         raw: Option<&str>,
         cols: &mut dyn Iterator<Item = (&String, &Value)>,
-    ) -> std::io::Result<()>;
+    ) -> io::Result<()>;
 }
 
 impl<T: RowPrinter> AggregatePrinter for PrintAggregateAsRows<T> {
@@ -69,7 +71,7 @@ impl<T: RowPrinter> AggregatePrinter for PrintAggregateAsRows<T> {
             let mut kv_pairs = columns
                 .iter()
                 .map(|c| (c, row.get(c).unwrap_or(&Value::None)));
-            self.inner
+            self.0
                 .print_row(display_config, &mut out, None, &mut kv_pairs)
                 .expect("writing to string");
             writeln!(&mut out).unwrap();
@@ -78,7 +80,8 @@ impl<T: RowPrinter> AggregatePrinter for PrintAggregateAsRows<T> {
     }
 }
 
-struct LogFmtPrinter {}
+struct LogFmtPrinter;
+
 impl RowPrinter for LogFmtPrinter {
     fn print_row(
         &mut self,
@@ -110,7 +113,7 @@ pub fn raw_printer(
     let _x = terminal_config.color_enabled;
     let _y = terminal_config.is_tty;
     match mode {
-        OutputMode::Logfmt => Ok(Box::new(LogFmtPrinter {})),
+        OutputMode::Logfmt => Ok(Box::new(RecordFromRow(LogFmtPrinter))),
         OutputMode::Legacy => Ok(Box::new(LegacyPrinter::new(render_config, terminal_config))),
         OutputMode::Json => Ok(Box::new(JsonPrinter {})),
         OutputMode::Format(format_str) => Ok(Box::new(FormatPrinter::new(format_str.to_owned())?)),
@@ -123,12 +126,12 @@ pub fn agg_printer(
     terminal_config: TerminalConfig,
 ) -> Result<Box<dyn AggregatePrinter + Send>, Error> {
     match mode {
-        OutputMode::Logfmt => Ok(Box::new(PrintAggregateAsRows {
-            inner: LogFmtPrinter {},
-        })),
-        //OutputMode::Json => Ok(Box::new(JsonPrinter {})),
-        _ => Ok(Box::new(LegacyPrinter::new(render_config, terminal_config))),
-        //OutputMode::Format(format_str) => Ok(Box::new(FormatPrinter::new(format_str.to_owned())?)),
+        OutputMode::Logfmt => Ok(Box::new(PrintAggregateAsRows(LogFmtPrinter))),
+        OutputMode::Format(format_str) => Ok(Box::new(PrintAggregateAsRows(FormatPrinter::new(
+            format_str.to_owned(),
+        )?))),
+        OutputMode::Json => Ok(Box::new(JsonPrinter {})),
+        OutputMode::Legacy => Ok(Box::new(LegacyPrinter::new(render_config, terminal_config))),
     }
 }
 
@@ -173,16 +176,43 @@ impl FormatPrinter {
     }
 }
 
-pub fn strformat_record(fmtstr: &str, vars: &VMap) -> Result<String, FmtError> {
+pub fn strformat_record<'a>(
+    fmtstr: &str,
+    vars: impl Fn(&str) -> &'a Value,
+    display_config: &DisplayConfig,
+) -> Result<String, FmtError> {
     let formatter = |mut fmt: Formatter| {
-        let v = match vars.get(fmt.key) {
-            Some(v) => v,
-            None => &data::Value::None,
-        };
-        fmt.str(v.to_string().as_str())
+        let v = vars(fmt.key);
+        fmt.str(&format!("{}", ValueDisplay::new(v, display_config)))
     };
 
     strfmt_map(fmtstr, &formatter)
+}
+
+impl RowPrinter for FormatPrinter {
+    fn print_row(
+        &mut self,
+        display_config: &DisplayConfig,
+        out: &mut dyn Write,
+        _raw: Option<&str>,
+        cols: &mut dyn Iterator<Item = (&String, &Value)>,
+    ) -> io::Result<()> {
+        let cols: Vec<_> = cols.collect();
+        write!(
+            out,
+            "{}",
+            strformat_record(
+                &self.format_str,
+                |query| cols
+                    .iter()
+                    .find(|(k, _)| query == *k)
+                    .map(|(_k, v)| v)
+                    .unwrap_or(&&Value::None),
+                display_config,
+            )
+            .unwrap_or_else(|e| format!("{}", e))
+        )
+    }
 }
 
 impl RecordPrinter for FormatPrinter {
@@ -195,7 +225,11 @@ impl RecordPrinter for FormatPrinter {
         write!(
             out,
             "{}",
-            match strformat_record(&self.format_str, &row.data) {
+            match strformat_record(
+                &self.format_str,
+                |k| row.data.get(k).unwrap_or(&Value::None),
+                _display_config
+            ) {
                 Ok(s) => s,
                 Err(e) => format!("{}", e),
             }
@@ -214,6 +248,13 @@ impl RecordPrinter for JsonPrinter {
     ) -> io::Result<()> {
         serde_json::to_writer(out, row).expect("failed to format");
         Ok(())
+    }
+}
+
+impl AggregatePrinter for JsonPrinter {
+    fn print(&mut self, row: &Aggregate, _display_config: &DisplayConfig) -> String {
+        let out = serde_json::to_string(row).expect("failed to format");
+        out + "\n"
     }
 }
 

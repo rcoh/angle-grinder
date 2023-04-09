@@ -21,7 +21,7 @@ pub enum Row {
 
 /// Helper to allow for a custom serde Serializer for the rows in an Aggregate.
 /// Serde serializers are not allowed to emit nested serializations directly, so
-/// it's necesssary to create an intermediary type for each row, and to provide
+/// it's necessary to create an intermediary type for each row, and to provide
 /// it with the columns to enable ordering.
 pub(crate) struct WrappedAggregateRow<'a> {
     pub columns: &'a Vec<String>,
@@ -79,7 +79,7 @@ impl serde::Serialize for Record {
         S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(self.data.len()))?;
-        for (k, v) in &self.data {
+        for (k, v) in self.data.iter().sorted() {
             map.serialize_entry(k, v)?;
         }
         map.end()
