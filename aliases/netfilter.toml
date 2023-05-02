@@ -1,0 +1,4 @@
+keyword = "netfilter"
+template = """
+parse "* * kernel: [*] * IN=* OUT=* SRC=* DST=* LEN=* TOS=* PREC=* TTL=* ID=* PROTO=* SPT=* DPT=* WINDOW=* RES=* * URGP=*" as timestamp, hostname, x, tag, ifIn, ifOut, src, dst, len, tos, prec, ttl, id, protocol, sport, dport, window, res, flags, urgp
+"""
