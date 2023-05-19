@@ -283,8 +283,8 @@ pub mod pipeline {
                 if ct == 0 {
                     break;
                 }
-                let data = std::str::from_utf8(&line[..ct]).unwrap();
-                if self.filter.matches(data)
+                let data = String::from_utf8_lossy(&line[..ct]);
+                if self.filter.matches(data.as_ref())
                     && !Pipeline::proc_preagg(Record::new(data), &mut preaggs, &tx)
                 {
                     break;

@@ -147,6 +147,18 @@ None         1\n",
     }
 
     #[test]
+    fn binary_input() {
+        run()
+            .args([
+                "* | parse 'k=*' as k",
+                "--file",
+                "test_files/binary_data.bin",
+            ])
+            .assert()
+            .stdout("[k=v2]\n[k=v]\n");
+    }
+
+    #[test]
     fn filter_wildcard() {
         run()
             .args([r#""*STAR*""#, "--file", "test_files/filter_test.log"])
