@@ -9,6 +9,7 @@ use std::io;
 use std::io::{stdout, BufReader};
 use thiserror::Error;
 
+#[cfg(not(target_env = "msvc"))]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
