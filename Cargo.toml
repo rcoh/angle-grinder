@@ -21,8 +21,10 @@ extended-description = """Angle-grinder allows you to parse, aggregate, sum, ave
 default = []
 self-update = ["self_update"]
 
-[dependencies]
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.5.0"
+
+[dependencies]
 serde_json = "1.0.33"
 itertools = "0.10.5"
 nom = "7.1.1"
