@@ -1890,8 +1890,8 @@ mod tests {
                 1 | * | parse regex "(?<abc>def"
                   |                 ^^^^^^^^^^^^ regex parse error:
                     (?<abc>def
-                      ^
-                error: unrecognized flag
+                    ^
+                error: unclosed group
                   |"#]],
         );
         check_query(
