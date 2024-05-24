@@ -1,0 +1,7 @@
+query = """* |parse regex "(?P<url>.+)(?P<query>\\?.+)?""""
+input = """/track/?verbose=1&ip=1&_=1716389413340"""
+output = """
+[query=None]         [url=/track/?verbose=1&ip=1&_=1716389413340]
+"""
+error = """
+"""

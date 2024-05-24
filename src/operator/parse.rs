@@ -34,9 +34,12 @@ impl Parse {
             None => Ok(None),
             Some(capture) => {
                 let mut values: Vec<data::Value> = Vec::with_capacity(self.fields.len());
-                for i in 0..self.fields.len() {
+                for item in capture.iter().skip(1) {
                     // the first capture is the entire string
-                    values.push(data::Value::from_string(&capture[i + 1]));
+                    match item {
+                        None => values.push(data::Value::None),
+                        Some(match_) => values.push(data::Value::from_string(match_.as_str())),
+                    };
                 }
                 Ok(Some(values))
             }
