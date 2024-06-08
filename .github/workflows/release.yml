@@ -82,7 +82,6 @@ jobs:
           # Linux
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
-          - x86_64-unknown-netbsd
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v1
