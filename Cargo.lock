@@ -19,7 +19,7 @@ checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
 [[package]]
 name = "ag"
-version = "0.19.4"
+version = "0.19.5"
 dependencies = [
  "annotate-snippets",
  "anyhow",
