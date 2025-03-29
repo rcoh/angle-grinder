@@ -24,7 +24,6 @@ dependencies = [
  "annotate-snippets",
  "anyhow",
  "assert_cmd",
- "atty",
  "cargo-husky",
  "chrono",
  "clap 4.5.34",

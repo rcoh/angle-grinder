@@ -1,8 +1,8 @@
 use crate::lang::{query, Positioned, Query};
 use crate::pipeline::CompileError;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
-use atty::Stream;
 use std::env;
+use std::io::IsTerminal;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use strsim::normalized_levenshtein;
@@ -79,7 +79,7 @@ pub struct TermErrorReporter {}
 
 impl ErrorReporter for TermErrorReporter {
     fn handle_error(&self, mut snippet: Snippet) {
-        snippet.opt.color = env::var("NO_COLOR").is_err() && atty::is(Stream::Stderr);
+        snippet.opt.color = env::var("NO_COLOR").is_err() && std::io::stderr().is_terminal();
         let dl = annotate_snippets::display_list::DisplayList::from(snippet);
 
         eprintln!("{}", dl);
