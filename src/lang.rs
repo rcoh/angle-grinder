@@ -67,9 +67,6 @@ lazy_static! {
 
 pub const RESERVED_FILTER_WORDS: &[&str] = &["AND", "OR", "NOT"];
 
-#[derive(Debug)]
-struct Error(Range<usize>, String);
-
 /// Type used to track the current fragment being parsed and its location in the original input.
 pub type Span<'a> = LocatedSpan<&'a str, &'a QueryContainer>;
 
@@ -246,9 +243,9 @@ where
 fn expect<'a, F, E, T>(
     mut parser: F,
     error_msg: E,
-) -> impl FnMut(Span<'a>) -> IResult<Span, Option<T>>
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Option<T>>
 where
-    F: FnMut(Span<'a>) -> IResult<Span, T>,
+    F: FnMut(Span<'a>) -> IResult<Span<'a>, T>,
     E: ToString,
 {
     move |input: Span<'a>| match parser(input) {
@@ -275,7 +272,7 @@ where
 fn expect_fn<'a, F, O, EF>(
     mut parser: F,
     mut error_fn: EF,
-) -> impl FnMut(Span<'a>) -> IResult<Span, Option<O>>
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Option<O>>
 where
     F: Parser<Span<'a>, O, nom::error::Error<Span<'a>>>,
     EF: FnMut(&QueryContainer, QueryRange),
@@ -353,7 +350,7 @@ where
 /// input is not found, the error message is logged.
 fn expect_pipe<'a, M>(
     error_msg: M,
-) -> impl FnMut(Span<'a>) -> IResult<Span, Option<(Span<'a>, Span<'a>)>>
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Option<(Span<'a>, Span<'a>)>>
 where
     M: ToString,
 {
@@ -2466,7 +2463,7 @@ mod tests {
                                         },
                                         right: Value(
                                             Duration(
-                                                Duration {
+                                                TimeDelta {
                                                     secs: 777600,
                                                     nanos: 0,
                                                 },
@@ -2484,18 +2481,18 @@ mod tests {
         check_query(
             "* | where foo *  ",
             expect![[r#"
-            Query {
-                search: And(
-                    [],
-                ),
-                operators: [],
-            }
-            error: expecting an operand for binary operator
-              |
-            1 | * | where foo *  
-              |               ^ dangling binary operator
-              |
-              = help: Add the operand or delete the operator"#]],
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [],
+                }
+                error: expecting an operand for binary operator
+                  |
+                1 | * | where foo *  
+                  |               ^ dangling binary operator
+                  |
+                  = help: Add the operand or delete the operator"#]],
         );
         check_query(
             "* | null as n",
