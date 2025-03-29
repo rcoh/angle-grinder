@@ -17,6 +17,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         None,
         ParseOptions {
             drop_nonmatching: true,
+            no_conversion: false,
         },
     );
     let mut group = c.benchmark_group("parse_operator");
