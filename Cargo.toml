@@ -38,7 +38,7 @@ crossbeam-channel = "0.5.1"
 ordered-float = "3.3.0"
 thiserror = "1.0.37"
 anyhow = "1"
-human-panic = "1.0.1"
+human-panic = "2"
 self_update = { version = "0.32.0", features = ["rustls"], default_features = false, optional = true }
 annotate-snippets = { version = "0.9.0", features = ["color"] }
 atty = "0.2.0"

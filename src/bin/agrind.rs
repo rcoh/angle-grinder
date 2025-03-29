@@ -16,7 +16,10 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 use crate::InvalidArgs::{CantSupplyBoth, InvalidFormatString, InvalidOutputMode};
 
 #[derive(Debug, Parser)]
-#[command(after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder")]
+#[command(
+    version,
+    after_help = "For more details + docs, see https://github.com/rcoh/angle-grinder"
+)]
 struct Cli {
     /// The query
     #[arg(group = "main")]

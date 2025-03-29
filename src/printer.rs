@@ -25,6 +25,7 @@ pub trait RecordPrinter {
         display_config: &DisplayConfig,
     ) -> io::Result<()>;
 
+    #[cfg(test)]
     fn print_str(&mut self, row: &Record, display_config: &DisplayConfig) -> String {
         let mut out = vec![];
         self.print(&mut out, row, display_config).unwrap();
