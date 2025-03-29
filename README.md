@@ -41,8 +41,8 @@ pkg install angle-grinder
 curl -L https://github.com/rcoh/angle-grinder/releases/download/v0.18.0/agrind-x86_64-unknown-linux-musl.tar.gz \
   | tar Ozxf - \
   | sudo tee /usr/local/bin/agrind > /dev/null && sudo chmod +x /usr/local/bin/agrind
-  
-agrind --self-update  
+
+agrind --self-update
 ```
 
 ### Cargo (most platforms)
@@ -183,7 +183,10 @@ Other examples:
 ```
 
 ##### Parse
-`parse "* pattern * otherpattern *" [from field] as a,b,c [nodrop]`: Parse text that matches the pattern into variables. Lines that don't match the pattern will be dropped unless `nodrop` is specified. `*` is equivalent to regular expression `.*` and is greedy.
+`parse "* pattern * otherpattern *" [from field] as a,b,c [nodrop] [noconvert]`: Parse text that matches the pattern into variables.
+- Lines that don't match the pattern will be dropped unless `nodrop` is specified. `*` is equivalent to regular expression `.*` and is greedy.
+- `noconvert` will prevent parse from converting parsed fields into structured data and instead preserve them as strings. This can be helpful if you are parsing fields that sometimes have values like `00000`.
+
 By default, `parse` operates on the raw text of the message. With `from field_name`, parse will instead process input from a specific column. Any whitespace in the parse
 expression will match _any_ whitespace character in the input text (eg. a literal tab).
 
@@ -407,7 +410,7 @@ Count the number of info vs. error logs:
 ```
 
 ##### Sort
-`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending. 
+`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending.
 
 *Examples*:
 ```agrind

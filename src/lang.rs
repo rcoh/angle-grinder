@@ -463,6 +463,7 @@ pub enum InlineOperator {
         fields: Vec<String>,
         input_column: (Option<Positioned<Expr>>, Option<Positioned<Expr>>),
         no_drop: bool,
+        no_convert: bool,
     },
     Fields {
         mode: FieldMode,
@@ -1254,8 +1255,9 @@ fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
             opt(with_pos(tag("as").preceded_by(multispace1).precedes(var_list))),
             opt(multispace1.precedes(with_pos(pair(tag("from"), multispace1).precedes(expr)))),
             opt(tag("nodrop").preceded_by(multispace1)).map(|nd| nd.is_some()),
+            opt(tag("noconvert").preceded_by(multispace1)).map(|nd| nd.is_some()),
         ))
-        .map(|(_p, is_regex, s, from_col_before, user_fields_opt, from_col_after, no_drop)| {
+        .map(|(_p, is_regex, s, from_col_before, user_fields_opt, from_col_after, no_drop, no_convert)| {
             let (pattern, fields) = if is_regex.is_some() {
                 let named_fields: Vec<String> = match regex::Regex::new(&s.value) {
                     Err(regex_err) => {
@@ -1310,6 +1312,7 @@ fn parse(input: Span) -> IResult<Span, Positioned<InlineOperator>> {
                 fields,
                 input_column: (from_col_before, from_col_after),
                 no_drop,
+                no_convert
             }
         }),
     )
@@ -1866,6 +1869,7 @@ mod tests {
                                         None,
                                     ),
                                     no_drop: false,
+                                    no_convert: false,
                                 },
                             },
                         ),
@@ -1947,6 +1951,7 @@ mod tests {
                                         None,
                                     ),
                                     no_drop: false,
+                                    no_convert: false,
                                 },
                             },
                         ),
@@ -1978,6 +1983,7 @@ mod tests {
                                         None,
                                     ),
                                     no_drop: true,
+                                    no_convert: false,
                                 },
                             },
                         ),
@@ -2010,6 +2016,7 @@ mod tests {
                                         None,
                                     ),
                                     no_drop: true,
+                                    no_convert: false,
                                 },
                             },
                         ),
@@ -2051,6 +2058,7 @@ mod tests {
                                         None,
                                     ),
                                     no_drop: false,
+                                    no_convert: false,
                                 },
                             },
                         ),
@@ -2092,6 +2100,7 @@ mod tests {
                                         ),
                                     ),
                                     no_drop: false,
+                                    no_convert: false,
                                 },
                             },
                         ),
@@ -2479,7 +2488,7 @@ mod tests {
             "#]],
         );
         check_query(
-            "* | where foo *  ",
+            "* | where foo *",
             expect![[r#"
                 Query {
                     search: And(
@@ -2489,7 +2498,7 @@ mod tests {
                 }
                 error: expecting an operand for binary operator
                   |
-                1 | * | where foo *  
+                1 | * | where foo *
                   |               ^ dangling binary operator
                   |
                   = help: Add the operand or delete the operator"#]],

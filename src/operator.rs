@@ -486,6 +486,7 @@ mod tests {
             None,
             ParseOptions {
                 drop_nonmatching: true,
+                no_conversion: false,
             },
         );
         let rec = parser.process(rec).unwrap().unwrap();
@@ -509,6 +510,7 @@ mod tests {
             None,
             ParseOptions {
                 drop_nonmatching: true,
+                no_conversion: false,
             },
         );
         let rec = parser.process(rec).unwrap();
@@ -524,6 +526,7 @@ mod tests {
             None,
             ParseOptions {
                 drop_nonmatching: false,
+                no_conversion: false,
             },
         );
         let rec = parser.process(rec).unwrap().unwrap();
@@ -539,10 +542,30 @@ mod tests {
             None,
             ParseOptions {
                 drop_nonmatching: false,
+                no_conversion: false,
             },
         );
         let parsed = parser.process(rec).unwrap().unwrap();
         assert_eq!(parsed.data.get("num_1"), Some(&Value::Int(1234)))
+    }
+
+    #[test]
+    fn parse_no_conversion() {
+        let rec = Record::new("abcd\t1234\t4567");
+        let parser = Parse::new(
+            lang::Keyword::new_wildcard("abcd * *".to_string()).to_regex(),
+            vec!["num_1".to_string(), "num_2".to_string()],
+            None,
+            ParseOptions {
+                drop_nonmatching: false,
+                no_conversion: true,
+            },
+        );
+        let parsed = parser.process(rec).unwrap().unwrap();
+        assert_eq!(
+            parsed.data.get("num_1"),
+            Some(&Value::Str(String::from("1234")))
+        )
     }
 
     #[test]
@@ -554,6 +577,7 @@ mod tests {
             None,
             ParseOptions {
                 drop_nonmatching: false,
+                no_conversion: false,
             },
         );
         let rec = parser.process(rec).unwrap().unwrap();
@@ -573,6 +597,7 @@ mod tests {
             Some("from_col".into()),
             ParseOptions {
                 drop_nonmatching: true,
+                no_conversion: false,
             },
         );
         let rec = parser.process(rec).unwrap().unwrap();
