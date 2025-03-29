@@ -138,7 +138,7 @@ fn parse_date(date_str: &str) -> Result<data::Value, EvalError> {
     dtparse::parse(date_str)
         .map(|pair| {
             data::Value::DateTime(
-                DateTime::<FixedOffset>::from_utc(
+                DateTime::<FixedOffset>::from_naive_utc_and_offset(
                     pair.0,
                     pair.1.unwrap_or_else(|| FixedOffset::west_opt(0).unwrap()),
                 )
