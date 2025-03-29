@@ -1,0 +1,9 @@
+query = """db-1 response | parse "in *ms" as duration noconvert"""
+input = """
+INFO Server db-1 loaded response in 000ms
+INFO Server db-1 loaded response in 001ms
+"""
+output = """
+[duration=000]
+[duration=001]
+"""
