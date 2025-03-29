@@ -38,7 +38,13 @@ impl Parse {
                     // the first capture is the entire string
                     match item {
                         None => values.push(data::Value::None),
-                        Some(match_) => values.push(data::Value::from_string(match_.as_str())),
+                        Some(match_) => {
+                            let value = match self.options.no_conversion {
+                                true => data::Value::Str(match_.as_str().to_owned()),
+                                false => data::Value::from_string(match_.as_str()),
+                            };
+                            values.push(value)
+                        }
                     };
                 }
                 Ok(Some(values))
@@ -79,6 +85,7 @@ impl UnaryPreAggFunction for Parse {
 #[derive(Clone)]
 pub struct ParseOptions {
     pub drop_nonmatching: bool,
+    pub no_conversion: bool,
 }
 
 #[derive(Clone)]

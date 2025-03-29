@@ -192,6 +192,7 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                 fields,
                 input_column,
                 no_drop,
+                no_convert,
             } => {
                 let regex = pattern.to_regex();
 
@@ -224,6 +225,7 @@ impl TypeCheck<Box<dyn operator::OperatorBuilder + Send + Sync>>
                             .transpose()?,
                         parse::ParseOptions {
                             drop_nonmatching: !no_drop,
+                            no_conversion: no_convert,
                         },
                     )))
                 }
