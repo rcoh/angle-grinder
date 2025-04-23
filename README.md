@@ -93,9 +93,25 @@ Sub-expressions _must_ be grouped in parenthesis. Only lines that match all filt
 ![filter.gif](/screen_shots/filter.gif)
 
 ### Aliases
-Starting with v0.12.0, angle grinder supports aliases, pre-built pipelines do simplify common tasks or formats. The only alias currently defined is `apache`, which parses apache logs. Adding more `aliases` is one of the easiest ways to [contribute](#contributing)!
+Starting with v0.12.0, angle grinder supports aliases, pre-built pipelines do simplify common tasks or formats.
+
+By default, angle-grinder will look in the `.agrind-aliases` directory in your current working directory and all parent directories.
+
+Alias files look like this:
+
+```toml
+keyword = "apache"
+template = """
+parse "* - * [*] \\"* * *\\" * *" as ip, name, timestamp, method, url, protocol, status, contentlength
+"""
+```
+
+Your operators are parsed, then expanded into the resulting pipeline. When invalid aliases are present, a warning will be displayed when running angle-grinder.
+
+Note that aliases are currently considered an experimental feature and precise behavior may change in the future.
 
 *Examples*:
+
 ```agrind
 * | apache | count by status
 ```

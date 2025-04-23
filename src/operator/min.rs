@@ -9,7 +9,7 @@ pub struct Min {
 impl Min {
     pub fn empty<T: Into<Expr>>(column: T) -> Min {
         Min {
-            min: std::f64::INFINITY,
+            min: f64::INFINITY,
             column: column.into(),
         }
     }

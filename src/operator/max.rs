@@ -9,7 +9,7 @@ pub struct Max {
 impl Max {
     pub fn empty<T: Into<Expr>>(column: T) -> Max {
         Max {
-            max: std::f64::NEG_INFINITY,
+            max: f64::NEG_INFINITY,
             column: column.into(),
         }
     }

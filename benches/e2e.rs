@@ -1,3 +1,4 @@
+use ag::alias::AliasCollection;
 use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
 use annotate_snippets::snippet::Snippet;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
@@ -49,7 +50,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         },
     ];
     tests.into_iter().for_each(|test| {
-        let query_container = QueryContainer::new(test.query, Box::new(NopErrorReporter {}));
+        let query_container = QueryContainer::new_with_aliases(
+            test.query,
+            Box::new(NopErrorReporter {}),
+            AliasCollection::default(),
+        );
         let mut group = c.benchmark_group("e2e_query");
         let num_elems = BufReader::new(File::open(&test.file).unwrap())
             .lines()

@@ -21,6 +21,7 @@ struct TestDefinition {
 #[cfg(test)]
 mod integration {
     use super::*;
+    use ag::alias::AliasCollection;
     use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer};
     use assert_cmd::Command;
     use predicates::prelude::predicate;
@@ -62,6 +63,7 @@ mod integration {
             .write_stdin(conf.input)
             .arg(&conf.query)
             .args(conf.flags)
+            .arg("--no-alias")
             .assert();
 
         let asserter = asserter.stdout(conf.output).stderr(err);
@@ -215,7 +217,11 @@ warn | Fetcher failed to start        module=kafka.consumer.ConsumerFetcherManag
     }
 
     fn ensure_parses(query: &str) {
-        let query_container = QueryContainer::new(query.to_string(), Box::new(EmptyErrorReporter));
+        let query_container = QueryContainer::new_with_aliases(
+            query.to_string(),
+            Box::new(EmptyErrorReporter),
+            AliasCollection::default(),
+        );
         Pipeline::new(&query_container, stdout(), OutputMode::Legacy).unwrap_or_else(|err| {
             panic!(
                 "Query: `{}` from the README should have parsed {}",

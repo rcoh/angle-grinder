@@ -1,4 +1,7 @@
-use ag::pipeline::{OutputMode, Pipeline, QueryContainer, TermErrorReporter};
+use ag::alias::AliasCollection;
+use ag::pipeline::{ErrorReporter, OutputMode, Pipeline, QueryContainer, TermErrorReporter};
+use annotate_snippets::display_list::FormatOptions;
+use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet};
 use human_panic::setup_panic;
 
 use clap::Parser;
@@ -7,6 +10,7 @@ use self_update;
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufReader};
+use std::path::PathBuf;
 use thiserror::Error;
 
 #[cfg(not(target_env = "msvc"))]
@@ -49,6 +53,16 @@ struct Cli {
                      - `legacy` The original output format, auto aligning [k=v]"
     )]
     output: Option<String>,
+
+    #[arg(
+        long = "alias-dir",
+        short = 'a',
+        long_help = "Specifies an alternative directory to use for aliases. Defaults to `.agrind-aliases` in all parent directories."
+    )]
+    alias_dir: Option<PathBuf>,
+
+    #[arg(long = "no-alias", long_help = "Disables aliases")]
+    no_alias: bool,
 }
 
 #[derive(Debug, Error)]
@@ -64,6 +78,9 @@ pub enum InvalidArgs {
 
     #[error("Can't supply a format string and an output mode")]
     CantSupplyBoth,
+
+    #[error("Can't disable aliases and also set a directory")]
+    CantDisableAndOverride,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -73,11 +90,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.update {
         return update();
     }
-    let query = QueryContainer::new(
+    let (aliases, errors) = match (args.alias_dir, args.no_alias) {
+        (Some(dir), false) => AliasCollection::load_aliases_from_dir(&dir)?,
+        (None, false) => AliasCollection::load_aliases_ancestors(None)?,
+        (Some(_), true) => return Err(InvalidArgs::CantDisableAndOverride.into()),
+        (None, true) => (AliasCollection::default(), vec![]),
+    };
+    let error_reporter = Box::new(TermErrorReporter {});
+    for error in errors {
+        error_reporter.handle_error(Snippet {
+            title: Some(Annotation {
+                id: None,
+                label: Some(&format!("invalid alias: {}", error.cause)),
+                annotation_type: AnnotationType::Warning,
+            }),
+            footer: vec![],
+            slices: vec![Slice {
+                source: "",
+                line_start: 0,
+                origin: Some(error.path.to_str().unwrap()),
+                annotations: vec![],
+                fold: true,
+            }],
+            opt: FormatOptions::default(),
+        });
+    }
+    let query = QueryContainer::new_with_aliases(
         args.query.ok_or(InvalidArgs::MissingQuery)?,
-        Box::new(TermErrorReporter {}),
+        error_reporter,
+        aliases,
     );
-    //args.verbosity.setup_env_logger("agrind")?;
     let output_mode = match (args.output, args.format) {
         (Some(_output), Some(_format)) => Err(CantSupplyBoth),
         (Some(output), None) => parse_output(&output),

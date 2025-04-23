@@ -1,3 +1,4 @@
+use crate::alias::AliasCollection;
 use crate::lang::{query, Positioned, Query};
 use crate::pipeline::CompileError;
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
@@ -8,10 +9,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use strsim::normalized_levenshtein;
 
 /// Container for the query string that can be used to parse and report errors.
-pub struct QueryContainer {
+pub struct QueryContainer<'a> {
     pub query: String,
     pub reporter: Box<dyn ErrorReporter>,
     pub error_count: AtomicUsize,
+    pub aliases: AliasCollection<'a>,
 }
 
 /// Trait that can be used to report errors by the parser and other layers.
@@ -22,14 +24,39 @@ pub trait ErrorBuilder {
     fn get_error_count(&self) -> usize;
 }
 
-impl QueryContainer {
-    pub fn new(query: String, reporter: Box<dyn ErrorReporter>) -> QueryContainer {
+impl<'a> QueryContainer<'a> {
+    pub fn new_with_aliases(
+        query: String,
+        reporter: Box<dyn ErrorReporter>,
+        aliases: AliasCollection<'a>,
+    ) -> Self {
         QueryContainer {
             query,
             reporter,
             error_count: AtomicUsize::new(0),
+            aliases,
         }
     }
+}
+
+impl QueryContainer<'static> {
+    /*
+    pub fn new(query: String, reporter: Box<dyn ErrorReporter>) -> QueryContainer<'static> {
+        let (aliases, errs) = AliasCollection::load_aliases_ancestors(None);
+        for err in errs {
+            reporter.handle_error(Snippet {
+                title: Some(Annotation {
+                    id: None,
+                    label: Some(&format!("{err:?}")),
+                    annotation_type: AnnotationType::Warning,
+                }),
+                footer: vec![],
+                slices: vec![],
+                opt: FormatOptions::default(),
+            });
+        }
+        Self::new_with_aliases(query, reporter, aliases)
+    }*/
 
     /// Parse the contained query string.
     pub fn parse(&self) -> Result<Query, CompileError> {
@@ -37,7 +64,7 @@ impl QueryContainer {
     }
 }
 
-impl ErrorBuilder for QueryContainer {
+impl ErrorBuilder for QueryContainer<'_> {
     /// Create a SnippetBuilder for the given error
     fn report_error_for<E: ToString>(&self, error: E) -> SnippetBuilder {
         self.error_count.fetch_add(1, Ordering::Relaxed);
@@ -57,16 +84,11 @@ impl ErrorBuilder for QueryContainer {
     }
 }
 
-pub fn did_you_mean(input: &str, choices: &[&str]) -> Option<String> {
-    let similarities = choices
-        .iter()
-        .map(|choice| (choice, normalized_levenshtein(choice, input)));
+pub fn did_you_mean<'a>(input: &str, choices: impl Iterator<Item = &'a str>) -> Option<String> {
+    let similarities = choices.map(|choice| (choice, normalized_levenshtein(choice, input)));
     let mut candidates: Vec<_> = similarities.filter(|(_op, score)| *score > 0.6).collect();
     candidates.sort_by_key(|(_op, score)| (score * 100_f64) as u16);
-    candidates
-        .iter()
-        .map(|(choice, _score)| (**choice).to_owned())
-        .next()
+    candidates.first().map(|(choice, _scoe)| choice.to_string())
 }
 
 /// Callback for handling error Snippets.
@@ -97,11 +119,11 @@ pub struct SnippetData {
 
 #[must_use = "the send_report() method must eventually be called for this builder"]
 pub struct SnippetBuilder<'a> {
-    query: &'a QueryContainer,
+    query: &'a QueryContainer<'a>,
     data: SnippetData,
 }
 
-impl<'a> SnippetBuilder<'a> {
+impl SnippetBuilder<'_> {
     /// Adds an annotation to a portion of the query string.  The given position will be
     /// highlighted with the accompanying label.
     pub fn with_code_pointer<T, S: ToString>(mut self, pos: &Positioned<T>, label: S) -> Self {

@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate include_dir;
 
-mod alias;
+pub mod alias;
 pub mod data;
 mod errors;
 mod filter;
@@ -130,7 +130,7 @@ pub mod pipeline {
         }
 
         pub fn new<W: 'static + Write + Send>(
-            pipeline: &QueryContainer,
+            pipeline: &QueryContainer<'static>,
             output: W,
             output_mode: OutputMode,
         ) -> Result<Self, Error> {

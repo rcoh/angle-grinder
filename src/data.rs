@@ -269,17 +269,17 @@ impl Display for ValueDisplay<'_> {
             Value::Duration(ref d) => {
                 let mut remaining: Duration = *d;
                 let weeks = remaining.num_seconds() / Duration::weeks(1).num_seconds();
-                remaining = remaining - Duration::weeks(weeks);
+                remaining -= Duration::weeks(weeks);
                 let days = remaining.num_seconds() / Duration::days(1).num_seconds();
-                remaining = remaining - Duration::days(days);
+                remaining -= Duration::days(days);
                 let hours = remaining.num_seconds() / Duration::hours(1).num_seconds();
-                remaining = remaining - Duration::hours(hours);
+                remaining -= Duration::hours(hours);
                 let mins = remaining.num_seconds() / Duration::minutes(1).num_seconds();
-                remaining = remaining - Duration::minutes(mins);
+                remaining -= Duration::minutes(mins);
                 let secs = remaining.num_seconds() / Duration::seconds(1).num_seconds();
-                remaining = remaining - Duration::seconds(secs);
+                remaining -= Duration::seconds(secs);
                 let msecs = remaining.num_milliseconds();
-                remaining = remaining - Duration::milliseconds(msecs);
+                remaining -= Duration::milliseconds(msecs);
                 let usecs = remaining.num_microseconds().unwrap_or(0);
 
                 let pairs = &[

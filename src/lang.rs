@@ -26,7 +26,7 @@ use nom_supreme::error::ErrorTree;
 use nom_supreme::parser_ext::ParserExt;
 use nom_supreme::tag::complete::tag;
 
-use crate::alias::{self, AliasPipeline};
+use crate::alias::{self, AliasCollection};
 use crate::data;
 use crate::errors::{ErrorBuilder, QueryContainer};
 use crate::pipeline::CompileError;
@@ -68,7 +68,7 @@ lazy_static! {
 pub const RESERVED_FILTER_WORDS: &[&str] = &["AND", "OR", "NOT"];
 
 /// Type used to track the current fragment being parsed and its location in the original input.
-pub type Span<'a> = LocatedSpan<&'a str, &'a QueryContainer>;
+pub type Span<'a> = LocatedSpan<&'a str, &'a QueryContainer<'a>>;
 
 pub type LResult<I, O, E = ErrorTree<I>> = Result<(I, O), nom::Err<E>>;
 
@@ -101,7 +101,7 @@ trait ToRange {
     fn to_whitespace(&self) -> Range<usize>;
 }
 
-impl<'a> ToRange for Span<'a> {
+impl ToRange for Span<'_> {
     fn to_range(&self) -> Range<usize> {
         let start = self.location_offset();
         let end = start + self.fragment().len();
@@ -1421,7 +1421,26 @@ fn skip_to_end_of_query(input: Span) -> IResult<Span, Operator> {
     }
 }
 
-fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
+struct ValidOperators<'a> {
+    aliases: &'a AliasCollection<'a>,
+}
+
+impl<'a> ValidOperators<'a> {
+    fn valid_aggs(&self) -> impl Iterator<Item = &'a str> {
+        VALID_AGGREGATES.iter().copied()
+    }
+
+    fn valid_operators(&self) -> impl Iterator<Item = &'a str> {
+        self.valid_aggs()
+            .chain(VALID_INLINE.iter().copied())
+            .chain(self.aliases.valid_aliases())
+    }
+}
+
+fn parse_operators<'a>(
+    input: Span<'a>,
+    aliases: &AliasCollection,
+) -> IResult<Span<'a>, Vec<Operator>> {
     let json = with_pos(
         oper_0_args("json")
             .precedes(kw_expr("from", "a JSON-encoded string"))
@@ -1570,7 +1589,9 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
     .map(Operator::Inline);
 
     let alias = recognize(ident).map_res(|span| {
-        AliasPipeline::matching_string(span.fragment())
+        aliases
+            .get_alias(span.fragment())
+            .ok_or(())
             .map(|pipe| Operator::RenderedAlias(pipe.render()))
     });
 
@@ -1593,15 +1614,13 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
                 } else if VALID_OPERATORS.contains(&i) {
                     continue;
                 }
+                let valid_operators = ValidOperators { aliases };
 
-                let m = crate::errors::did_you_mean(
-                    &i,
-                    if is_agg {
-                        VALID_AGGREGATES
-                    } else {
-                        &VALID_OPERATORS
-                    },
-                );
+                let m = if is_agg {
+                    crate::errors::did_you_mean(&i, valid_operators.valid_aggs())
+                } else {
+                    crate::errors::did_you_mean(&i, valid_operators.valid_operators())
+                };
 
                 let mut builder = input
                     .extra
@@ -1646,18 +1665,20 @@ fn parse_operators(input: Span) -> IResult<Span, Vec<Operator>> {
 
 pub fn pipeline_template(input: &QueryContainer) -> Result<Vec<Operator>, CompileError> {
     let span = Span::new_extra(input.query.as_str(), input);
-    let (_input, operators) = parse_operators(span).map_err(|_| CompileError::Parse)?;
+    let (_input, operators) =
+        parse_operators(span, &input.aliases).map_err(|_| CompileError::Parse)?;
 
     Ok(operators)
 }
 
-pub fn query(input: &QueryContainer) -> Result<Query, CompileError> {
-    let span = Span::new_extra(input.query.as_str(), input);
+pub fn query(container: &QueryContainer) -> Result<Query, CompileError> {
+    let span = Span::new_extra(container.query.as_str(), container);
     let (input, search) = parse_search(span).map_err(|_| CompileError::Parse)?;
-    let (input, operators) = opt(tag("|").precedes(parse_operators))
-        .map(|ops| ops.unwrap_or_default())
-        .parse(input)
-        .map_err(|_| CompileError::Parse)?;
+    let (input, operators) =
+        opt(tag("|").precedes(|span| parse_operators(span, &container.aliases)))
+            .map(|ops| ops.unwrap_or_default())
+            .parse(input)
+            .map_err(|_| CompileError::Parse)?;
 
     if input.extra.get_error_count() > 0 {
         Err(CompileError::Parse)
@@ -1684,9 +1705,10 @@ mod tests {
     fn check_query(query_in: &str, expect: Expect) {
         let errors = Arc::new(Mutex::new(vec![]));
         let parsed = {
-            let qc = QueryContainer::new(
+            let qc = QueryContainer::new_with_aliases(
                 query_in.to_string(),
                 Box::new(VecErrorReporter::new(errors.clone())),
+                AliasCollection::default(),
             );
             let r = query(&qc);
 
