@@ -23,7 +23,7 @@ fn extract_blocks<'md, I: Iterator<Item = Event<'md>>>(md_events: I) -> Vec<Code
             (Event::Text(code), true) => {
                 current_block += &code;
             }
-            (Event::End(Tag::CodeBlock(_lang)), true) => {
+            (Event::End(pulldown_cmark::TagEnd::CodeBlock), true) => {
                 blocks.push(CodeBlock {
                     flag: current_flag.to_string(),
                     code: current_block.to_string(),
