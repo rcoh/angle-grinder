@@ -400,8 +400,10 @@ impl Keyword {
 
         let mut regex_str = regex::escape(&self.0.replace("\\\"", "\"")).replace(' ', "\\s");
 
-        regex_str.insert_str(0, "(?i)");
+        // Only apply case-insensitive flag for wildcard keywords
+        // Exact keywords (quoted strings) should be case-sensitive
         if self.1 == KeywordType::Wildcard {
+            regex_str.insert_str(0, "(?i)");
             regex_str = regex_str.replace("\\*", "(.*?)");
             // If it ends with a star, we need to ensure we read until the end.
             if self.0.ends_with('*') {
@@ -3297,5 +3299,49 @@ mod tests {
             }
         "#]],
         );
+    }
+
+    #[test]
+    fn keyword_exact_case_sensitive() {
+        // Exact keywords (from quoted strings) should be case-sensitive
+        let keyword = Keyword::new_exact("ERROR".to_string());
+        let regex = keyword.to_regex();
+
+        assert!(regex.is_match("ERROR found here"));
+        assert!(!regex.is_match("error found here"));
+        assert!(!regex.is_match("Error found here"));
+    }
+
+    #[test]
+    fn keyword_wildcard_case_insensitive() {
+        // Wildcard keywords (from unquoted strings) should be case-insensitive
+        let keyword = Keyword::new_wildcard("ERROR".to_string());
+        let regex = keyword.to_regex();
+
+        assert!(regex.is_match("ERROR found here"));
+        assert!(regex.is_match("error found here"));
+        assert!(regex.is_match("Error found here"));
+    }
+
+    #[test]
+    fn keyword_exact_multiword_case_sensitive() {
+        // Test case sensitivity with multi-word strings
+        let keyword = Keyword::new_exact("Warning Message".to_string());
+        let regex = keyword.to_regex();
+
+        assert!(regex.is_match("Warning Message"));
+        assert!(!regex.is_match("warning message"));
+        assert!(!regex.is_match("WARNING MESSAGE"));
+    }
+
+    #[test]
+    fn keyword_wildcard_with_pattern_case_insensitive() {
+        // Test wildcards with case insensitivity
+        let keyword = Keyword::new_wildcard("WARN".to_string());
+        let regex = keyword.to_regex();
+
+        assert!(regex.is_match("WARNING: something happened"));
+        assert!(regex.is_match("warning: something happened"));
+        assert!(regex.is_match("Warn: something happened"));
     }
 }

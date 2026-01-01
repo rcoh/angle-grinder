@@ -173,6 +173,70 @@ None         1\n",
     }
 
     #[test]
+    fn filter_case_sensitive() {
+        // Quoted strings should be case-sensitive
+        run()
+            .args([
+                r#""ERROR""#,
+                "--file",
+                "test_files/case_sensitivity_test.log",
+            ])
+            .assert()
+            .stdout("ERROR found here\n");
+
+        run()
+            .args([
+                r#""error""#,
+                "--file",
+                "test_files/case_sensitivity_test.log",
+            ])
+            .assert()
+            .stdout("error found here\n");
+
+        run()
+            .args([
+                r#""WARNING""#,
+                "--file",
+                "test_files/case_sensitivity_test.log",
+            ])
+            .assert()
+            .stdout("WARNING message\n");
+
+        run()
+            .args([
+                r#""Warning""#,
+                "--file",
+                "test_files/case_sensitivity_test.log",
+            ])
+            .assert()
+            .stdout("Warning message\n");
+    }
+
+    #[test]
+    fn filter_case_insensitive() {
+        // Unquoted strings should be case-insensitive
+        run()
+            .args(["ERROR", "--file", "test_files/case_sensitivity_test.log"])
+            .assert()
+            .stdout("ERROR found here\nerror found here\n");
+
+        run()
+            .args(["error", "--file", "test_files/case_sensitivity_test.log"])
+            .assert()
+            .stdout("ERROR found here\nerror found here\n");
+
+        run()
+            .args(["warning", "--file", "test_files/case_sensitivity_test.log"])
+            .assert()
+            .stdout("Warning message\nWARNING message\n");
+
+        run()
+            .args(["INFO", "--file", "test_files/case_sensitivity_test.log"])
+            .assert()
+            .stdout("Info line\nINFO line\n");
+    }
+
+    #[test]
     fn test_limit() {
         run()
             .args([r#"* | limit 2"#, "--file", "test_files/filter_test.log"])
