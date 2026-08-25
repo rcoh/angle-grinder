@@ -1,0 +1,17 @@
+query = "* | json | sort by version human"
+input = """
+{"pkg": "alpha", "version": "1.2.10"}
+{"pkg": "beta", "version": "1.2.9"}
+{"pkg": "gamma", "version": "1.2.2"}
+{"pkg": "delta", "version": "1.10.0"}
+{"pkg": "eps", "version": "1.9.0"}
+"""
+output = """
+pkg          version
+----------------------------
+gamma        1.2.2
+beta         1.2.9
+alpha        1.2.10
+eps          1.9.0
+delta        1.10.0
+"""

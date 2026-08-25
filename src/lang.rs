@@ -567,6 +567,7 @@ pub struct MultiAggregateOperator {
 pub struct SortOperator {
     pub sort_cols: Vec<Expr>,
     pub direction: SortMode,
+    pub human: bool,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -738,13 +739,18 @@ fn sort(input: Span) -> IResult<Span, Operator> {
                 .precedes(sourced_expr_list))
             .map(|opt_cols| opt_cols.unwrap_or_default()),
         ),
+        // `human` may sit on either side of the direction, e.g.
+        // `sort by x human`, `sort by x human desc` or `sort by x desc human`.
+        opt(tag("human").preceded_by(multispace1)),
         opt(sort_mode.preceded_by(multispace1))
             .map(|opt_mode| opt_mode.unwrap_or(SortMode::Ascending)),
+        opt(tag("human").preceded_by(multispace1)),
     ))
-    .map(|(mut sort_cols, direction)| {
+    .map(|(mut sort_cols, human_pre, direction, human_post)| {
         Operator::Sort(SortOperator {
             sort_cols: sort_cols.drain(..).map(|(_name, ex)| ex).collect(),
             direction,
+            human: human_pre.is_some() || human_post.is_some(),
         })
     })
     .parse(input)
@@ -1769,6 +1775,88 @@ mod tests {
                     operators: [],
                 }
             "#]],
+        );
+    }
+
+    #[test]
+    fn parse_sort_human() {
+        check_query(
+            "* | sort by version human",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Sort(
+                        SortOperator {
+                            sort_cols: [
+                                Column {
+                                    head: Key(
+                                        "version",
+                                    ),
+                                    rest: [],
+                                },
+                            ],
+                            direction: Ascending,
+                            human: true,
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | sort by version desc human",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Sort(
+                        SortOperator {
+                            sort_cols: [
+                                Column {
+                                    head: Key(
+                                        "version",
+                                    ),
+                                    rest: [],
+                                },
+                            ],
+                            direction: Descending,
+                            human: true,
+                        },
+                    ),
+                ],
+            }
+        "#]],
+        );
+        check_query(
+            "* | sort by version human desc",
+            expect![[r#"
+            Query {
+                search: And(
+                    [],
+                ),
+                operators: [
+                    Sort(
+                        SortOperator {
+                            sort_cols: [
+                                Column {
+                                    head: Key(
+                                        "version",
+                                    ),
+                                    rest: [],
+                                },
+                            ],
+                            direction: Descending,
+                            human: true,
+                        },
+                    ),
+                ],
+            }
+        "#]],
         );
     }
 
@@ -3262,42 +3350,43 @@ mod tests {
         check_query(
             r#"* | logfmt from col | sort by foo dsc "#,
             expect![[r#"
-            Query {
-                search: And(
-                    [],
-                ),
-                operators: [
-                    Inline(
-                        Positioned {
-                            range: 4..19,
-                            value: Logfmt {
-                                input_column: Some(
+                Query {
+                    search: And(
+                        [],
+                    ),
+                    operators: [
+                        Inline(
+                            Positioned {
+                                range: 4..19,
+                                value: Logfmt {
+                                    input_column: Some(
+                                        Column {
+                                            head: Key(
+                                                "col",
+                                            ),
+                                            rest: [],
+                                        },
+                                    ),
+                                },
+                            },
+                        ),
+                        Sort(
+                            SortOperator {
+                                sort_cols: [
                                     Column {
                                         head: Key(
-                                            "col",
+                                            "foo",
                                         ),
                                         rest: [],
                                     },
-                                ),
+                                ],
+                                direction: Descending,
+                                human: false,
                             },
-                        },
-                    ),
-                    Sort(
-                        SortOperator {
-                            sort_cols: [
-                                Column {
-                                    head: Key(
-                                        "foo",
-                                    ),
-                                    rest: [],
-                                },
-                            ],
-                            direction: Descending,
-                        },
-                    ),
-                ],
-            }
-        "#]],
+                        ),
+                    ],
+                }
+            "#]],
         );
     }
 

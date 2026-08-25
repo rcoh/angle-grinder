@@ -80,7 +80,7 @@ pub mod pipeline {
                 .into_iter()
                 .map(|expr| expr.type_check(pipeline))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Box::new(sort::Sorter::new(sort_cols, mode)))
+            Ok(Box::new(sort::Sorter::new(sort_cols, mode, op.human)))
         }
 
         fn convert_multi_agg(
@@ -126,6 +126,7 @@ pub mod pipeline {
             SortOperator {
                 sort_cols,
                 direction,
+                human: false,
             }
         }
 

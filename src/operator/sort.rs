@@ -19,8 +19,8 @@ pub struct Sorter {
 }
 
 impl Sorter {
-    pub fn new(exprs: Vec<Expr>, direction: SortDirection) -> Self {
-        let ordering = Box::new(Record::ordering(exprs));
+    pub fn new(exprs: Vec<Expr>, direction: SortDirection, human: bool) -> Self {
+        let ordering = Box::new(Record::ordering_human(exprs, human));
         Sorter {
             state: Vec::new(),
             columns: Vec::new(),

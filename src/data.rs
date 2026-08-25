@@ -154,6 +154,78 @@ impl PartialOrd for Value {
     }
 }
 
+impl Value {
+    /// Compare two values using a natural (human friendly) ordering.
+    ///
+    /// For strings this compares embedded runs of digits by their numeric value
+    /// rather than lexically, so `"v2" < "v10"` and `"1.2.10" > "1.2.9"`. Every
+    /// other value type falls back to the normal `cmp`.
+    pub fn natural_cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Value::Str(l), Value::Str(r)) => natural_str_cmp(l, r),
+            _ => self.cmp(other),
+        }
+    }
+}
+
+/// Natural comparison of two strings, walking them in parallel and treating
+/// consecutive digits as a single number.
+fn natural_str_cmp(left: &str, right: &str) -> Ordering {
+    let mut l = left.chars().peekable();
+    let mut r = right.chars().peekable();
+    loop {
+        match (l.peek().copied(), r.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(lc), Some(rc)) if lc.is_ascii_digit() && rc.is_ascii_digit() => {
+                match cmp_number_run(&mut l, &mut r) {
+                    Ordering::Equal => {}
+                    other => return other,
+                }
+            }
+            (Some(lc), Some(rc)) => match lc.cmp(&rc) {
+                Ordering::Equal => {
+                    l.next();
+                    r.next();
+                }
+                other => return other,
+            },
+        }
+    }
+}
+
+/// Consume the leading run of digits from each iterator and compare them as
+/// numbers. Leading zeros only matter as a tie breaker so that "01" and "1"
+/// still have a stable order.
+fn cmp_number_run(
+    l: &mut std::iter::Peekable<std::str::Chars>,
+    r: &mut std::iter::Peekable<std::str::Chars>,
+) -> Ordering {
+    let ldigits = take_digits(l);
+    let rdigits = take_digits(r);
+    let ltrim = ldigits.trim_start_matches('0');
+    let rtrim = rdigits.trim_start_matches('0');
+    ltrim
+        .len()
+        .cmp(&rtrim.len())
+        .then_with(|| ltrim.cmp(rtrim))
+        .then_with(|| ldigits.len().cmp(&rdigits.len()))
+}
+
+fn take_digits(chars: &mut std::iter::Peekable<std::str::Chars>) -> String {
+    let mut out = String::new();
+    while let Some(&c) = chars.peek() {
+        if c.is_ascii_digit() {
+            out.push(c);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
 impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -609,12 +681,26 @@ impl Record {
     pub fn ordering<T: Into<Expr> + Send + Sync>(
         columns: Vec<T>,
     ) -> impl Fn(&VMap, &VMap) -> Result<Ordering, EvalError> + Send + Sync {
+        Record::ordering_human(columns, false)
+    }
+
+    /// Like `ordering`, but when `human` is set, strings are compared with a
+    /// natural ordering so embedded numbers and version strings sort by value
+    /// instead of lexically.
+    pub fn ordering_human<T: Into<Expr> + Send + Sync>(
+        columns: Vec<T>,
+        human: bool,
+    ) -> impl Fn(&VMap, &VMap) -> Result<Ordering, EvalError> + Send + Sync {
         let columns: Vec<Expr> = columns.into_iter().map(Into::into).collect();
         move |rec_l: &VMap, rec_r: &VMap| {
             for col in &columns {
                 let l_val = col.eval_value(rec_l)?;
                 let r_val = col.eval_value(rec_r)?;
-                let cmp = l_val.cmp(&r_val);
+                let cmp = if human {
+                    l_val.natural_cmp(&r_val)
+                } else {
+                    l_val.cmp(&r_val)
+                };
                 if cmp != Ordering::Equal {
                     return Ok(cmp);
                 }
@@ -645,6 +731,40 @@ mod tests {
     use super::*;
     use maplit::hashmap;
     use std::str::FromStr;
+
+    fn s(v: &str) -> Value {
+        Value::Str(v.to_string())
+    }
+
+    #[test]
+    fn natural_cmp_strings() {
+        assert_eq!(s("v2").natural_cmp(&s("v10")), Ordering::Less);
+        assert_eq!(s("1.2.10").natural_cmp(&s("1.2.9")), Ordering::Greater);
+        assert_eq!(s("file9").natural_cmp(&s("file10")), Ordering::Less);
+        assert_eq!(s("1.10.0").natural_cmp(&s("1.9.0")), Ordering::Greater);
+        assert_eq!(s("abc").natural_cmp(&s("abc")), Ordering::Equal);
+        // leading zeros compare equal by value, then keep a stable order
+        assert_eq!(s("01").natural_cmp(&s("1")), Ordering::Greater);
+        // digits sort before letters at the same position
+        assert_eq!(s("2a").natural_cmp(&s("a2")), Ordering::Less);
+    }
+
+    #[test]
+    fn natural_cmp_sorts_versions() {
+        let mut versions: Vec<Value> = ["1.2.10", "1.2.9", "1.2.2", "1.10.0", "1.9.0"]
+            .iter()
+            .map(|v| s(v))
+            .collect();
+        versions.sort_by(|l, r| l.natural_cmp(r));
+        let sorted: Vec<String> = versions.iter().map(|v| v.to_string()).collect();
+        assert_eq!(sorted, vec!["1.2.2", "1.2.9", "1.2.10", "1.9.0", "1.10.0"]);
+    }
+
+    #[test]
+    fn natural_cmp_falls_back_for_non_strings() {
+        // non string values keep the normal ordering
+        assert_eq!(Value::Int(2).natural_cmp(&Value::Int(10)), Ordering::Less);
+    }
 
     #[test]
     fn render_duration() {
