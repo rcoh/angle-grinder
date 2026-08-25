@@ -773,11 +773,15 @@ mod tests {
                 ),
             ],
         );
-        let mut sorter = Sorter::new(vec![Expr::column("count")], SortDirection::Ascending);
+        let mut sorter = Sorter::new(vec![Expr::column("count")], SortDirection::Ascending, false);
         sorter.process(data::Row::Aggregate(agg.clone()));
         assert_eq!(sorter.emit(), agg);
 
-        let mut sorter = Sorter::new(vec![Expr::column("count")], SortDirection::Descending);
+        let mut sorter = Sorter::new(
+            vec![Expr::column("count")],
+            SortDirection::Descending,
+            false,
+        );
         sorter.process(data::Row::Aggregate(agg.clone()));
 
         let mut revagg = agg;

@@ -426,7 +426,7 @@ Count the number of info vs. error logs:
 ```
 
 ##### Sort
-`sort by a, [b, c] [asc|desc]`: Sort aggregate data by a collection of columns. Defaults to ascending.
+`sort by a, [b, c] [asc|desc] [human]`: Sort aggregate data by a collection of columns. Defaults to ascending.
 
 *Examples*:
 ```agrind
@@ -441,6 +441,13 @@ In addition to columns, `sort` can also sort an arbitrary expressions.
 
 ```agrind
 * | json | sort by length(endpoint_url)
+```
+
+Adding `human` sorts string columns naturally, so embedded numbers and version
+strings order by value instead of lexically (`1.2.9` before `1.2.10`). It can go
+on either side of `asc`/`desc`.
+```agrind
+* | json | sort by version human
 ```
 
 ##### Timeslice
